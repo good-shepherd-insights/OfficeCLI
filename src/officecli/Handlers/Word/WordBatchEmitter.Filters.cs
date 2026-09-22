@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using OfficeCli.Core;
@@ -14,6 +18,20 @@ public static partial class WordBatchEmitter
     private static readonly HashSet<string> SkipKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "basedOn.path",
+<<<<<<< HEAD
+=======
+        // Read-side convenience derived from a mermaid picture's alt-text
+        // (`alt=mermaid:<source>`). The alt already carries + round-trips the
+        // source, so re-emitting `mermaid=<source>` too would double the payload
+        // and add an inert prop AddPicture ignores. Storage is alt; drop the mirror.
+        "mermaid",
+        // Comment resolved-state (done) + reply-parent (parentId) are readback
+        // keys backed by word/commentsExtended.xml, which the dump round-trips
+        // verbatim via a raw `/commentsExtended replace`. Emitting them as typed
+        // `add comment` props too would double-apply and break the dump
+        // fixed-point — the raw replace is the single source of truth.
+        "done", "parentId", "resolved",
+>>>>>>> upstream/main
         "paraId", "textId", "rsidR", "rsidRDefault", "rsidRPr", "rsidP", "rsidTr",
         // Paragraph Get emits `style`, `styleId`, and `styleName` — all three
         // carry the same value (style id, repeated). AddParagraph only
@@ -43,6 +61,15 @@ public static partial class WordBatchEmitter
         // TryEmitDateFieldRun only (routes the run to a verbatim raw-set
         // passthrough); never replayed as an Add/Set property.
         "_hasDateField",
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R47-2: internal flag set by RunToNode when a run contains
+        // <w:softHyphen/>/<w:noBreakHyphen/>. Consumed by TryEmitHyphenRun; the
+        // /body path raw-sets the verbatim run, the header/footer/cell path now
+        // emits the run text (glyph-degraded) through EmitPlainOrHyperlinkRun —
+        // which runs FilterEmittableProps, so the marker must be stripped here.
+        "_hasHyphen",
+>>>>>>> upstream/main
         // BUG-DUMP-R35-2: internal flag set by Navigation on a run synthesized
         // from inside a <w:smartTag>/<w:customXml> wrapper. Consumed by
         // EmitPlainOrHyperlinkRun (drives the deterministic "wrapper flattened"
@@ -60,6 +87,13 @@ public static partial class WordBatchEmitter
         // by TryEmitFieldRun (routes the field to a verbatim raw-set chain);
         // never replayed as an Add/Set property.
         "_richFieldResult", "_fieldSlicePaths",
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-H78: internal flag forcing the field-slice raw-set to use the
+        // contiguous sibling-range extractor (captures a <w:del> wrapper inside a
+        // live field result). Consumed by TryEmitFieldRun; never replayed.
+        "_fieldSliceForceRange",
+>>>>>>> upstream/main
         // BUG-DUMP-R26-7: flag set when a field cached result wraps a hyperlink
         // (external rel) the typed path can't preserve — drives a deterministic
         // warning in TryEmitFieldRun. Never replayed as an Add/Set property.
@@ -77,6 +111,46 @@ public static partial class WordBatchEmitter
         // downgrade to Exact (which clips tall glyphs).
     };
 
+<<<<<<< HEAD
+=======
+    // Shared allowlist for forwarding a note/comment FIRST paragraph's direct
+    // paragraph-level formatting onto its `add footnote|endnote|comment` op.
+    // Both EmitNoteReference (footnote/endnote) and the comment emit used to
+    // carry byte-identical copies of this switch; they diverged only on numPr:
+    // notes rebuild a list item via AddFootnote/AddEndnote, so they forward
+    // numId/numLevel (allowNumPr=true), while AddComment has no numPr rebuild
+    // path, so comments keep them out (allowNumPr=false). Callers still own the
+    // numInherited guard and the !props.ContainsKey dedupe.
+    // BUG-DUMP-NOTE-PBDR / -PPR-SWEEP / -NUMPR consolidated here.
+    private static bool IsForwardableNoteFirstParaKey(string k, bool allowNumPr)
+    {
+        if (k.StartsWith("markRPr.", StringComparison.OrdinalIgnoreCase)
+            || k.StartsWith("pbdr.", StringComparison.OrdinalIgnoreCase))
+            return true;
+        switch (k)
+        {
+            case "shading": case "shd":
+            case "lineSpacing": case "lineRule": case "spaceBefore": case "spaceAfter":
+            case "spaceBeforeLines": case "spaceAfterLines": case "alignment": case "align":
+            case "direction": case "leftIndent": case "rightIndent": case "firstLine":
+            case "indent": case "firstLineIndent": case "hangingIndent":
+            case "hanging": case "contextualSpacing": case "spaceBeforeAuto": case "spaceAfterAuto":
+            case "keepNext": case "keepLines": case "pageBreakBefore": case "widowControl":
+            case "suppressLineNumbers": case "suppressAutoHyphens": case "suppressOverlap":
+            case "kinsoku": case "wordWrap": case "overflowPunct": case "topLinePunct":
+            case "autoSpaceDE": case "autoSpaceDN": case "adjustRightInd": case "snapToGrid":
+            case "mirrorIndents": case "textAlignment": case "outlineLvl": case "textboxTightWrap":
+                return true;
+            // notes-only: AddFootnote/AddEndnote rebuild a direct <w:numPr>; a
+            // comment's apply path has no equivalent, so it stays opt-in.
+            case "numId": case "numLevel":
+                return allowNumPr;
+            default:
+                return false;
+        }
+    }
+
+>>>>>>> upstream/main
     private static Dictionary<string, string> FilterEmittableProps(Dictionary<string, object?> raw)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -278,11 +352,23 @@ public static partial class WordBatchEmitter
         // than 0". Drop the zero-value pair on emit so the replayed
         // paragraph/style inherits the carrier's default — same visible
         // result as the source's "no minimum" semantics.
+<<<<<<< HEAD
+=======
+        // lineSpacing="0pt" (w:line=0) now round-trips: with
+        // lineRule=atLeast it means "no minimum line height" and dropping it
+        // re-rendered those paragraphs at the style default height. Only the
+        // degenerate multiplier forms (0x/0%) are still dropped — those have
+        // no defined rendering.
+>>>>>>> upstream/main
         bool dropLineSpacingZero = false;
         if (raw.TryGetValue("lineSpacing", out var lsVal) && lsVal is string lsStr)
         {
             var t = lsStr.Trim();
+<<<<<<< HEAD
             if (t == "0" || t == "0pt" || t == "0.0pt" || t == "0x" || t == "0%")
+=======
+            if (t == "0x" || t == "0%")
+>>>>>>> upstream/main
                 dropLineSpacingZero = true;
         }
 

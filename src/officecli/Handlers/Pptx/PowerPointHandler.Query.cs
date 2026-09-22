@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -31,8 +35,22 @@ public partial class PowerPointHandler
             var sldSz = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>();
             if (sldSz != null)
             {
-                if (sldSz.Cx?.HasValue == true) node.Format["slideWidth"] = FormatEmu(sldSz.Cx.Value);
-                if (sldSz.Cy?.HasValue == true) node.Format["slideHeight"] = FormatEmu(sldSz.Cy.Value);
+                // Pair slideWidth/slideHeight on the same unit so they don't
+                // mix pt vs cm when one is pt-exact and the other is cm-exact
+                // (default widescreen: 12192000 EMU=960pt but 6858000 EMU=
+                // 19.05cm — both legal, both unhelpful when paired).
+                if (sldSz.Cx?.HasValue == true && sldSz.Cy?.HasValue == true)
+                {
+                    var (wStr, hStr) = Core.EmuConverter.FormatEmuPaired(
+                        sldSz.Cx.Value, sldSz.Cy.Value);
+                    node.Format["slideWidth"] = wStr;
+                    node.Format["slideHeight"] = hStr;
+                }
+                else
+                {
+                    if (sldSz.Cx?.HasValue == true) node.Format["slideWidth"] = FormatEmu(sldSz.Cx.Value);
+                    if (sldSz.Cy?.HasValue == true) node.Format["slideHeight"] = FormatEmu(sldSz.Cy.Value);
+                }
                 if (sldSz.Type is { HasValue: true } sldType) node.Format["slideSize"] = sldType.InnerText!.ToLowerInvariant() switch
                 {
                     "screen16x9" => "widescreen",
@@ -50,6 +68,17 @@ public partial class PowerPointHandler
                     "custom" => "custom",
                     var other => other
                 };
+                else if (sldSz.Cx?.HasValue == true && sldSz.Cy?.HasValue == true)
+                {
+                    // No explicit @type (common on freshly-created decks) — derive the
+                    // preset from the aspect ratio so `get /` always surfaces a slideSize.
+                    var ratio = (double)sldSz.Cx.Value / sldSz.Cy.Value;
+                    node.Format["slideSize"] =
+                        System.Math.Abs(ratio - 16.0 / 9.0) < 0.02 ? "widescreen"
+                        : System.Math.Abs(ratio - 4.0 / 3.0) < 0.02 ? "standard"
+                        : System.Math.Abs(ratio - 16.0 / 10.0) < 0.02 ? "16:10"
+                        : "custom";
+                }
             }
 
             // Default font from theme
@@ -90,7 +119,11 @@ public partial class PowerPointHandler
                 if (!string.IsNullOrEmpty(slideName)) slideNode.Format["name"] = slideName;
                 if (GetSlide(slidePart).Show?.Value == false)
                     slideNode.Format["hidden"] = true;
+<<<<<<< HEAD
                 ReadSlideBackground(GetSlide(slidePart), slideNode);
+=======
+                ReadSlideBackground(GetSlide(slidePart), slideNode, slidePart);
+>>>>>>> upstream/main
                 ReadSlideTransition(slidePart, slideNode);
                 ReadSlideHeaderFooter(GetSlide(slidePart), slideNode);
 
@@ -149,7 +182,11 @@ public partial class PowerPointHandler
             var shapeCount = (shapeTree?.Elements<Shape>().Count() ?? 0)
                 + (shapeTree?.Elements<Picture>().Count() ?? 0);
             masterNode.Format["shapeCount"] = shapeCount;
+<<<<<<< HEAD
             ReadBackground(mp.SlideMaster?.CommonSlideData, masterNode);
+=======
+            ReadBackground(mp.SlideMaster?.CommonSlideData, masterNode, mp);
+>>>>>>> upstream/main
             // CONSISTENCY(master-direction): Set persists rtl into the master's
             // <p:txStyles>/bodyStyle/lvl1pPr@rtl. Mirror it back on Get so users
             // can verify their own write (was previously set-only — Get omitted
@@ -216,7 +253,11 @@ public partial class PowerPointHandler
             layoutNode.Format["name"] = layoutName;
             if (lp.SlideLayout?.Type?.HasValue == true)
                 layoutNode.Format["type"] = lp.SlideLayout.Type.InnerText;
+<<<<<<< HEAD
             ReadBackground(lp.SlideLayout?.CommonSlideData, layoutNode);
+=======
+            ReadBackground(lp.SlideLayout?.CommonSlideData, layoutNode, lp);
+>>>>>>> upstream/main
 
             // Populate child shapes — mirror what the slide Get branch does so
             // a layout-rooted Get exposes the same shape tree visible at
@@ -245,14 +286,39 @@ public partial class PowerPointHandler
         // fell through to the slide-only fallback and emitted the misleading
         // "Path must start with /slide[N], ..." error so Add output was
         // non-round-trippable.
+<<<<<<< HEAD
         var nestedMasterShapeGetMatch = Regex.Match(path,
             @"^/slidemaster\[(\d+)\]/slidelayout\[(\d+)\]/shape\[(\d+)\]$", RegexOptions.IgnoreCase);
         var masterShapeGetMatch = Regex.Match(path,
             @"^/(slidemaster|slidelayout)\[(\d+)\]/shape\[(\d+)\]$", RegexOptions.IgnoreCase);
+=======
+        // CONSISTENCY(master-layout-subpath): allow optional /paragraph[P] and
+        // /paragraph[P]/run[R] suffixes under the master/layout shape so the
+        // children the parent Get already advertises are routable (RC2). The
+        // suffix is captured as the last optional group; when present we resolve
+        // the shape node first, then descend into its Children by positional idx.
+        const string mlSubPathSuffix = @"(?:/paragraph\[(\d+)\](?:/run\[(\d+)\])?)?";
+        var nestedMasterShapeGetMatch = Regex.Match(path,
+            @"^/slidemaster\[(\d+)\]/slidelayout\[(\d+)\]/shape\[(\d+)\]" + mlSubPathSuffix + "$", RegexOptions.IgnoreCase);
+        var masterShapeGetMatch = Regex.Match(path,
+            @"^/(slidemaster|slidelayout)\[(\d+)\]/shape\[(\d+)\]" + mlSubPathSuffix + "$", RegexOptions.IgnoreCase);
+>>>>>>> upstream/main
         if (nestedMasterShapeGetMatch.Success || masterShapeGetMatch.Success)
         {
             ShapeTree? mlShapeTree;
             string mlPathPrefix;
+<<<<<<< HEAD
+=======
+            DocumentNode shapeNode;
+            string? paraGrp, runGrp;
+            // ShapeToNode populates paragraph children at depth>0 and run children
+            // only at depth>1. A /paragraph[P]/run[R] subpath therefore needs the
+            // shape resolved at depth>=2 so the run nodes exist to descend into.
+            var activeMatch = nestedMasterShapeGetMatch.Success ? nestedMasterShapeGetMatch : masterShapeGetMatch;
+            var mlDepth = activeMatch.Groups[5].Success ? Math.Max(depth, 2)
+                        : activeMatch.Groups[4].Success ? Math.Max(depth, 1)
+                        : depth;
+>>>>>>> upstream/main
             if (nestedMasterShapeGetMatch.Success)
             {
                 var mIdx = int.Parse(nestedMasterShapeGetMatch.Groups[1].Value);
@@ -266,7 +332,13 @@ public partial class PowerPointHandler
                 mlShapeTree = layouts[lIdx - 1].SlideLayout?.CommonSlideData?.ShapeTree;
                 mlPathPrefix = $"/slidemaster[{mIdx}]/slidelayout[{lIdx}]";
                 var shapeIdx = int.Parse(nestedMasterShapeGetMatch.Groups[3].Value);
+<<<<<<< HEAD
                 return GetMasterOrLayoutShapeNode(mlShapeTree, shapeIdx, mlPathPrefix, depth);
+=======
+                shapeNode = GetMasterOrLayoutShapeNode(mlShapeTree, shapeIdx, mlPathPrefix, mlDepth);
+                paraGrp = nestedMasterShapeGetMatch.Groups[4].Success ? nestedMasterShapeGetMatch.Groups[4].Value : null;
+                runGrp = nestedMasterShapeGetMatch.Groups[5].Success ? nestedMasterShapeGetMatch.Groups[5].Value : null;
+>>>>>>> upstream/main
             }
             else
             {
@@ -290,8 +362,30 @@ public partial class PowerPointHandler
                     mlShapeTree = allLayouts[pIdx - 1].SlideLayout?.CommonSlideData?.ShapeTree;
                     mlPathPrefix = $"/slidelayout[{pIdx}]";
                 }
+<<<<<<< HEAD
                 return GetMasterOrLayoutShapeNode(mlShapeTree, shapeIdx, mlPathPrefix, depth);
             }
+=======
+                shapeNode = GetMasterOrLayoutShapeNode(mlShapeTree, shapeIdx, mlPathPrefix, mlDepth);
+                paraGrp = masterShapeGetMatch.Groups[4].Success ? masterShapeGetMatch.Groups[4].Value : null;
+                runGrp = masterShapeGetMatch.Groups[5].Success ? masterShapeGetMatch.Groups[5].Value : null;
+            }
+
+            if (paraGrp == null) return shapeNode;
+            // Descend into the shape's child tree by positional paragraph (1-based),
+            // then optionally into the paragraph's run children.
+            var pIndex = int.Parse(paraGrp);
+            var paraChildren = shapeNode.Children?.Where(c => c.Type == "paragraph").ToList() ?? [];
+            if (pIndex < 1 || pIndex > paraChildren.Count)
+                throw new ArgumentException($"Paragraph {pIndex} not found at {shapeNode.Path} (total: {paraChildren.Count})");
+            var paraNode = paraChildren[pIndex - 1];
+            if (runGrp == null) return paraNode;
+            var rIndex = int.Parse(runGrp);
+            var runChildren = paraNode.Children?.Where(c => c.Type == "run").ToList() ?? [];
+            if (rIndex < 1 || rIndex > runChildren.Count)
+                throw new ArgumentException($"Run {rIndex} not found at {paraNode.Path} (total: {runChildren.Count})");
+            return runChildren[rIndex - 1];
+>>>>>>> upstream/main
         }
 
         // Try OLE path: /slide[N]/ole[M]
@@ -440,14 +534,37 @@ public partial class PowerPointHandler
             // Get too (same canonical `list` key as NodeBuilder.ParaToNode emit).
             if (qParaPProps != null)
             {
+<<<<<<< HEAD
                 var qParaList = ReadListStyleFromPProps(qParaPProps);
                 if (qParaList != null) paraNode.Format["list"] = qParaList;
+=======
+                // Mirror NodeBuilder's bulletRaw-first / list-fallback so
+                // paragraph-level Get exposes the same canonical bullet key set
+                // as shape-level Get (mutually exclusive).
+                var qParaBulletRaw = ReadBulletRawFromPProps(qParaPProps);
+                if (qParaBulletRaw != null)
+                {
+                    paraNode.Format["bulletRaw"] = qParaBulletRaw;
+                    // R7-10: re-feedable `list` companion when canonical (suppressed for raw chars).
+                    var qParaListCanon = ReadCanonicalListKeyword(qParaPProps);
+                    if (qParaListCanon != null) paraNode.Format["list"] = qParaListCanon;
+                }
+                else
+                {
+                    var qParaList = ReadListStyleFromPProps(qParaPProps);
+                    if (qParaList != null) paraNode.Format["list"] = qParaList;
+                }
+>>>>>>> upstream/main
                 // R65 bt-2: mirror NodeBuilder.ParaToNode so direct paragraph
                 // Get (Query.cs path) surfaces custom tab stops too.
                 var qParaTabs = ReadTabsFromPProps(qParaPProps);
                 if (qParaTabs != null) paraNode.Format["tabs"] = qParaTabs;
             }
+<<<<<<< HEAD
             var qLsPct = qParaPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+=======
+            var qLsPct = qParaPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
+>>>>>>> upstream/main
             if (qLsPct.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(qLsPct.Value);
             var qLsPts = qParaPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (qLsPts.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(qLsPts.Value);
@@ -473,6 +590,111 @@ public partial class PowerPointHandler
                 }
             }
             return paraNode;
+        }
+
+        // R7-5: placeholder paragraph/run sub-paths — /slide[N]/placeholder[X]/paragraph[P][/run[K]]
+        // and /slide[N]/placeholder[X]/run[K]. The placeholder shape's <a:p> live under
+        // <p:txBody>; mirror the shape paraPathMatch branch but resolve via ResolvePlaceholderShape
+        // (same fix class as the master/layout child-path navigation).
+        var phRunPathMatch = Regex.Match(path, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]/(?:run|r)\[(\d+)\]$");
+        if (phRunPathMatch.Success)
+        {
+            var sIdx = int.Parse(phRunPathMatch.Groups[1].Value);
+            var phId = phRunPathMatch.Groups[2].Value;
+            var rIdx = int.Parse(phRunPathMatch.Groups[3].Value);
+            var phSlideParts = GetSlideParts().ToList();
+            if (sIdx < 1 || sIdx > phSlideParts.Count)
+                throw new ArgumentException($"Slide {sIdx} not found (total: {phSlideParts.Count})");
+            var runSlidePart = phSlideParts[sIdx - 1];
+            var shape = ResolvePlaceholderShape(runSlidePart, phId);
+            var allRuns = GetAllRuns(shape);
+            if (rIdx < 1 || rIdx > allRuns.Count)
+                throw new ArgumentException($"Run {rIdx} not found (placeholder has {allRuns.Count} runs)");
+            return RunToNode(allRuns[rIdx - 1], $"/slide[{sIdx}]/placeholder[{phId}]/run[{rIdx}]", runSlidePart);
+        }
+
+        var phParaPathMatch = Regex.Match(path, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]/(?:paragraph|p)\[(\d+)\](?:/(?:run|r)\[(\d+)\])?$");
+        if (phParaPathMatch.Success)
+        {
+            var sIdx = int.Parse(phParaPathMatch.Groups[1].Value);
+            var phId = phParaPathMatch.Groups[2].Value;
+            var pIdx = int.Parse(phParaPathMatch.Groups[3].Value);
+            var phSlideParts = GetSlideParts().ToList();
+            if (sIdx < 1 || sIdx > phSlideParts.Count)
+                throw new ArgumentException($"Slide {sIdx} not found (total: {phSlideParts.Count})");
+            var paraSlidePart = phSlideParts[sIdx - 1];
+            var shape = ResolvePlaceholderShape(paraSlidePart, phId);
+            var paragraphs = shape.TextBody?.Elements<Drawing.Paragraph>().ToList()
+                ?? throw new ArgumentException("Placeholder has no text body");
+            if (pIdx < 1 || pIdx > paragraphs.Count)
+                throw new ArgumentException($"Paragraph {pIdx} not found (placeholder has {paragraphs.Count} paragraphs)");
+            var para = paragraphs[pIdx - 1];
+
+            if (phParaPathMatch.Groups[4].Success)
+            {
+                var rIdx = int.Parse(phParaPathMatch.Groups[4].Value);
+                var paraRuns = para.Elements<Drawing.Run>().ToList();
+                if (rIdx < 1 || rIdx > paraRuns.Count)
+                    throw new ArgumentException($"Run {rIdx} not found (paragraph has {paraRuns.Count} runs)");
+                return RunToNode(paraRuns[rIdx - 1],
+                    $"/slide[{sIdx}]/placeholder[{phId}]/paragraph[{pIdx}]/run[{rIdx}]", paraSlidePart);
+            }
+
+            // Build the paragraph node mirroring the shape paraPathMatch branch above.
+            var phParaText = string.Join("", para.Elements<Drawing.Run>().Select(r => r.Text?.Text ?? ""));
+            var phParaNode = new DocumentNode
+            {
+                Path = $"/slide[{sIdx}]/placeholder[{phId}]/paragraph[{pIdx}]",
+                Type = "paragraph",
+                Text = phParaText
+            };
+            var phPProps = para.ParagraphProperties;
+            if (phPProps?.Alignment?.HasValue == true) phParaNode.Format["align"] = NormalizeAlignment(phPProps.Alignment.InnerText!);
+            if (phPProps?.Level?.HasValue == true) phParaNode.Format["level"] = phPProps.Level.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (phPProps?.Indent?.HasValue == true) phParaNode.Format["indent"] = FormatPptIndentPoints(phPProps.Indent.Value);
+            if (phPProps?.LeftMargin?.HasValue == true) phParaNode.Format["marginLeft"] = FormatPptIndentPoints(phPProps.LeftMargin.Value);
+            if (phPProps?.RightMargin?.HasValue == true) phParaNode.Format["marginRight"] = FormatPptIndentPoints(phPProps.RightMargin.Value);
+            if (phPProps != null)
+            {
+                var phBulletRaw = ReadBulletRawFromPProps(phPProps);
+                if (phBulletRaw != null)
+                {
+                    phParaNode.Format["bulletRaw"] = phBulletRaw;
+                    var phListCanon = ReadCanonicalListKeyword(phPProps);
+                    if (phListCanon != null) phParaNode.Format["list"] = phListCanon;
+                }
+                else
+                {
+                    var phList = ReadListStyleFromPProps(phPProps);
+                    if (phList != null) phParaNode.Format["list"] = phList;
+                }
+                var phTabs = ReadTabsFromPProps(phPProps);
+                if (phTabs != null) phParaNode.Format["tabs"] = phTabs;
+            }
+            var phLsPct = phPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
+            if (phLsPct.HasValue) phParaNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(phLsPct.Value);
+            var phLsPts = phPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+            if (phLsPts.HasValue) phParaNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(phLsPts.Value);
+            var phSb = phPProps?.GetFirstChild<Drawing.SpaceBefore>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+            if (phSb.HasValue) phParaNode.Format["spaceBefore"] = SpacingConverter.FormatPptSpacing(phSb.Value);
+            var phSa = phPProps?.GetFirstChild<Drawing.SpaceAfter>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+            if (phSa.HasValue) phParaNode.Format["spaceAfter"] = SpacingConverter.FormatPptSpacing(phSa.Value);
+            if (phPProps?.RightToLeft?.HasValue == true)
+                phParaNode.Format["direction"] = phPProps.RightToLeft.Value ? "rtl" : "ltr";
+
+            var phRuns = para.Elements<Drawing.Run>().ToList();
+            phParaNode.ChildCount = phRuns.Count;
+            if (depth > 0)
+            {
+                int phRunIdx = 0;
+                foreach (var run in phRuns)
+                {
+                    phParaNode.Children.Add(RunToNode(run,
+                        $"/slide[{sIdx}]/placeholder[{phId}]/paragraph[{pIdx}]/run[{phRunIdx + 1}]", paraSlidePart));
+                    phRunIdx++;
+                }
+            }
+            return phParaNode;
         }
 
         // Try zoom path: /slide[N]/zoom[M]
@@ -703,7 +925,11 @@ public partial class PowerPointHandler
             var qCellFirstPProps = cellFirstPara?.ParagraphProperties;
             if (qCellFirstPProps != null)
             {
+<<<<<<< HEAD
                 var qLsPct = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+=======
+                var qLsPct = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
+>>>>>>> upstream/main
                 if (qLsPct.HasValue) cellNode.Format["lineSpacing"] = OfficeCli.Core.SpacingConverter.FormatPptLineSpacingPercent(qLsPct.Value);
                 var qLsPts = qCellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
                 if (qLsPts.HasValue) cellNode.Format["lineSpacing"] = OfficeCli.Core.SpacingConverter.FormatPptLineSpacingPoints(qLsPts.Value);
@@ -960,6 +1186,26 @@ public partial class PowerPointHandler
                 if (ngXfrm?.Extents?.Cy != null) ngGrpNode.Format["height"] = FormatEmu(ngXfrm.Extents.Cy.Value);
                 if (ngXfrm?.Rotation != null && ngXfrm.Rotation.Value != 0)
                     ngGrpNode.Format["rotation"] = $"{ngXfrm.Rotation.Value / 60000.0:0.##}";
+<<<<<<< HEAD
+=======
+                // R53 bt-4: surface <a:chOff>/<a:chExt> when they diverge from the
+                // outer rect — mirrors BuildGroupNode (NodeBuilder) and the
+                // top-level group branch below. This inline nested-group builder
+                // formerly omitted it, so dump→replay of a group nested inside
+                // another group defaulted its child coord system to the outer rect
+                // and every inner shape silently moved/scaled (timelines collapsed,
+                // matrices scattered). Only top-level groups round-tripped right.
+                var ngChOff = ngXfrm?.ChildOffset;
+                var ngChExt = ngXfrm?.ChildExtents;
+                if (ngChOff != null
+                    && ((ngChOff.X?.Value ?? 0) != (ngXfrm!.Offset?.X?.Value ?? 0)
+                        || (ngChOff.Y?.Value ?? 0) != (ngXfrm.Offset?.Y?.Value ?? 0)))
+                    ngGrpNode.Format["childOffset"] = $"{ngChOff.X?.Value ?? 0},{ngChOff.Y?.Value ?? 0}";
+                if (ngChExt != null
+                    && ((ngChExt.Cx?.Value ?? 0) != (ngXfrm!.Extents?.Cx?.Value ?? 0)
+                        || (ngChExt.Cy?.Value ?? 0) != (ngXfrm.Extents?.Cy?.Value ?? 0)))
+                    ngGrpNode.Format["childExtent"] = $"{ngChExt.Cx?.Value ?? 0},{ngChExt.Cy?.Value ?? 0}";
+>>>>>>> upstream/main
                 if (depth > 0)
                     BuildChildNodesIntoContainer(
                         ngGrpNode.Children, ngCurrent, ngSlidePart, ngSlideIdx, depth - 1,
@@ -1094,7 +1340,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var targetSlidePart = slideParts[slideIdx - 1];
+        var targetSlidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
 
         if (!match.Groups[2].Success)
         {
@@ -1115,7 +1361,17 @@ public partial class PowerPointHandler
             if (!string.IsNullOrEmpty(slideName)) slideNode.Format["name"] = slideName;
             if (slide.Show?.Value == false)
                 slideNode.Format["hidden"] = true;
+<<<<<<< HEAD
             ReadSlideBackground(slide, slideNode);
+=======
+            // <p:sld showMasterSp="0"> suppresses master decoration shapes;
+            // dropping it on dump→replay brought the master graphics back
+            // over an overridden background (themes.pptx). Set already
+            // accepts showMasterShapes=false.
+            if (slide.ShowMasterShapes?.Value == false)
+                slideNode.Format["showMasterShapes"] = false;
+            ReadSlideBackground(slide, slideNode, targetSlidePart);
+>>>>>>> upstream/main
             ReadSlideTransition(targetSlidePart, slideNode);
             ReadSlideHeaderFooter(slide, slideNode);
             if (targetSlidePart.NotesSlidePart != null)
@@ -1217,7 +1473,7 @@ public partial class PowerPointHandler
             var mediaPic = mediaList[elementIdx - 1];
             // Find the picture's index among all pictures for PictureToNode
             var allPics = shapeTreeEl.Elements<Picture>().ToList();
-            var picIdx = allPics.IndexOf(mediaPic) + 1;
+            var picIdx = PathIndex.FromArrayIndex(allPics.IndexOf(mediaPic));
             var node = PictureToNode(mediaPic, slideIdx, picIdx, targetSlidePart);
             // Override the path to use the media-type-specific path
             node.Path = $"/slide[{slideIdx}]/{BuildElementPathSegment(elementType, mediaPic, elementIdx)}";
@@ -1318,7 +1574,11 @@ public partial class PowerPointHandler
         var shapes = shapeTree.Elements<Shape>().ToList();
         if (shapeIdx < 1 || shapeIdx > shapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found at {parentPathPrefix} (total: {shapes.Count})");
+<<<<<<< HEAD
         return ShapeToNode(shapes[shapeIdx - 1], slideNum: 0, shapeIdx, depth, part: null, parentPathPrefix: parentPathPrefix);
+=======
+        return ShapeToNode(shapes[PathIndex.ToArrayIndex(shapeIdx)], slideNum: 0, shapeIdx, depth, part: null, parentPathPrefix: parentPathPrefix);
+>>>>>>> upstream/main
     }
 
     public List<DocumentNode> Query(string selector)
@@ -1394,6 +1654,31 @@ public partial class PowerPointHandler
                 Suggestion = "Use a comma list (`chart, table`) for union, or filter on a single element type and post-filter."
             };
 
+<<<<<<< HEAD
+=======
+        // `slide[<predicate>] > child` — a slide gate by attribute rather than
+        // by index (`slide[layout=Title] > shape`). The prefix strippers below
+        // only know `slide[N]` and bare `slide`, so this form fell through with
+        // rawType "slide" and answered with the SLIDES, predicate ignored: a
+        // gate that matched no slide still returned everything. Resolve the
+        // slide set with the shared attribute engine, then run the child
+        // selector under each matching slide's index.
+        var predSlide = Regex.Match(selector ?? "", @"^\s*slide\[(?!\d+\])([^\]]+)\]\s*>\s*(.+)$", RegexOptions.IgnoreCase);
+        if (predSlide.Success)
+        {
+            var slideExpr = Core.AttributeFilter.ParseExpr("slide[" + predSlide.Groups[1].Value + "]");
+            var gated = Core.AttributeFilter.ApplyExpr(Query("slide"), slideExpr);
+            var gatedUnion = new List<DocumentNode>();
+            foreach (var slideNode in gated)
+            {
+                var idx = Regex.Match(slideNode.Path ?? "", @"^/slide\[(\d+)\]");
+                if (!idx.Success) continue;
+                gatedUnion.AddRange(Query($"slide[{idx.Groups[1].Value}]>{predSlide.Groups[2].Value}"));
+            }
+            return gatedUnion;
+        }
+
+>>>>>>> upstream/main
         // Descendant combinator `A B` (whitespace-separated tokens) — only
         // `slide ...` is supported (ancestor scoping); anything else (e.g.
         // `chart table`) silently fell through to "match first token" and
@@ -1526,7 +1811,11 @@ public partial class PowerPointHandler
                 if (!string.IsNullOrEmpty(sldName)) slideNode.Format["name"] = sldName;
                 if (sld.Show?.Value == false)
                     slideNode.Format["hidden"] = true;
+<<<<<<< HEAD
                 ReadSlideBackground(sld, slideNode);
+=======
+                ReadSlideBackground(sld, slideNode, sp);
+>>>>>>> upstream/main
                 ReadSlideTransition(sp, slideNode);
                 ReadSlideHeaderFooter(sld, slideNode);
                 if (sp.NotesSlidePart != null)
@@ -1967,6 +2256,8 @@ public partial class PowerPointHandler
                                 Text = rowText,
                                 ChildCount = row.Elements<Drawing.TableCell>().Count()
                             };
+                            if (row.Height?.HasValue == true)
+                                rowNode.Format["height"] = Core.EmuConverter.FormatEmuLossy(row.Height.Value);
                             if (parsed.TextContains == null || rowText.Contains(parsed.TextContains, StringComparison.OrdinalIgnoreCase))
                             {
                                 if (MatchesGenericAttributes(rowNode, parsed.Attributes))

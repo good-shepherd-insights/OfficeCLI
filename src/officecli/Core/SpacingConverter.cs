@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -135,11 +139,15 @@ internal static class SpacingConverter
     /// "0.5cm"          → converted to pt, then Exact
     /// bare number      → (number, true) — Auto rule, backward compat (raw twips)
     /// </summary>
-    public static (uint Twips, bool IsMultiplier) ParseWordLineSpacing(string value)
+    public static (int Twips, bool IsMultiplier) ParseWordLineSpacing(string value)
     {
         var trimmed = value.Trim();
 
+<<<<<<< HEAD
         // BUG-R7-04: lineSpacing must be strictly > 0. Zero produces degenerate
+=======
+        // BUG-R7-04: lineSpacing must not be zero. Zero produces degenerate
+>>>>>>> upstream/main
         // OOXML (w:spacing/@line=0 is undefined in MS-DOC) and Office silently
         // collapses to single-spacing — surface the error to the user instead.
         static double RequirePositive(double n, string raw)
@@ -149,39 +157,83 @@ internal static class SpacingConverter
             return n;
         }
 
+<<<<<<< HEAD
         // "1.5x" → multiplier
         if (trimmed.EndsWith("x", StringComparison.OrdinalIgnoreCase))
         {
             var num = RequirePositive(ParseNumber(trimmed[..^1], "lineSpacing"), value);
             return ((uint)Math.Round(num * WordAutoLineSpacingUnit), true);
+=======
+        // Auto/multiplier line spacing maps to w:line, which is
+        // ST_SignedTwipsMeasure — negatives are schema-legal and real docs
+        // carry them (e.g. <w:spacing w:line="-310" w:lineRule="auto"/> in a
+        // style). Reject only zero (degenerate per BUG-R7-04); allow negative
+        // so such styles round-trip instead of failing the whole add op.
+        static double RequireNonZero(double n, string raw)
+        {
+            if (n == 0)
+                throw new ArgumentException($"Invalid 'lineSpacing' value '{raw}'. Line spacing must not be zero.");
+            return n;
         }
 
-        // "150%" → multiplier
+        // "1.5x" → multiplier (negative permitted under the Auto rule)
+        if (trimmed.EndsWith("x", StringComparison.OrdinalIgnoreCase))
+        {
+            var num = RequireNonZero(ParseNumberAllowNegative(trimmed[..^1], "lineSpacing"), value);
+            return ((int)Math.Round(num * WordAutoLineSpacingUnit), true);
+>>>>>>> upstream/main
+        }
+
+        // "150%" → multiplier (negative permitted under the Auto rule)
         if (trimmed.EndsWith("%", StringComparison.Ordinal))
         {
+<<<<<<< HEAD
             var num = RequirePositive(ParseNumber(trimmed[..^1], "lineSpacing"), value);
             return ((uint)Math.Round(num / 100.0 * WordAutoLineSpacingUnit), true);
+=======
+            var num = RequireNonZero(ParseNumberAllowNegative(trimmed[..^1], "lineSpacing"), value);
+            return ((int)Math.Round(num / 100.0 * WordAutoLineSpacingUnit), true);
+>>>>>>> upstream/main
         }
 
-        // "18pt" → fixed (Exact)
+        // "18pt" → fixed (Exact). "0pt" is allowed: paired with
+        // lineRule=atLeast it round-trips Word's <w:spacing w:line="0"
+        // w:lineRule="atLeast"/> ("no minimum line height") — dropping it
+        // re-rendered those paragraphs at the style's default line height
+        // and reflowed the page. Negative still rejected.
         if (trimmed.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
         {
+<<<<<<< HEAD
             var num = RequirePositive(ParseNumber(trimmed[..^2], "lineSpacing"), value);
             return ((uint)Math.Round(num * TwipsPerPoint), false);
+=======
+            var num = ParseNumber(trimmed[..^2], "lineSpacing");
+            if (num < 0)
+                throw new ArgumentException($"Invalid 'lineSpacing' value '{value}'. Line spacing must not be negative.");
+            return ((int)Math.Round(num * TwipsPerPoint), false);
+>>>>>>> upstream/main
         }
 
         // "0.5cm" → fixed (Exact), convert to points first
         if (trimmed.EndsWith("cm", StringComparison.OrdinalIgnoreCase))
         {
             var num = RequirePositive(ParseNumber(trimmed[..^2], "lineSpacing"), value);
+<<<<<<< HEAD
             return ((uint)Math.Round(num * PointsPerCm * TwipsPerPoint), false);
+=======
+            return ((int)Math.Round(num * PointsPerCm * TwipsPerPoint), false);
+>>>>>>> upstream/main
         }
 
         // "0.5in" → fixed (Exact)
         if (trimmed.EndsWith("in", StringComparison.OrdinalIgnoreCase))
         {
             var num = RequirePositive(ParseNumber(trimmed[..^2], "lineSpacing"), value);
+<<<<<<< HEAD
             return ((uint)Math.Round(num * PointsPerInch * TwipsPerPoint), false);
+=======
+            return ((int)Math.Round(num * PointsPerInch * TwipsPerPoint), false);
+>>>>>>> upstream/main
         }
 
         // Bare number → multiplier under Auto rule, mirrors the "1.5x" path.
@@ -189,8 +241,14 @@ internal static class SpacingConverter
         // 1.5 = 360, 2.0 = 480). Earlier this returned the raw value as twips
         // (`Math.Round(1.5) = 2 twips`), which Word silently treated as a
         // single-spaced line because 2 twips is below any visible threshold.
+<<<<<<< HEAD
         var bare = RequirePositive(ParseNumber(trimmed, "lineSpacing"), value);
         return ((uint)Math.Round(bare * WordAutoLineSpacingUnit), true);
+=======
+        // Negative permitted (Auto rule, ST_SignedTwipsMeasure); zero rejected.
+        var bare = RequireNonZero(ParseNumberAllowNegative(trimmed, "lineSpacing"), value);
+        return ((int)Math.Round(bare * WordAutoLineSpacingUnit), true);
+>>>>>>> upstream/main
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -274,6 +332,23 @@ internal static class SpacingConverter
     }
 
     /// <summary>
+    /// Like <see cref="FormatWordSpacing"/> but clamps a negative value to 0.
+    /// For w:spacing before/after ONLY — those are non-negative in OOXML, yet
+    /// real-world docs carry a schema-invalid -1 ("auto" sentinel) that Word
+    /// tolerates as ~0. Emitting "-0.05pt" would be rejected by the add path on
+    /// replay, breaking the round-trip. Do NOT use for indents (firstLine /
+    /// hanging / left / right legitimately go negative).
+    /// </summary>
+    public static string FormatWordSpacingNonNegative(string twipsStr)
+    {
+        if (!double.TryParse(twipsStr, CultureInfo.InvariantCulture, out var twips))
+            return twipsStr;
+        if (twips < 0) twips = 0;
+        var points = twips / TwipsPerPoint;
+        return $"{points:0.##}pt";
+    }
+
+    /// <summary>
     /// Format PPT spaceBefore/spaceAfter hundredths-of-a-point to "Xpt".
     /// </summary>
     public static string FormatPptSpacing(int hundredths)
@@ -291,11 +366,18 @@ internal static class SpacingConverter
         if (!double.TryParse(lineVal, CultureInfo.InvariantCulture, out var twips))
             return lineVal;
 
-        // Auto → multiplier
+        // Auto → multiplier. Word stores the multiplier in 240ths
+        // (1.0 = 240), so two decimals can't represent the grid: 265 twips
+        // (1.1042x) printed as "1.1x" and re-parsed back to 264, shaving a
+        // twip off every line of an auto-spaced paragraph — enough cumulative
+        // drift to move page breaks on dump→batch. Four decimals keep the
+        // round-trip exact (max format error 0.00005 × 240 = 0.012 twips,
+        // well under the parser's Math.Round half-twip threshold) while
+        // common values (1.5x, 1.15x) keep their short form.
         if (lineRule == null || lineRule.Equals("auto", StringComparison.OrdinalIgnoreCase))
         {
             var multiplier = twips / WordAutoLineSpacingUnit;
-            return $"{multiplier:0.##}x";
+            return $"{multiplier:0.####}x";
         }
 
         // Exact or AtLeast → fixed points
@@ -354,14 +436,25 @@ internal static class SpacingConverter
 
     private static double ParseNumber(string s, string context)
     {
+        var result = ParseNumberAllowNegative(s, context);
+        if (result < 0)
+            throw new ArgumentException(
+                $"Invalid '{context}' value '{s}'. Spacing values must be non-negative.");
+        return result;
+    }
+
+    /// <summary>
+    /// Parse a finite number without the non-negative gate. Used by the
+    /// Auto-rule lineSpacing paths, whose target attribute (w:line) is
+    /// ST_SignedTwipsMeasure and legitimately carries negatives in real docs.
+    /// </summary>
+    private static double ParseNumberAllowNegative(string s, string context)
+    {
         var trimmed = s.Trim();
         if (!double.TryParse(trimmed, CultureInfo.InvariantCulture, out var result)
             || double.IsNaN(result) || double.IsInfinity(result))
             throw new ArgumentException(
                 $"Invalid '{context}' value '{s}'. Expected a finite number with optional unit (e.g. '12pt', '1.5x', '150%').");
-        if (result < 0)
-            throw new ArgumentException(
-                $"Invalid '{context}' value '{s}'. Spacing values must be non-negative.");
         return result;
     }
 }

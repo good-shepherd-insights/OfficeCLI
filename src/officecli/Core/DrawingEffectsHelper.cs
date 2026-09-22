@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -248,9 +252,15 @@ internal static class DrawingEffectsHelper
     }
 
     /// <summary>
+<<<<<<< HEAD
     /// Schema order for CT_EffectList children. Mirrored in
     /// PowerPointHandler.Effects.cs for the shape-level effectLst; keep both
     /// in sync if you add a new effect type.
+=======
+    /// Schema order for CT_EffectList children. Single source of truth for
+    /// every effectLst (run-level rPr and shape-level spPr, docx/xlsx/pptx) —
+    /// add a new effect type here only.
+>>>>>>> upstream/main
     /// </summary>
     private static readonly Type[] s_effectListChildOrder =
     [
@@ -264,7 +274,18 @@ internal static class DrawingEffectsHelper
         typeof(Drawing.SoftEdge),
     ];
 
+<<<<<<< HEAD
     private static void InsertEffectInSchemaOrder(OpenXmlElement effectList, OpenXmlElement effect)
+=======
+    /// <summary>
+    /// Insert an effect element into a CT_EffectList at the correct schema
+    /// position (blur → fillOverlay → glow → innerShdw → outerShdw → prstShdw
+    /// → reflection → softEdge). Shared by run-level (rPr) and shape-level
+    /// (spPr) effectLst across all three handlers; out-of-order children are
+    /// silently dropped by Office, so callers must never AppendChild directly.
+    /// </summary>
+    internal static void InsertEffectInSchemaOrder(OpenXmlElement effectList, OpenXmlElement effect)
+>>>>>>> upstream/main
     {
         var targetIdx = Array.IndexOf(s_effectListChildOrder, effect.GetType());
         foreach (var child in effectList.ChildElements)

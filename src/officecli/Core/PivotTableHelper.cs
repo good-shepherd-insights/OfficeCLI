@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -96,7 +100,11 @@ internal static partial class PivotTableHelper
     //   value, valuefield, valuefields       → values
     //   columngrandtotals                    → colgrandtotals
     //
+<<<<<<< HEAD
     // CONSISTENCY(compatibility-aliases): matches CLAUDE.md rule that Add/Set
+=======
+    // CONSISTENCY(compatibility-aliases): matches the project conventions rule that Add/Set
+>>>>>>> upstream/main
     // may accept legacy aliases so old scripts (e.g. Round 3's rowFields key)
     // keep round-tripping. Get continues to emit only the canonical form.
     private static readonly Dictionary<string, string> _pivotKeyAliases =
@@ -744,8 +752,12 @@ internal static partial class PivotTableHelper
             var key = outerCol[r];
             if (string.IsNullOrEmpty(key)) continue;
             if (r >= valueCol.Length) continue;
+<<<<<<< HEAD
             if (!double.TryParse(valueCol[r], System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var v))
+=======
+            if (!NumericText.TryParse(valueCol[r], out var v))
+>>>>>>> upstream/main
                 continue;
             if (!buckets.TryGetValue(key, out var list))
             {
@@ -1030,7 +1042,7 @@ internal static partial class PivotTableHelper
             for (int i = 0; i < headers.Length; i++)
             {
                 if (!rowFields.Contains(i) && !colFields.Contains(i) && !filterFields.Contains(i)
-                    && columnData[i].All(v => double.TryParse(v, System.Globalization.CultureInfo.InvariantCulture, out _)))
+                    && columnData[i].All(v => NumericText.TryParse(v, out _)))
                 {
                     valueFields.Add((i, "sum", "normal", $"Sum of {headers[i]}"));
                     break;

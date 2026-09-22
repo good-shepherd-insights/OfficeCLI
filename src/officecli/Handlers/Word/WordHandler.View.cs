@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -120,6 +124,22 @@ public partial class WordHandler
                                 ?? cb?.GetFirstChild<DefaultCheckBoxFormFieldState>()?.Val?.Value
                                 ?? false;
                             value = isChecked ? "true" : "false";
+                        }
+                        else if (fieldType == "dropdown" && string.IsNullOrEmpty(value))
+                        {
+                            // No cached result run — the displayed value is the
+                            // selected listEntry, indexed by <w:result>/<w:default>
+                            // (defaults to 0 = first entry).
+                            var ddl = ffData.GetFirstChild<DropDownListFormField>()!;
+                            var entries = ddl.Elements<ListEntryFormField>().ToList();
+                            if (entries.Count > 0)
+                            {
+                                int sel = ddl.GetFirstChild<DropDownListSelection>()?.Val?.Value
+                                          ?? ddl.GetFirstChild<DefaultDropDownListItemIndex>()?.Val?.Value
+                                          ?? 0;
+                                if (sel < 0 || sel >= entries.Count) sel = 0;
+                                value = entries[sel].Val?.Value ?? "";
+                            }
                         }
                         result.Add((name, fieldType, value));
                     }
@@ -311,8 +331,9 @@ public partial class WordHandler
 
     // ==================== Semantic Layer ====================
 
-    public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
+    public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
     {
+        Core.ViewRangeGuard.RejectTextRange(range, "docx");
         var body = _doc.MainDocumentPart?.Document?.Body;
         if (body == null) return "(empty document)";
 
@@ -325,6 +346,7 @@ public partial class WordHandler
 
         // Track which SdtBlocks we've seen for indexing
         var sdtIndexMap = new Dictionary<SdtBlock, int>();
+        var listCounter = new OrderedListNumberingState();
 
         foreach (var item in bodyElements)
         {
@@ -372,7 +394,16 @@ public partial class WordHandler
                 continue;
             }
 
-            if (startLine.HasValue && lineNum < startLine.Value) continue;
+            if (startLine.HasValue && lineNum < startLine.Value)
+            {
+                // Advance list numbering for paragraphs BEFORE the window so the
+                // first emitted item shows its real marker (e.g. "18.") instead
+                // of restarting at 1. listCounter is shared engine state;
+                // skipping these paragraphs without advancing it desynced a
+                // windowed view from the full view.
+                if (element is Paragraph preWinPara) GetListPrefix(preWinPara, listCounter);
+                continue;
+            }
             if (endLine.HasValue && lineNum > endLine.Value) break;
 
             if (maxLines.HasValue && emitted >= maxLines.Value)
@@ -388,7 +419,31 @@ public partial class WordHandler
                 if (oMathParaChild != null)
                 {
                     var mathText = FormulaParser.ToReadableText(oMathParaChild);
-                    sb.AppendLine($"[{path}] {sdtLabel}[Equation] {mathText}");
+                    // A block-equation paragraph can still be a list item; call
+                    // GetListPrefix so the shared counter advances identically
+                    // across text / annotated / json (off-by-one otherwise) and
+                    // the marker shows on the equation line.
+                    var listPrefix = GetListPrefix(para, listCounter);
+                    sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}[Equation] {mathText}");
+                }
+                else if (para.Descendants<EmbeddedObject>().Any())
+                {
+                    // CONSISTENCY(word-text-ole): OLE paragraphs emit a
+                    // visible placeholder per OLE object so they are
+                    // distinguishable from empty paragraphs. Iterate all
+                    // EmbeddedObjects in the paragraph — a single paragraph
+                    // may contain more than one OLE run. Mirrors
+                    // ViewAsAnnotated's word-annotated-ole handling.
+                    var listPrefix = GetListPrefix(para, listCounter);
+                    foreach (var embObj in para.Descendants<EmbeddedObject>())
+                    {
+                        var oleEl = embObj.Descendants()
+                            .FirstOrDefault(e => e.LocalName == "OLEObject");
+                        var progId = oleEl?.GetAttributes()
+                            .FirstOrDefault(a => a.LocalName == "ProgID").Value;
+                        if (string.IsNullOrEmpty(progId)) progId = "Object";
+                        sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}[OLE: {progId}]");
+                    }
                 }
                 else if (para.Descendants<EmbeddedObject>().Any())
                 {
@@ -419,7 +474,11 @@ public partial class WordHandler
                     var fieldSentinelText = TryGetParagraphTextWithFieldSentinels(para);
                     if (fieldSentinelText != null)
                     {
+<<<<<<< HEAD
                         var listPrefixFs = GetListPrefix(para);
+=======
+                        var listPrefixFs = GetListPrefix(para, listCounter);
+>>>>>>> upstream/main
                         sb.AppendLine($"[{path}] {sdtLabel}{listPrefixFs}{fieldSentinelText}");
                         emitted++;
                         continue;
@@ -432,23 +491,26 @@ public partial class WordHandler
                     if (mathElements.Count > 0 && string.IsNullOrWhiteSpace(GetParagraphText(para)))
                     {
                         var mathText = string.Concat(mathElements.Select(FormulaParser.ToReadableText));
-                        sb.AppendLine($"[{path}] {sdtLabel}[Equation] {mathText}");
+                        // Inline-math-only list item: advance the shared counter
+                        // and show the marker, same as the text/ffield branches.
+                        var listPrefix = GetListPrefix(para, listCounter);
+                        sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}[Equation] {mathText}");
                     }
                     else if (ffText != null)
                     {
-                        var listPrefix = GetListPrefix(para);
+                        var listPrefix = GetListPrefix(para, listCounter);
                         sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}{ffText}");
                     }
                     else if (mathElements.Count > 0)
                     {
                         var text = GetParagraphTextWithMath(para);
-                        var listPrefix = GetListPrefix(para);
+                        var listPrefix = GetListPrefix(para, listCounter);
                         sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}{text}");
                     }
                     else
                     {
                         var text = GetParagraphText(para);
-                        var listPrefix = GetListPrefix(para);
+                        var listPrefix = GetListPrefix(para, listCounter);
                         sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}{text}");
                     }
                 }
@@ -486,6 +548,7 @@ public partial class WordHandler
 
         // Track which SdtBlocks we've seen for indexing
         var sdtIndexMap = new Dictionary<SdtBlock, int>();
+        var listCounter = new OrderedListNumberingState();
 
         foreach (var item in bodyElements)
         {
@@ -522,7 +585,16 @@ public partial class WordHandler
                 path = $"/body/?[{lineNum}]";
             }
 
-            if (startLine.HasValue && lineNum < startLine.Value) continue;
+            if (startLine.HasValue && lineNum < startLine.Value)
+            {
+                // Advance list numbering for paragraphs BEFORE the window so the
+                // first emitted item shows its real marker (e.g. "18.") instead
+                // of restarting at 1. listCounter is shared engine state;
+                // skipping these paragraphs without advancing it desynced a
+                // windowed view from the full view.
+                if (element is Paragraph preWinPara) GetListPrefix(preWinPara, listCounter);
+                continue;
+            }
             if (endLine.HasValue && lineNum > endLine.Value) break;
 
             if (maxLines.HasValue && emitted >= maxLines.Value)
@@ -543,7 +615,10 @@ public partial class WordHandler
                 if (oMathParaChild != null)
                 {
                     var latex = FormulaParser.ToLatex(oMathParaChild);
-                    sb.AppendLine($"[{path}] [Equation: \"{latex}\"] ← display");
+                    // Block-equation list item: advance the shared counter and
+                    // show the marker so the marker sequence matches view text.
+                    var listPrefixEq = GetListPrefix(para, listCounter);
+                    sb.AppendLine($"[{path}] {listPrefixEq}[Equation: \"{latex}\"] ← display");
                     emitted++;
                     continue;
                 }
@@ -556,7 +631,9 @@ public partial class WordHandler
                 if (inlineMath.Count > 0 && runs.Count == 0)
                 {
                     var latex = string.Concat(inlineMath.Select(FormulaParser.ToLatex));
-                    sb.AppendLine($"[{path}] [Equation: \"{latex}\"] ← {styleName} | inline");
+                    // Inline-math-only list item: advance counter + show marker.
+                    var listPrefixIm = GetListPrefix(para, listCounter);
+                    sb.AppendLine($"[{path}] {listPrefixIm}[Equation: \"{latex}\"] ← {styleName} | inline");
                     emitted++;
                     continue;
                 }
@@ -569,7 +646,7 @@ public partial class WordHandler
                     continue;
                 }
 
-                var listPrefix = GetListPrefix(para);
+                var listPrefix = GetListPrefix(para, listCounter);
 
                 // Build a set of runs that are part of formfield sequences for annotation
                 var formFieldRunMap = BuildFormFieldRunMap(para);
@@ -738,22 +815,21 @@ public partial class WordHandler
         sb.AppendLine();
 
         // Heading structure
+        var styleLevels = BuildStyleOutlineLevels();
         int lineNum = 0;
         foreach (var para in paragraphs)
         {
             lineNum++;
-            var styleName = GetStyleName(para);
+            var level = GetParagraphOutlineLevel(para, styleLevels, out var styleName);
+            if (level < 0) continue;
             var text = GetParagraphText(para);
-
-            if (styleName.Contains("Heading") || styleName.Contains("标题")
-                || styleName.StartsWith("heading", StringComparison.OrdinalIgnoreCase)
-                || styleName == "Title" || styleName == "Subtitle")
-            {
-                var level = GetHeadingLevel(styleName);
-                var indent = level <= 1 ? "" : new string(' ', (level - 1) * 2);
-                var prefix = level == 0 ? "■" : "├──";
-                sb.AppendLine($"{indent}{prefix} [{lineNum}] \"{text}\" ({styleName})");
-            }
+            // Skip outline markers carrying no text (e.g. a trailing empty
+            // paragraph that inherited an outlineLvl) so they don't surface
+            // as phantom headings — consistent with TOC generation.
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            var indent = level <= 1 ? "" : new string(' ', (level - 1) * 2);
+            var prefix = level == 0 ? "■" : "├──";
+            sb.AppendLine($"{indent}{prefix} [{lineNum}] \"{text}\" ({styleName})");
         }
 
         return sb.ToString().TrimEnd();
@@ -960,34 +1036,32 @@ public partial class WordHandler
         var footers = GetFooterTexts();
         if (footers.Count > 0) result["footers"] = new JsonArray(footers.Select(f => (JsonNode)JsonValue.Create(f)!).ToArray());
 
+        var styleLevels = BuildStyleOutlineLevels();
         var headingsArray = new JsonArray();
         int lineNum = 0;
         foreach (var para in paragraphs)
         {
             lineNum++;
-            var styleName = GetStyleName(para);
+            var level = GetParagraphOutlineLevel(para, styleLevels, out var styleName);
+            if (level < 0) continue;
             var text = GetParagraphText(para);
-
-            if (styleName.Contains("Heading") || styleName.Contains("标题")
-                || styleName.StartsWith("heading", StringComparison.OrdinalIgnoreCase)
-                || styleName == "Title" || styleName == "Subtitle")
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            headingsArray.Add((JsonNode)new JsonObject
             {
-                headingsArray.Add((JsonNode)new JsonObject
-                {
-                    ["line"] = lineNum,
-                    ["text"] = text,
-                    ["style"] = styleName,
-                    ["level"] = GetHeadingLevel(styleName)
-                });
-            }
+                ["line"] = lineNum,
+                ["text"] = text,
+                ["style"] = styleName,
+                ["level"] = level
+            });
         }
         result["headings"] = headingsArray;
 
         return result;
     }
 
-    public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
+    public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
     {
+        Core.ViewRangeGuard.RejectTextRange(range, "docx");
         var body = _doc.MainDocumentPart?.Document?.Body;
         if (body == null) return new JsonObject { ["elements"] = new JsonArray() };
 
@@ -997,6 +1071,7 @@ public partial class WordHandler
         int emitted = 0;
         var bodyElements = GetBodyElementsWithSdtContext(body).ToList();
         var sdtIndexMap = new Dictionary<SdtBlock, int>();
+        var listCounter = new OrderedListNumberingState();
 
         foreach (var item in bodyElements)
         {
@@ -1044,7 +1119,16 @@ public partial class WordHandler
             }
             else continue;
 
-            if (startLine.HasValue && lineNum < startLine.Value) continue;
+            if (startLine.HasValue && lineNum < startLine.Value)
+            {
+                // Advance list numbering for paragraphs BEFORE the window so the
+                // first emitted item shows its real marker (e.g. "18.") instead
+                // of restarting at 1. listCounter is shared engine state;
+                // skipping these paragraphs without advancing it desynced a
+                // windowed view from the full view.
+                if (element is Paragraph preWinPara) GetListPrefix(preWinPara, listCounter);
+                continue;
+            }
             if (endLine.HasValue && lineNum > endLine.Value) break;
             if (maxLines.HasValue && emitted >= maxLines.Value) break;
 
@@ -1055,7 +1139,11 @@ public partial class WordHandler
                 var oMathParaChild = para.ChildElements.FirstOrDefault(e => e.LocalName == "oMathPara" || e is M.Paragraph);
                 if (oMathParaChild != null)
                 {
-                    text = FormulaParser.ToReadableText(oMathParaChild);
+                    // Block-equation list item: advance the shared counter and
+                    // prepend the marker so the json marker sequence matches
+                    // view text / annotated (off-by-one otherwise).
+                    var listPrefixEq = GetListPrefix(para, listCounter);
+                    text = listPrefixEq + FormulaParser.ToReadableText(oMathParaChild);
                     type = "equation";
                 }
                 else
@@ -1065,13 +1153,13 @@ public partial class WordHandler
 
                     var mathElements = FindMathElements(para);
                     if (mathElements.Count > 0 && string.IsNullOrWhiteSpace(GetParagraphText(para)))
-                        text = string.Concat(mathElements.Select(FormulaParser.ToReadableText));
+                        text = GetListPrefix(para, listCounter) + string.Concat(mathElements.Select(FormulaParser.ToReadableText));
                     else if (ffText != null)
-                        text = GetListPrefix(para) + ffText;
+                        text = GetListPrefix(para, listCounter) + ffText;
                     else if (mathElements.Count > 0)
-                        text = GetParagraphTextWithMath(para);
+                        text = GetListPrefix(para, listCounter) + GetParagraphTextWithMath(para);
                     else
-                        text = GetListPrefix(para) + GetParagraphText(para);
+                        text = GetListPrefix(para, listCounter) + GetParagraphText(para);
 
                     if (ffList.Count > 0)
                     {
@@ -1260,7 +1348,12 @@ public partial class WordHandler
             if (pProps != null && IsNormalStyle(styleName))
             {
                 var indent = pProps.Indentation;
-                if (indent?.FirstLine == null || indent.FirstLine.Value == "0")
+                // w:firstLineChars is the character-relative twin of w:firstLine
+                // (200 = 2 characters, exactly what the suggestion below asks
+                // for) and satisfies the check on its own — CJK documents carry
+                // the indent that way and never emit w:firstLine.
+                var hasFirstLineChars = indent?.FirstLineChars != null && indent.FirstLineChars.Value > 0;
+                if (!hasFirstLineChars && (indent?.FirstLine == null || indent.FirstLine.Value == "0"))
                 {
                     // Skip paragraphs where first-line indent is not expected:
                     // - hanging indent (e.g. bibliography entries)
@@ -1589,9 +1682,16 @@ public partial class WordHandler
             var lockEl = sdtProps.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Lock>();
             var lockVal = lockEl?.Val?.InnerText;
 
-            // Determine SDT type
+            // Determine SDT type. Mirrors the classifier in
+            // WordHandler.Navigation.cs (SdtToNode) — checkbox first, text last
+            // as fallback. CONSISTENCY(sdt-type-classifier): both sites must
+            // recognize the same set of w:sdtPr content markers.
+            var checkBoxEl = sdtProps.GetFirstChild<DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox>();
             string sdtType;
-            if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) sdtType = "dropdown";
+            if (sdtProps.GetFirstChild<SdtContentGroup>() != null) sdtType = "group";
+            else if (sdtProps.GetFirstChild<SdtContentPicture>() != null) sdtType = "picture";
+            else if (checkBoxEl != null) sdtType = "checkbox";
+            else if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) sdtType = "dropdown";
             else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) sdtType = "combobox";
             else if (sdtProps.GetFirstChild<SdtContentDate>() != null) sdtType = "date";
             else if (sdtProps.GetFirstChild<SdtContentText>() != null) sdtType = "text";
@@ -1609,7 +1709,15 @@ public partial class WordHandler
             }
 
             var editable = IsSdtEditable(sdtProps);
-            var displayValue = string.IsNullOrEmpty(text) ? "(empty)" : text;
+            // A checkbox reports its state, not the ☒/☐ glyph it renders —
+            // same shape as the legacy FORMCHECKBOX entry below.
+            bool? sdtChecked = checkBoxEl == null
+                ? null
+                : checkBoxEl.Checked?.Val?.InnerText == "1"
+                  || string.Equals(checkBoxEl.Checked?.Val?.InnerText, "true", StringComparison.OrdinalIgnoreCase);
+            var displayValue = sdtChecked.HasValue
+                ? null
+                : (string.IsNullOrEmpty(text) ? "(empty)" : text);
 
             entries.Add(new FormFieldEntry(
                 Kind: "sdt",
@@ -1619,7 +1727,8 @@ public partial class WordHandler
                 Alias: alias ?? tag,
                 Value: displayValue,
                 Items: items,
-                Lock: lockVal));
+                Lock: lockVal,
+                Checked: sdtChecked));
         }
 
         // 2. Collect legacy form fields

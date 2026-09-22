@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 //
 // Sheet-wide range-mutation walker. Used by every operation that needs to
@@ -32,10 +36,20 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+<<<<<<< HEAD
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 using Xm = DocumentFormat.OpenXml.Office.Excel;
+=======
+using System.Xml.Linq;
+using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
+using C = DocumentFormat.OpenXml.Drawing.Charts;
+using CX = DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
+using Xm = DocumentFormat.OpenXml.Office.Excel;
+using ThreadedCmt = DocumentFormat.OpenXml.Office2019.Excel.ThreadedComments;
+>>>>>>> upstream/main
 
 namespace OfficeCli.Handlers;
 
@@ -64,7 +78,12 @@ public partial class ExcelHandler
         Func<string, string?> refMapper,
         Func<string, string>? formulaTextMapper,
         Func<int, int>? rowMarkerShift = null,
+<<<<<<< HEAD
         Func<int, int>? colMarkerShift = null)
+=======
+        Func<int, int>? colMarkerShift = null,
+        Func<string, string, string>? crossSheetFormulaMapper = null)
+>>>>>>> upstream/main
     {
         var ws = GetSheet(worksheet);
 
@@ -94,12 +113,29 @@ public partial class ExcelHandler
             if (formulaTextMapper != null)
                 foreach (var rule in cf.Elements<ConditionalFormattingRule>())
                 {
+<<<<<<< HEAD
                     foreach (var f in rule.Elements<Formula>())
                         if (!string.IsNullOrEmpty(f.Text)) f.Text = formulaTextMapper(f.Text);
                     foreach (var cfvo in rule.Descendants<ConditionalFormatValueObject>())
                         if (cfvo.Type?.Value == ConditionalFormatValueObjectValues.Formula
                             && !string.IsNullOrEmpty(cfvo.Val?.Value))
                             cfvo.Val = formulaTextMapper(cfvo.Val!.Value!);
+=======
+                    // A CF rule's <formula> is RELATIVE to the top-left of its
+                    // sqref. Deleting a row/col that a self-relative reference
+                    // lands on must re-relativize (Excel keeps "B2>3"), NOT
+                    // rewrite it to a literal "#REF!" — that silently disables
+                    // the rule. The generic shifter (correct for cell formulas
+                    // referencing a truly-gone cell) produces #REF! here; when
+                    // it introduces a NEW #REF! into a CF formula, keep the
+                    // original relative text instead.
+                    foreach (var f in rule.Elements<Formula>())
+                        if (!string.IsNullOrEmpty(f.Text)) f.Text = ShiftCfFormula(f.Text, formulaTextMapper);
+                    foreach (var cfvo in rule.Descendants<ConditionalFormatValueObject>())
+                        if (cfvo.Type?.Value == ConditionalFormatValueObjectValues.Formula
+                            && !string.IsNullOrEmpty(cfvo.Val?.Value))
+                            cfvo.Val = ShiftCfFormula(cfvo.Val!.Value!, formulaTextMapper);
+>>>>>>> upstream/main
                 }
             if (cf.SequenceOfReferences?.HasValue != true) continue;
             var newRefs = cf.SequenceOfReferences.Items
@@ -164,9 +200,24 @@ public partial class ExcelHandler
             var tbl = tablePart.Table;
             if (tbl == null) continue;
             bool tblDirty = false;
+<<<<<<< HEAD
             if (tbl.Reference?.Value != null)
             {
                 var shifted = refMapper(tbl.Reference.Value);
+=======
+            // A ListObject is never header-only: Excel itself always keeps at
+            // least one (blank) data row — deleting every data row in the UI
+            // leaves ref A1:B2. Without this floor, a predicate remove that
+            // matched every data row shrank ref to the header row alone, a
+            // shape Excel never writes.
+            int tblHeaderRows = (int)(tbl.HeaderRowCount?.Value ?? 1);
+            int tblTotalsRows = (int)(tbl.TotalsRowCount?.Value ?? 0);
+            if (tbl.Reference?.Value != null)
+            {
+                var shifted = refMapper(tbl.Reference.Value);
+                if (shifted != null)
+                    shifted = EnsureTableRefRowFloor(shifted, tblHeaderRows + 1 + tblTotalsRows);
+>>>>>>> upstream/main
                 if (shifted != null && !string.Equals(shifted, tbl.Reference.Value, StringComparison.Ordinal))
                 {
                     tbl.Reference = shifted;
@@ -176,6 +227,11 @@ public partial class ExcelHandler
             if (tbl.AutoFilter?.Reference?.Value != null)
             {
                 var shifted = refMapper(tbl.AutoFilter.Reference.Value);
+<<<<<<< HEAD
+=======
+                if (shifted != null)
+                    shifted = EnsureTableRefRowFloor(shifted, tblHeaderRows + 1);   // autoFilter spans header+data, no totals
+>>>>>>> upstream/main
                 if (shifted != null && !string.Equals(shifted, tbl.AutoFilter.Reference.Value, StringComparison.Ordinal))
                 {
                     tbl.AutoFilter.Reference = shifted;
@@ -241,6 +297,7 @@ public partial class ExcelHandler
             }
         }
 
+<<<<<<< HEAD
         // 6c. chart series references (<c:f> in each ChartPart under DrawingsPart),
         // e.g. Sheet1!$B$1:$B$5. Route through formulaTextMapper so refs targeting
         // this sheet follow the displacement and refs to other sheets are left
@@ -259,6 +316,49 @@ public partial class ExcelHandler
                     if (!string.Equals(nf, f.Text, StringComparison.Ordinal)) { f.Text = nf; chDirty = true; }
                 }
                 if (chDirty) cs.Save();
+=======
+        // 6c. chart series references (<c:f> in each ChartPart), e.g.
+        // Sheet1!$B$1:$B$5. A chart on ANY sheet can reference the edited sheet
+        // (a dashboard chart sourced from a data sheet is the common case), so
+        // walk every worksheet's DrawingsPart — not just the edited sheet's.
+        // The mapper's sheet-scope guard leaves refs to other sheets untouched,
+        // so this only shifts the refs that actually target the edited sheet.
+        if (formulaTextMapper != null)
+        {
+            foreach (var (_, wsPart) in GetWorksheets())
+            {
+                if (wsPart.DrawingsPart == null) continue;
+                foreach (var chartPart in wsPart.DrawingsPart.ChartParts)
+                {
+                    var cs = chartPart.ChartSpace;
+                    if (cs == null) continue;
+                    bool chDirty = false;
+                    foreach (var f in cs.Descendants<C.Formula>())
+                    {
+                        if (string.IsNullOrEmpty(f.Text)) continue;
+                        var nf = formulaTextMapper(f.Text);
+                        if (!string.Equals(nf, f.Text, StringComparison.Ordinal)) { f.Text = nf; chDirty = true; }
+                    }
+                    if (chDirty) cs.Save();
+                }
+                // Extended (cx) charts — funnel/pareto/treemap/sunburst/
+                // boxWhisker/histogram — carry their series/category refs in
+                // <cx:f> and were never displaced, so a row/col insert left
+                // them stale (same class as the regular-chart gap above).
+                foreach (var extPart in wsPart.DrawingsPart.ExtendedChartParts)
+                {
+                    var cxs = extPart.ChartSpace;
+                    if (cxs == null) continue;
+                    bool cxDirty = false;
+                    foreach (var f in cxs.Descendants<CX.Formula>())
+                    {
+                        if (string.IsNullOrEmpty(f.Text)) continue;
+                        var nf = formulaTextMapper(f.Text);
+                        if (!string.Equals(nf, f.Text, StringComparison.Ordinal)) { f.Text = nf; cxDirty = true; }
+                    }
+                    if (cxDirty) cxs.Save();
+                }
+>>>>>>> upstream/main
             }
         }
 
@@ -269,6 +369,7 @@ public partial class ExcelHandler
         var cmtList = commentsPart?.Comments?.GetFirstChild<CommentList>();
         if (cmtList != null)
         {
+<<<<<<< HEAD
             bool cmtDirty = false;
             foreach (var cmt in cmtList.Elements<Comment>().ToList())
             {
@@ -282,6 +383,26 @@ public partial class ExcelHandler
                 }
             }
             if (cmtDirty) commentsPart!.Comments!.Save();
+=======
+            var commentMoves = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var cmt in cmtList.Elements<Comment>().ToList())
+            {
+                if (cmt.Reference?.Value == null) continue;
+                var oldRef = cmt.Reference.Value;
+                var shifted = refMapper(oldRef);
+                if (!string.Equals(shifted, oldRef, StringComparison.Ordinal))
+                {
+                    commentMoves[oldRef] = shifted;
+                    if (shifted == null) cmt.Remove();
+                    else cmt.Reference = shifted;
+                }
+            }
+            if (commentMoves.Count > 0)
+            {
+                ApplyCommentVmlMutations(worksheet, commentMoves);
+                commentsPart!.Comments!.Save();
+            }
+>>>>>>> upstream/main
         }
 
         // 6e. sparklines (x14 extension list on the worksheet). Each sparkline
@@ -332,6 +453,35 @@ public partial class ExcelHandler
         {
             foreach (var sv in sheetViews.Elements<SheetView>())
             {
+<<<<<<< HEAD
+=======
+                // The frozen/split pane's top-left cell is an A1 anchor with the
+                // same displacement semantics as the selection's active cell; it
+                // was left un-shifted, so a row/col insert drifted the freeze
+                // point (freeze=B3 stayed B3 after inserting a row above).
+                var pane = sv.GetFirstChild<Pane>();
+                if (pane?.TopLeftCell?.Value is { } tlc)
+                {
+                    var newTlc = refMapper(tlc);
+                    if (newTlc != null && !string.Equals(newTlc, tlc, StringComparison.Ordinal))
+                    {
+                        pane.TopLeftCell = newTlc;
+                        // The freeze boundary itself is xSplit/ySplit, not topLeftCell
+                        // (Excel rewrites topLeftCell with the scroll position on
+                        // every save). Moving only the anchor left the pane saying
+                        // two different things; keep the splits in step so the
+                        // boundary the getter derives is the one Excel shows.
+                        if (pane.State?.Value == PaneStateValues.Frozen)
+                        {
+                            var (newCol, newRow) = ParseCellReference(newTlc);
+                            var colSplit = ColumnNameToIndex(newCol) - 1;
+                            var rowSplit = newRow - 1;
+                            pane.HorizontalSplit = colSplit > 0 ? colSplit : null;
+                            pane.VerticalSplit = rowSplit > 0 ? rowSplit : null;
+                        }
+                    }
+                }
+>>>>>>> upstream/main
                 foreach (var sel in sv.Elements<Selection>())
                 {
                     if (sel.ActiveCell?.Value != null)
@@ -406,6 +556,33 @@ public partial class ExcelHandler
             }
         }
 
+<<<<<<< HEAD
+=======
+        // 6j. threaded comments (Excel 365, separate WorksheetThreadedCommentsPart).
+        // Same storage model as legacy comments — per-cell <threadedComment ref="...">
+        // entries — and 6d already shifts the legacy shadow copies, so skipping the
+        // threaded part would leave the two anchors disagreeing after an insert or
+        // delete. Replies carry the same ref as their root, so dropping every entry
+        // whose cell is deleted removes the whole thread.
+        foreach (var threadedPart in worksheet.WorksheetThreadedCommentsParts)
+        {
+            if (threadedPart?.ThreadedComments == null) continue;
+            bool tcDirty = false;
+            foreach (var tc in threadedPart.ThreadedComments.Elements<ThreadedCmt.ThreadedComment>().ToList())
+            {
+                if (tc.Ref?.Value == null) continue;
+                var shifted = refMapper(tc.Ref.Value);
+                if (shifted == null) { tc.Remove(); tcDirty = true; }
+                else if (!string.Equals(shifted, tc.Ref.Value, StringComparison.Ordinal))
+                {
+                    tc.Ref = shifted;
+                    tcDirty = true;
+                }
+            }
+            if (tcDirty) threadedPart.ThreadedComments.Save();
+        }
+
+>>>>>>> upstream/main
         // 7. cell formulas (text + shared/array ref attribute)
         var sheetData = ws.GetFirstChild<SheetData>();
         if (sheetData != null)
@@ -416,7 +593,16 @@ public partial class ExcelHandler
                 {
                     if (cell.CellFormula == null) continue;
                     if (formulaTextMapper != null && !string.IsNullOrEmpty(cell.CellFormula.Text))
+<<<<<<< HEAD
                         cell.CellFormula.Text = formulaTextMapper(cell.CellFormula.Text);
+=======
+                    {
+                        var oldText = cell.CellFormula.Text;
+                        var newText = formulaTextMapper(oldText);
+                        cell.CellFormula.Text = newText;
+                        InvalidateCacheIfShiftBrokeFormula(cell, oldText, newText);
+                    }
+>>>>>>> upstream/main
                     if (cell.CellFormula.Reference?.Value != null)
                     {
                         var shifted = refMapper(cell.CellFormula.Reference.Value);
@@ -427,6 +613,36 @@ public partial class ExcelHandler
             }
         }
 
+<<<<<<< HEAD
+=======
+        // 7b. cell formulas in OTHER sheets that reference THIS sheet
+        // (`Summary!A1 = Sheet1!B4`). A row/col insert or delete in one sheet
+        // displaces its cells for every formula everywhere, not just formulas on
+        // the same sheet — otherwise a cross-sheet reference silently points at
+        // the wrong (or now-empty) cell. The per-sheet mapper uses the OTHER
+        // sheet as its "current sheet" so that sheet's UNqualified refs are left
+        // alone; only a ref explicitly qualified with this sheet is shifted.
+        if (crossSheetFormulaMapper != null)
+        {
+            foreach (var (otherName, otherPart) in GetWorksheets())
+            {
+                if (otherPart == worksheet) continue;
+                var otherData = GetSheet(otherPart).GetFirstChild<SheetData>();
+                if (otherData == null) continue;
+                foreach (var row in otherData.Elements<Row>())
+                    foreach (var cell in row.Elements<Cell>())
+                        if (cell.CellFormula != null && !string.IsNullOrEmpty(cell.CellFormula.Text))
+                        {
+                            var oldText = cell.CellFormula.Text;
+                            var newText = crossSheetFormulaMapper(otherName, oldText);
+                            cell.CellFormula.Text = newText;
+                            InvalidateCacheIfShiftBrokeFormula(cell, oldText, newText);
+                        }
+                GetSheet(otherPart).Save();
+            }
+        }
+
+>>>>>>> upstream/main
         // 8. workbook-level definedNames whose text references this sheet.
         // Routed through formulaTextMapper (typically a FormulaRefShifter.*
         // call) so the sheet-scope guard inside the shifter handles "leave
@@ -451,4 +667,123 @@ public partial class ExcelHandler
             }
         }
     }
+<<<<<<< HEAD
+=======
+
+    // A legacy comment's text ref and its VML Note target describe the same
+    // cell. Match shapes against ORIGINAL refs in one pass: looking up each
+    // old ref after rewriting the previous shape can shift adjacent notes twice.
+    //
+    // The popup box's 8-number Anchor (LeftCol, LeftOff, TopRow, TopOff,
+    // RightCol, RightOff, BottomRow, BottomOff) is translated by the same
+    // row/col delta as the cell — that is what Excel itself does when a
+    // note's cell is displaced, so the box keeps its size and its position
+    // relative to the cell instead of being left hovering over the old row.
+    // Offsets and unrelated controls (OLE, form buttons) are untouched.
+    private static void ApplyCommentVmlMutations(
+        WorksheetPart worksheet, IReadOnlyDictionary<string, string?> commentMoves)
+    {
+        XNamespace v = "urn:schemas-microsoft-com:vml";
+        XNamespace x = "urn:schemas-microsoft-com:office:excel";
+        // Follow this worksheet's relationships, not a guessed part name or
+        // the first VML part (which may belong to header/footer controls).
+        foreach (var vmlPart in worksheet.VmlDrawingParts)
+        {
+            XDocument doc;
+            try
+            {
+                using var stream = vmlPart.GetStream(FileMode.Open, FileAccess.Read);
+                doc = XDocument.Load(stream, LoadOptions.PreserveWhitespace);
+            }
+            catch (System.Xml.XmlException)
+            {
+                // Externally-authored VML that is not well-formed XML: the
+                // comment refs have still been shifted; leave this part as-is
+                // rather than fail the whole row/column operation (same
+                // tolerance as RemoveCommentVmlShapeByRef).
+                continue;
+            }
+            bool dirty = false;
+            foreach (var shape in doc.Descendants(v + "shape").ToList())
+            {
+                var data = shape.Element(x + "ClientData");
+                if (data == null || (string?)data.Attribute("ObjectType") != "Note") continue;
+                var row = data.Element(x + "Row");
+                var col = data.Element(x + "Column");
+                if (row == null || col == null
+                    || !int.TryParse(row.Value, out var r) || r < 0 || r >= ExcelMaxRow
+                    || !int.TryParse(col.Value, out var c) || c < 0 || c >= ExcelMaxCol)
+                    continue;
+                var oldRef = $"{IndexToColumnName(c + 1)}{r + 1}";
+                if (!commentMoves.TryGetValue(oldRef, out var shifted)) continue;
+                dirty = true;
+                if (shifted == null) { shape.Remove(); continue; }
+
+                var (colName, rowNum) = ParseCellReference(shifted);
+                int newR = rowNum - 1, newC = ColumnNameToIndex(colName) - 1;
+                row.Value = newR.ToString();
+                col.Value = newC.ToString();
+
+                var anchor = data.Element(x + "Anchor");
+                if (anchor == null) continue;
+                var parts = anchor.Value.Split(',');
+                if (parts.Length != 8) continue;
+                var nums = new int[8];
+                bool parsed = true;
+                for (int i = 0; i < 8 && parsed; i++) parsed = int.TryParse(parts[i].Trim(), out nums[i]);
+                if (!parsed) continue;
+                int dRow = newR - r, dCol = newC - c;
+                nums[0] = Math.Max(0, nums[0] + dCol); nums[4] = Math.Max(0, nums[4] + dCol);
+                nums[2] = Math.Max(0, nums[2] + dRow); nums[6] = Math.Max(0, nums[6] + dRow);
+                anchor.Value = string.Join(", ", nums);
+            }
+            if (!dirty) continue;
+            using var output = vmlPart.GetStream(FileMode.Create, FileAccess.Write);
+            doc.Save(output, SaveOptions.DisableFormatting);
+        }
+    }
+
+    // A structural shift that rewrites a formula to contain #REF! (its target
+    // row/col was deleted) must not leave the pre-delete cached value behind:
+    // `get` would keep reporting the old number with evaluated=true and
+    // `view text` would present it as truth, while Excel shows #REF!. Persist
+    // what Excel itself would after recalc — an error-typed cell with #REF! as
+    // the cached value — so display shows #REF! and `view issues` classifies it
+    // as a formula error (not a stale number).
+    // Grow a shifted table ref back to its minimum legal row span (header +
+    // one data row + totals). Column span and anchor are untouched; a
+    // single-cell ref passes through unchanged.
+    private static string EnsureTableRefRowFloor(string refStr, int minRowSpan)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(
+            refStr, @"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success) return refStr;
+        int r1 = int.Parse(m.Groups[2].Value), r2 = int.Parse(m.Groups[4].Value);
+        if (r2 - r1 + 1 >= minRowSpan) return refStr;
+        return $"{m.Groups[1].Value}{r1}:{m.Groups[3].Value}{r1 + minRowSpan - 1}";
+    }
+
+    private static void InvalidateCacheIfShiftBrokeFormula(Cell cell, string oldText, string newText)
+    {
+        if (newText == oldText || !newText.Contains("#REF!", StringComparison.Ordinal)) return;
+        cell.DataType = CellValues.Error;
+        cell.CellValue = new CellValue("#REF!");
+    }
+
+    // Shift a conditional-formatting rule's formula. Unlike a cell formula, a
+    // CF <formula> is relative to the top-left of its applied range, so a row/
+    // col deleted within that range re-relativizes it rather than invalidating
+    // it. The generic shifter can't tell the two apart and emits "#REF!"; when
+    // it introduces a NEW #REF! into a CF formula, keep the original relative
+    // text (Excel's behaviour). Formulas already broken pre-shift are left as-is.
+    private static string ShiftCfFormula(string text, Func<string, string?> mapper)
+    {
+        var mapped = mapper(text);
+        if (mapped == null) return text;
+        if (mapped.Contains("#REF!", StringComparison.Ordinal)
+            && !text.Contains("#REF!", StringComparison.Ordinal))
+            return text;
+        return mapped;
+    }
+>>>>>>> upstream/main
 }

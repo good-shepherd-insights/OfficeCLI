@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -19,19 +23,37 @@ public partial class PowerPointHandler
                     && !properties.TryGetValue("src", out imgPath))
                     throw new ArgumentException("'src' property is required for picture type");
 
-                var imgSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
-                if (!imgSlideMatch.Success)
-                    throw new ArgumentException($"Pictures must be added to a slide: /slide[N]");
+                // Accept a slide (/slide[N]) or a nested-group parent
+                // (/slide[N]/group[K]/…) so dump-emitted grouped pictures replay.
+                var imgParent = ResolveSlideOrGroupAddParent(parentPath)
+                    ?? throw new ArgumentException($"Pictures must be added to a slide: /slide[N]");
+                var imgSlideIdx = imgParent.slideIdx;
+                var imgSlidePart = imgParent.slidePart;
+                var imgShapeTree = imgParent.shapeTree;
+                var imgInsertContainer = imgParent.insertContainer;
+                var imgReturnPrefix = imgParent.returnPathPrefix;
 
-                var imgSlideIdx = int.Parse(imgSlideMatch.Groups[1].Value);
-                var imgSlideParts = GetSlideParts().ToList();
-                if (imgSlideIdx < 1 || imgSlideIdx > imgSlideParts.Count)
-                    throw new ArgumentException($"Slide {imgSlideIdx} not found (total: {imgSlideParts.Count})");
+                // Resolve image from file/base64/URL and buffer for
+                // both embedding and dimension sniffing (aspect ratio).
+                var (rawImgStream, imgPartType) = OfficeCli.Core.ImageSource.Resolve(imgPath);
+                using var rawImgDispose = rawImgStream;
+                using var imgStream = new MemoryStream();
+                rawImgStream.CopyTo(imgStream);
+                imgStream.Position = 0;
 
-                var imgSlidePart = imgSlideParts[imgSlideIdx - 1];
-                var imgShapeTree = GetSlide(imgSlidePart).CommonSlideData?.ShapeTree
-                    ?? throw new InvalidOperationException("Slide has no shape tree");
+                // Embed image into slide part. For SVG, emit the dual
+                // representation Office requires: PNG fallback at r:embed,
+                // SVG referenced via a:blip/a:extLst asvg:svgBlip.
+                string imgRelId;
+                string? picSvgRelId = null;
+                if (imgPartType == ImagePartType.Svg)
+                {
+                    var svgPart = imgSlidePart.AddImagePart(ImagePartType.Svg);
+                    svgPart.FeedData(imgStream);
+                    imgStream.Position = 0;
+                    picSvgRelId = imgSlidePart.GetIdOfPart(svgPart);
 
+<<<<<<< HEAD
                 // Resolve image from file/base64/URL and buffer for
                 // both embedding and dimension sniffing (aspect ratio).
                 var (rawImgStream, imgPartType) = OfficeCli.Core.ImageSource.Resolve(imgPath);
@@ -89,6 +111,45 @@ public partial class PowerPointHandler
                 if (cxEmu < 0) throw new ArgumentException($"Negative width is not allowed: '{widthStr}'.");
                 if (cyEmu < 0) throw new ArgumentException($"Negative height is not allowed: '{heightStr}'.");
 
+=======
+                    if (properties.TryGetValue("fallback", out var picFallback) && !string.IsNullOrWhiteSpace(picFallback))
+                    {
+                        var (fbRaw, fbType) = OfficeCli.Core.ImageSource.Resolve(picFallback);
+                        using var fbDispose = fbRaw;
+                        var fbPart = imgSlidePart.AddImagePart(fbType);
+                        fbPart.FeedData(fbRaw);
+                        imgRelId = imgSlidePart.GetIdOfPart(fbPart);
+                    }
+                    else
+                    {
+                        var pngPart = imgSlidePart.AddImagePart(ImagePartType.Png);
+                        pngPart.FeedData(new MemoryStream(
+                            OfficeCli.Core.SvgImageHelper.TransparentPng1x1, writable: false));
+                        imgRelId = imgSlidePart.GetIdOfPart(pngPart);
+                    }
+                }
+                else
+                {
+                    var imagePart = imgSlidePart.AddImagePart(imgPartType);
+                    imagePart.FeedData(imgStream);
+                    imgStream.Position = 0;
+                    imgRelId = imgSlidePart.GetIdOfPart(imagePart);
+                }
+
+                // Dimensions (default: 6in x 4in, with auto aspect-ratio)
+                // CONSISTENCY(picture-aspect): when only one dimension is
+                // supplied, compute the other from native pixel ratio — same
+                // behavior as WordHandler.AddPicture.
+                bool hasWidth = properties.TryGetValue("width", out var widthStr);
+                bool hasHeight = properties.TryGetValue("height", out var heightStr);
+                long cxEmu = hasWidth ? ParseEmu(widthStr!) : 5486400;  // 6 inches fallback
+                long cyEmu = hasHeight ? ParseEmu(heightStr!) : 3657600; // 4 inches fallback
+                // CONSISTENCY(positive-size): symmetric with Add.Shape negative-size guard
+                // so picture / chart / connector / media all reject inverted dimensions.
+                if (cxEmu < 0) throw new ArgumentException($"Negative width is not allowed: '{widthStr}'.");
+                if (cyEmu < 0) throw new ArgumentException($"Negative height is not allowed: '{heightStr}'.");
+
+>>>>>>> upstream/main
                 if (!hasWidth || !hasHeight)
                 {
                     var dims = OfficeCli.Core.ImageSource.TryGetDimensions(imgStream);
@@ -124,9 +185,17 @@ public partial class PowerPointHandler
                 // own behavior matches: inserting a picture leaves descr
                 // absent until the user fills the alt-text dialog. Mirrors
                 // AddShape which never auto-populates descr.
+<<<<<<< HEAD
                 var altText = properties.TryGetValue("alt", out var altOverride) && !string.IsNullOrEmpty(altOverride)
                     ? altOverride
                     : null;
+=======
+                // CONSISTENCY(picture-alt): full alias set (matches Set and
+                // the shared picture schema contract).
+                var altText = new[] { "alt", "altText", "alttext", "description" }
+                    .Select(k => properties.GetValueOrDefault(k))
+                    .FirstOrDefault(v => !string.IsNullOrEmpty(v));
+>>>>>>> upstream/main
 
                 // Build Picture element following Open-XML-SDK conventions
                 var picture = new Picture();
@@ -147,7 +216,11 @@ public partial class PowerPointHandler
                     OfficeCli.Core.SvgImageHelper.AppendSvgExtension(picture.BlipFill.Blip, picSvgRelId);
 
                 // Crop support (mirrors Set's crop emitter — keep keys/semantics
+<<<<<<< HEAD
                 // identical per CLAUDE.md Feature Implementation Checklist).
+=======
+                // identical per the project conventions Feature Implementation Checklist).
+>>>>>>> upstream/main
                 // CONSISTENCY(ooxml-element-order): in CT_BlipFillProperties
                 // srcRect must precede the fill-mode element (stretch/tile);
                 // PowerPoint silently ignores an out-of-order srcRect.
@@ -374,6 +447,20 @@ public partial class PowerPointHandler
                     // (manual letterbox padding inside the picture frame) and
                     // negative insets (manual outset crop). R47 fixed the
                     // srcRect side; this is the stretch/fillRect counterpart.
+<<<<<<< HEAD
+=======
+                    // Bare <a:stretch/> (no fillRect child): real PowerPoint
+                    // renders a negative-srcRect "outset crop" differently
+                    // with vs without an explicit <a:fillRect/> (sample17 —
+                    // the zoom vanished when replay added one). Preserve the
+                    // source's bare form when the dump flags it.
+                    if (properties.TryGetValue("stretchBare", out var sbVal)
+                        && IsTruthy(sbVal))
+                    {
+                        picture.BlipFill.AppendChild(new Drawing.Stretch());
+                        goto stretchDone;
+                    }
+>>>>>>> upstream/main
                     var fr = new Drawing.FillRectangle();
                     if (properties.TryGetValue("fillRect", out var frStr)
                         || properties.TryGetValue("fillrect", out frStr))
@@ -392,19 +479,221 @@ public partial class PowerPointHandler
                         }
                     }
                     picture.BlipFill.AppendChild(new Drawing.Stretch(fr));
+<<<<<<< HEAD
+=======
+                    stretchDone: ;
+>>>>>>> upstream/main
                 }
 
                 picture.ShapeProperties = new ShapeProperties();
                 picture.ShapeProperties.Transform2D = new Drawing.Transform2D();
                 picture.ShapeProperties.Transform2D.Offset = new Drawing.Offset { X = xEmu, Y = yEmu };
                 picture.ShapeProperties.Transform2D.Extents = new Drawing.Extents { Cx = cxEmu, Cy = cyEmu };
-                var picGeomName = "rect";
-                if (properties.TryGetValue("geometry", out var picGeom) || properties.TryGetValue("shape", out picGeom))
-                    picGeomName = picGeom;
-                picture.ShapeProperties.AppendChild(
-                    new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(picGeomName) }
-                );
+                // Crop-to-shape: verbatim <a:custGeom> (crop to freeform,
+                // mirrors AddShape's customGeometryXml splice) wins over a
+                // preset name; default rect otherwise.
+                if (properties.TryGetValue("customGeometryXml", out var picCustXml) && picCustXml.Length > 0)
+                {
+                    picture.ShapeProperties.AppendChild(new Drawing.CustomGeometry(picCustXml));
+                }
+                else
+                {
+                    var picGeomName = "rect";
+                    if (properties.TryGetValue("geometry", out var picGeom) || properties.TryGetValue("shape", out picGeom))
+                        picGeomName = picGeom;
+                    var picGeomPreset = ParsePresetShape(picGeomName);
+                    var picAvLst = new Drawing.AdjustValueList();
+                    // Preset adjust handles (crop-shape corner radius etc.) —
+                    // mirror AddShape's adj= consumption.
+                    if (properties.TryGetValue("adj", out var picAdjSpec)
+                        && !string.IsNullOrWhiteSpace(picAdjSpec))
+                        ApplyAdjustHandles(picAvLst, picAdjSpec, picGeomPreset);
+                    picture.ShapeProperties.AppendChild(
+                        new Drawing.PresetGeometry(picAvLst) { Preset = picGeomPreset }
+                    );
+                }
 
+                // Shape fill on the picture frame (paints wherever the image
+                // doesn't cover — negative srcRect outsets, sample17).
+                // Schema order within spPr: geom → fill → ln → effectLst.
+                if (properties.TryGetValue("frameFill", out var picFrameFill)
+                    && !string.IsNullOrWhiteSpace(picFrameFill))
+                    picture.ShapeProperties.AppendChild(BuildSolidFill(picFrameFill));
+
+                // Picture border — verbatim <a:ln> from PictureToNode's
+                // lineRaw (the white frame around a crop-to-shape picture).
+                if (properties.TryGetValue("lineRaw", out var picLnRaw)
+                    && !string.IsNullOrWhiteSpace(picLnRaw))
+                    picture.ShapeProperties.AppendChild(new Drawing.Outline(picLnRaw));
+
+                // Verbatim <a:effectLst> — byte-faithful shadow/glow replay
+                // (the semantic shadow= backfills dist/dir defaults the
+                // source may not carry).
+                if (properties.TryGetValue("effectsRaw", out var picFxRaw)
+                    && !string.IsNullOrWhiteSpace(picFxRaw))
+                    picture.ShapeProperties.AppendChild(new Drawing.EffectList(picFxRaw));
+
+                // 3D on the picture's spPr — verbatim <a:scene3d>/<a:sp3d>
+                // carriers from PictureToNode (a 3D-rotated picture replayed
+                // flat without them). Schema order puts scene3d before sp3d;
+                // append in that order right after the geometry.
+                if (properties.TryGetValue("scene3dRaw", out var picScene3dRaw)
+                    && !string.IsNullOrWhiteSpace(picScene3dRaw))
+                    picture.ShapeProperties.AppendChild(new Drawing.Scene3DType(picScene3dRaw));
+                if (properties.TryGetValue("sp3dRaw", out var picSp3dRaw)
+                    && !string.IsNullOrWhiteSpace(picSp3dRaw))
+                    picture.ShapeProperties.AppendChild(new Drawing.Shape3DType(picSp3dRaw));
+
+                // CONSISTENCY(shape-picture-parity): rotation lives on the
+                // same Transform2D as shape/connector/group; PowerPoint
+                // applies it identically to pictures. Set.Media already
+                // accepts rotation on picture; Add must mirror so Add and
+                // Set agree on the property surface.
+                if (properties.TryGetValue("rotation", out var picRotStr)
+                    || properties.TryGetValue("rotate", out picRotStr))
+                {
+                    picture.ShapeProperties.Transform2D!.Rotation =
+                        (int)(ParseHelpers.SafeParseDouble(picRotStr, "rotation") * 60000);
+                }
+
+                // CONSISTENCY(shape-picture-parity): flip lives on the same
+                // Transform2D @flipH/@flipV as shape/connector. ShapeProperties
+                // Set handles these for shapes; mirror on Add for pictures so
+                // Add and Set agree on the property surface. Read via
+                // TryGetValue (handler-as-truth) — do NOT copy into a fresh dict.
+                if (properties.TryGetValue("flipH", out var picFlipH) || properties.TryGetValue("fliph", out picFlipH))
+                    picture.ShapeProperties.Transform2D!.HorizontalFlip = IsTruthy(picFlipH);
+                if (properties.TryGetValue("flipV", out var picFlipV) || properties.TryGetValue("flipv", out picFlipV))
+                    picture.ShapeProperties.Transform2D!.VerticalFlip = IsTruthy(picFlipV);
+
+                // bt-2: blip-level filters. Set.Media accepts opacity and
+                // biLevel on a picture; Add must mirror so dump→replay
+                // round-trips the alphaModFix / biLevel children that
+                // ride on the source blip.
+                var picBlipForFilters = picture.BlipFill?.GetFirstChild<Drawing.Blip>();
+                if (picBlipForFilters != null
+                    && properties.TryGetValue("opacity", out var picOpacityStr))
+                {
+                    if (!double.TryParse(picOpacityStr, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var picOpacityNum)
+                        || double.IsNaN(picOpacityNum) || double.IsInfinity(picOpacityNum))
+                        throw new ArgumentException($"Invalid 'opacity' value: '{picOpacityStr}'. Expected a finite decimal 0.0-1.0.");
+                    if (picOpacityNum > 1.0 && picOpacityNum < 2.0)
+                        throw new ArgumentException($"Invalid 'opacity' value: '{picOpacityStr}'. Expected 0.0-1.0 as decimal or 2-100 as percent (values in (1, 2) are ambiguous).");
+                    if (picOpacityNum > 1.0) picOpacityNum /= 100.0;
+                    if (picOpacityNum < 0.0 || picOpacityNum > 1.0)
+                        throw new ArgumentException($"Invalid 'opacity' value: '{picOpacityStr}'. Expected 0.0-1.0 (or 0-100 as percent).");
+                    picBlipForFilters.RemoveAllChildren<Drawing.AlphaModulationFixed>();
+                    picBlipForFilters.AppendChild(new Drawing.AlphaModulationFixed { Amount = (int)(picOpacityNum * 100000) });
+                }
+                if (picBlipForFilters != null
+                    && properties.TryGetValue("biLevel", out var picBiLevelStr))
+                {
+                    if (!double.TryParse(picBiLevelStr, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var picBiLevelNum)
+                        || picBiLevelNum < 0 || picBiLevelNum > 100)
+                        throw new ArgumentException($"Invalid 'biLevel' value: '{picBiLevelStr}'. Expected 0..100 (threshold percent).");
+                    picBlipForFilters.RemoveAllChildren<Drawing.BiLevel>();
+                    picBlipForFilters.AppendChild(new Drawing.BiLevel { Threshold = (int)(picBiLevelNum * 1000) });
+                }
+                // R52 bt-1: `duotone=#c1,#c2` recolor stop pair. Mirrors the
+                // readback in NodeBuilder so dump→replay preserves the 2-color
+                // tint applied via Picture Format → Color → Recolor → Duotone.
+                if (picBlipForFilters != null
+                    && properties.TryGetValue("duotone", out var picDuotoneStr))
+                {
+                    picBlipForFilters.RemoveAllChildren<Drawing.Duotone>();
+                    picBlipForFilters.AppendChild(BuildDuotoneFromSpec(picDuotoneStr));
+                }
+
+                // R57 bt-3: `compressionState=email|print|hqprint|screen|none`
+                // mirrors the readback in NodeBuilder. cstate is the
+                // attribute PowerPoint writes when the user picks
+                // Picture Format → Compress Pictures → target use.
+                // Without this Add path the dump→replay batch dropped the
+                // attribute and the image came back at default compression.
+                if (picBlipForFilters != null
+                    && properties.TryGetValue("compressionState", out var picCStateStr))
+                {
+                    picBlipForFilters.CompressionState = ParseBlipCompressionState(picCStateStr);
+                }
+
+                // CONSISTENCY(add-set-parity): shadow / glow / brightness /
+                // contrast are supported on Set picture (Set.Media.cs). Mirror
+                // them here so Add picture doesn't false-warn and silently drop.
+                if (properties.TryGetValue("shadow", out var picShadow))
+                {
+                    var spPrSh = picture.ShapeProperties ?? (picture.ShapeProperties = new ShapeProperties());
+                    var shadowVal = picShadow;
+                    if (IsValidBooleanString(shadowVal) && IsTruthy(shadowVal)) shadowVal = "000000";
+                    ApplyShadow(spPrSh, shadowVal);
+                }
+                if (properties.TryGetValue("glow", out var picGlow))
+                {
+                    var spPrGl = picture.ShapeProperties ?? (picture.ShapeProperties = new ShapeProperties());
+                    ApplyGlow(spPrGl, picGlow);
+                }
+                // brightness / contrast → <a:lum bright=/contrast=> on the blip
+                // (ECMA-376 §20.1.8.13). Mirrors Set.Media.cs lines 346-409.
+                foreach (var bcKey in new[] { "brightness", "contrast" })
+                {
+                    if (!properties.TryGetValue(bcKey, out var bcValStr)) continue;
+                    var blipBC = picture.BlipFill?.GetFirstChild<Drawing.Blip>();
+                    if (blipBC == null) continue;
+                    if (!double.TryParse(bcValStr, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var bcVal)
+                        || bcVal < -100 || bcVal > 100)
+                        throw new ArgumentException($"Invalid '{bcKey}' value: '{bcValStr}'. Expected number in [-100, 100].");
+
+                    int curBright = 0;
+                    int curContrast = 0;
+                    var staleLum = new List<OpenXmlElement>();
+                    foreach (var kid in blipBC.ChildElements.ToList())
+                    {
+                        if (kid.NamespaceUri != "http://schemas.openxmlformats.org/drawingml/2006/main") continue;
+                        if (kid is Drawing.LuminanceEffect existingLum)
+                        {
+                            if (existingLum.Brightness?.HasValue == true) curBright = existingLum.Brightness.Value;
+                            if (existingLum.Contrast?.HasValue == true) curContrast = existingLum.Contrast.Value;
+                            staleLum.Add(kid);
+                        }
+                        else if (kid.LocalName == "lumMod" || kid.LocalName == "lumOff")
+                        {
+                            staleLum.Add(kid);
+                        }
+                    }
+                    foreach (var s in staleLum) s.Remove();
+
+                    if (bcKey == "brightness") curBright = (int)(bcVal * 1000);
+                    else curContrast = (int)(bcVal * 1000);
+
+                    var lum = new Drawing.LuminanceEffect();
+                    if (curBright != 0) lum.Brightness = curBright;
+                    if (curContrast != 0) lum.Contrast = curContrast;
+                    blipBC.AppendChild(lum);
+                }
+
+                // CONSISTENCY(shape-picture-parity): pictures are routinely
+                // click-targets — wire link= the same way shape does.
+                // Tooltip is the same secondary key as on shape.
+                if (properties.TryGetValue("link", out var picLink))
+                {
+                    var picTip = properties.GetValueOrDefault("tooltip");
+                    ApplyPictureHyperlink(imgSlidePart, picture, picLink, picTip);
+                }
+
+                InsertAtPosition(imgInsertContainer, picture, index);
+
+                // CONSISTENCY(zorder-on-add): dump-emit carries zorder=N; without
+                // consuming it here every picture appended at the end of the tree.
+                if (properties.TryGetValue("zorder", out var picZ)
+                    || properties.TryGetValue("z-order", out picZ)
+                    || properties.TryGetValue("order", out picZ))
+                {
+                    ApplyZOrder(imgSlidePart, picture, picZ);
+                }
+
+<<<<<<< HEAD
                 // CONSISTENCY(shape-picture-parity): rotation lives on the
                 // same Transform2D as shape/connector/group; PowerPoint
                 // applies it identically to pictures. Set.Media already
@@ -492,6 +781,11 @@ public partial class PowerPointHandler
                 GetSlide(imgSlidePart).Save();
 
                 return $"/slide[{imgSlideIdx}]/{BuildElementPathSegment("picture", picture, imgShapeTree.Elements<Picture>().Count())}";
+=======
+                GetSlide(imgSlidePart).Save();
+
+                return $"{imgReturnPrefix}/{BuildElementPathSegment("picture", picture, imgInsertContainer.Elements<Picture>().Count())}";
+>>>>>>> upstream/main
     }
 
 
@@ -519,10 +813,17 @@ public partial class PowerPointHandler
 
     private string AddChart(string parentPath, int? index, Dictionary<string, string> properties)
     {
-                var chartSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
-                if (!chartSlideMatch.Success)
-                    throw new ArgumentException("Charts must be added to a slide: /slide[N]");
+                // Accept a slide (/slide[N]) or a nested-group parent
+                // (/slide[N]/group[K]/…) so dump-emitted grouped charts replay.
+                var chartParent = ResolveSlideOrGroupAddParent(parentPath)
+                    ?? throw new ArgumentException("Charts must be added to a slide: /slide[N]");
+                var chartSlideIdx = chartParent.slideIdx;
+                var chartSlidePart = chartParent.slidePart;
+                var chartShapeTree = chartParent.shapeTree;
+                var chartInsertContainer = chartParent.insertContainer;
+                var chartReturnPrefix = chartParent.returnPathPrefix;
 
+<<<<<<< HEAD
                 var chartSlideIdx = int.Parse(chartSlideMatch.Groups[1].Value);
                 var chartSlideParts = GetSlideParts().ToList();
                 if (chartSlideIdx < 1 || chartSlideIdx > chartSlideParts.Count)
@@ -532,6 +833,8 @@ public partial class PowerPointHandler
                 var chartShapeTree = GetSlide(chartSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
+=======
+>>>>>>> upstream/main
                 // Parse chart data. Use TryGetValue(case-insensitive) instead
                 // of LINQ FirstOrDefault to play well with TrackingPropertyDictionary.
                 string chartType = "column";
@@ -569,7 +872,18 @@ public partial class PowerPointHandler
                 var categories = ChartHelper.ParseCategories(properties);
                 var seriesData = ChartHelper.ParseSeriesData(properties);
 
-                if (seriesData.Count == 0)
+                // allowEmpty: dump→replay of a genuinely dataless chart (0 series —
+                // an unpopulated template doughnut/pie the author never filled).
+                // PowerPoint keeps such charts; BuildChartSpace produces a valid
+                // empty chart frame (its series loops simply don't run). The
+                // data-required throw is an interactive-use convenience, so the
+                // emitter sets allowEmpty to round-trip the empty chart faithfully.
+                bool chartAllowEmpty = (properties.TryGetValue("allowEmpty", out var caE)
+                                         || properties.TryGetValue("allowempty", out caE))
+                                        && IsTruthy(caE);
+                properties.Remove("allowEmpty");
+                properties.Remove("allowempty");
+                if (seriesData.Count == 0 && !chartAllowEmpty)
                     throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
                         "or series1=\"Revenue:100,200,300\"");
 
@@ -635,7 +949,11 @@ public partial class PowerPointHandler
 
                     var chartGfEx = BuildExtendedChartGraphicFrame(chartSlidePart, extChartPart,
                         chartId, chartName, chartX, chartY, chartCx, chartCy);
+<<<<<<< HEAD
                     InsertAtPosition(chartShapeTree, chartGfEx, index);
+=======
+                    InsertAtPosition(chartInsertContainer, chartGfEx, index);
+>>>>>>> upstream/main
                     if (properties.TryGetValue("zorder", out var cxZ)
                         || properties.TryGetValue("z-order", out cxZ)
                         || properties.TryGetValue("order", out cxZ))
@@ -643,9 +961,13 @@ public partial class PowerPointHandler
                     GetSlide(chartSlidePart).Save();
 
                     // Count all charts (both regular and extended)
-                    var totalCharts = chartShapeTree.Elements<GraphicFrame>()
+                    var totalCharts = chartInsertContainer.Elements<GraphicFrame>()
                         .Count(gf => gf.Descendants<C.ChartReference>().Any() || IsExtendedChartFrame(gf));
+<<<<<<< HEAD
                     return $"/slide[{chartSlideIdx}]/{BuildElementPathSegment("chart", chartGfEx, totalCharts)}";
+=======
+                    return $"{chartReturnPrefix}/{BuildElementPathSegment("chart", chartGfEx, totalCharts)}";
+>>>>>>> upstream/main
                 }
 
                 // Build chart content BEFORE adding part (invalid type throws, must not leave empty part)
@@ -682,16 +1004,24 @@ public partial class PowerPointHandler
 
                 var chartGf = BuildChartGraphicFrame(chartSlidePart, chartPart, chartId, chartName,
                     chartX, chartY, chartCx, chartCy);
+<<<<<<< HEAD
                 InsertAtPosition(chartShapeTree, chartGf, index);
+=======
+                InsertAtPosition(chartInsertContainer, chartGf, index);
+>>>>>>> upstream/main
                 if (properties.TryGetValue("zorder", out var stdZ)
                     || properties.TryGetValue("z-order", out stdZ)
                     || properties.TryGetValue("order", out stdZ))
                     ApplyZOrder(chartSlidePart, chartGf, stdZ);
                 GetSlide(chartSlidePart).Save();
 
-                var chartCount = chartShapeTree.Elements<GraphicFrame>()
+                var chartCount = chartInsertContainer.Elements<GraphicFrame>()
                     .Count(gf => gf.Descendants<C.ChartReference>().Any());
+<<<<<<< HEAD
                 return $"/slide[{chartSlideIdx}]/{BuildElementPathSegment("chart", chartGf, chartCount)}";
+=======
+                return $"{chartReturnPrefix}/{BuildElementPathSegment("chart", chartGf, chartCount)}";
+>>>>>>> upstream/main
     }
 
 

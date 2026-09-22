@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.Json;
@@ -25,8 +29,16 @@ internal sealed class FormatHandlerProxy : IDocumentHandler
 
     // ----- Semantic layer (text views) -----------------------------------
 
+<<<<<<< HEAD
     public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
         => SendViewString("text", startLine, endLine, maxLines, cols);
+=======
+    public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
+    {
+        ViewRangeGuard.RejectTextRange(range, "this format");
+        return SendViewString("text", startLine, endLine, maxLines, cols);
+    }
+>>>>>>> upstream/main
 
     public string ViewAsAnnotated(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
         => SendViewString("annotated", startLine, endLine, maxLines, cols);
@@ -39,8 +51,16 @@ internal sealed class FormatHandlerProxy : IDocumentHandler
 
     public JsonNode ViewAsStatsJson() => SendViewJson("stats");
     public JsonNode ViewAsOutlineJson() => SendViewJson("outline");
+<<<<<<< HEAD
     public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
         => SendViewJson("text", startLine, endLine, maxLines, cols);
+=======
+    public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
+    {
+        ViewRangeGuard.RejectTextRange(range, "this format");
+        return SendViewJson("text", startLine, endLine, maxLines, cols);
+    }
+>>>>>>> upstream/main
 
     public List<DocumentIssue> ViewAsIssues(string? issueType = null, int? limit = null)
     {

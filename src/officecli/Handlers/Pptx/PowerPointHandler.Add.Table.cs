@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -33,6 +37,7 @@ public partial class PowerPointHandler
                 string[][]? tableData = null;
                 if (properties.TryGetValue("data", out var dataStr))
                 {
+<<<<<<< HEAD
                     if (OfficeCli.Core.FileSource.IsResolvable(dataStr))
                     {
                         // CSV file/URL/data-URI
@@ -40,21 +45,46 @@ public partial class PowerPointHandler
                             .Where(l => !string.IsNullOrWhiteSpace(l))
                             .Select(l => l.Split(',').Select(c => c.Trim()).ToArray())
                             .ToArray();
+=======
+                    // Both forms are quote-aware: a cell wrapped in double
+                    // quotes may contain the separator, so `"Doe, John",30` is
+                    // two cells. A plain Split(',') made it three.
+                    // CONSISTENCY(table-data-parse): mirrored in the docx path.
+                    if (OfficeCli.Core.FileSource.IsResolvable(dataStr))
+                    {
+                        // CSV file/URL/data-URI
+                        tableData = OfficeCli.Core.DelimitedText.ParseGrid(
+                            OfficeCli.Core.FileSource.ResolveText(dataStr), ',', '\n');
+>>>>>>> upstream/main
                     }
                     else
                     {
                         // Inline: semicolons separate rows, commas separate cells
-                        tableData = dataStr.Split(';')
-                            .Select(r => r.Split(',').Select(c => c.Trim()).ToArray())
-                            .ToArray();
+                        tableData = OfficeCli.Core.DelimitedText.ParseGrid(dataStr, ',', ';');
                     }
                 }
 
                 int rows, cols;
                 if (tableData != null)
                 {
+                    // Empty data → Max() over an empty grid threw
+                    // InvalidOperationException; reject cleanly (mirrors the docx
+                    // add-table path).
+                    if (tableData.Length == 0 || tableData.All(r => r.Length == 0))
+                        throw new ArgumentException(
+                            "Table 'data' is empty — provide at least one cell (e.g. data=\"a,b;c,d\"), "
+                            + "or omit 'data' and pass rows=/cols= to create a blank table.");
                     rows = tableData.Length;
                     cols = tableData.Max(r => r.Length);
+                    // ParseGrid drops all-empty rows (blank-line skip, right for
+                    // CSV import). When the caller ALSO gave explicit rows=/cols=,
+                    // honor them as a floor so `data="H1,H2;,," rows=2` still makes
+                    // a 2-row table (the second row padded empty) rather than
+                    // silently collapsing to one.
+                    if (properties.TryGetValue("rows", out var rWantStr)
+                        && int.TryParse(rWantStr, out var rWant) && rWant > rows) rows = rWant;
+                    if (properties.TryGetValue("cols", out var cWantStr)
+                        && int.TryParse(cWantStr, out var cWant) && cWant > cols) cols = cWant;
                 }
                 else
                 {
@@ -225,9 +255,27 @@ public partial class PowerPointHandler
                 // table-level border element — borders are per-cell lnL/lnR/lnT/lnB,
                 // so border.all / border.top / etc. are applied to every cell.
                 // border.horizontal / border.vertical mean inside row/column dividers.
+<<<<<<< HEAD
                 var tblBorderProps = properties
                     .Where(kv => kv.Key.StartsWith("border", StringComparison.OrdinalIgnoreCase))
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
+=======
+                //
+                // ARCHITECTURE(handler-as-truth): iterate properties.Keys (which
+                // does NOT route through the TrackingPropertyDictionary enumerator)
+                // and read matches via TryGetValue, so only border.* keys we
+                // actually consume get marked accessed. A LINQ .Where() over
+                // `properties` here would route through the tracking enumerator and
+                // mark EVERY key accessed (TrackingPropertyDictionary.cs:117-128),
+                // silently suppressing unsupported_property for real typos and for
+                // 0-based r0c0 cell keys (the supported cell syntax is 1-based
+                // r1c1). Iterate Keys + TryGetValue so only consumed keys are marked.
+                var tblBorderProps = new Dictionary<string, string>();
+                foreach (var key in properties.Keys.ToList())
+                    if (key.StartsWith("border", StringComparison.OrdinalIgnoreCase)
+                        && properties.TryGetValue(key, out var bv))
+                        tblBorderProps[key] = bv;
+>>>>>>> upstream/main
                 if (tblBorderProps.Count > 0)
                     ApplyTableBorderFanOut(table, tblBorderProps);
 
@@ -276,11 +324,20 @@ public partial class PowerPointHandler
             bool isRight = key.StartsWith("border.right");
             bool isInsideH = key.StartsWith("border.horizontal") || key.StartsWith("border.insideh");
             bool isInsideV = key.StartsWith("border.vertical")   || key.StartsWith("border.insidev");
+<<<<<<< HEAD
             bool isDiag = key.StartsWith("border.tl2br") || key.StartsWith("border.tr2bl");
 
             // Split-form suffix preserved on cell-level key (e.g. ".width" / ".color" / ".dash").
             string splitSuffix = "";
             foreach (var s in new[] { ".width", ".color", ".dash" })
+=======
+            bool isDiag = key.StartsWith("border.tl2br") || key.StartsWith("border.tr2bl")
+                       || key.StartsWith("border.diagdown") || key.StartsWith("border.diagup");
+
+            // Split-form suffix preserved on cell-level key (e.g. ".width" / ".color" / ".dash" / ".compound").
+            string splitSuffix = "";
+            foreach (var s in new[] { ".width", ".color", ".dash", ".compound" })
+>>>>>>> upstream/main
                 if (key.EndsWith(s)) { splitSuffix = s; break; }
 
             void ApplyToCell(Drawing.TableCell cell, string edgeKey)
@@ -298,7 +355,14 @@ public partial class PowerPointHandler
             }
             if (isDiag)
             {
+<<<<<<< HEAD
                 var diagEdge = key.StartsWith("border.tl2br") ? "border.tl2br" : "border.tr2bl";
+=======
+                // diagDown = top-left → bottom-right slope (tl2br). diagUp = tr2bl.
+                var diagEdge = (key.StartsWith("border.tl2br") || key.StartsWith("border.diagdown"))
+                    ? "border.tl2br"
+                    : "border.tr2bl";
+>>>>>>> upstream/main
                 foreach (var row in rows)
                     foreach (var cell in row.Elements<Drawing.TableCell>())
                         ApplyToCell(cell, diagEdge);
@@ -447,7 +511,7 @@ public partial class PowerPointHandler
                 }
 
                 GetSlide(rowSlidePart).Save();
-                var rowIdx = rowTable.Elements<Drawing.TableRow>().ToList().IndexOf(newTblRow) + 1;
+                var rowIdx = PathIndex.FromArrayIndex(rowTable.Elements<Drawing.TableRow>().ToList().IndexOf(newTblRow));
                 return $"{parentPath}/tr[{rowIdx}]";
     }
 
@@ -486,7 +550,11 @@ public partial class PowerPointHandler
 
                 // Cell text from property
                 var cellText = properties.GetValueOrDefault("text", "");
+<<<<<<< HEAD
                 XmlTextValidator.ValidateOrThrow(cellText, "text");
+=======
+                XmlTextValidator.ValidateOrThrow(cellText, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
 
                 // For each row, insert a new cell at the same column index
                 foreach (var row in colTable.Elements<Drawing.TableRow>())
@@ -522,7 +590,7 @@ public partial class PowerPointHandler
                 }
 
                 GetSlide(colSlidePart).Save();
-                var colIdx = tableGrid.Elements<Drawing.GridColumn>().ToList().IndexOf(newGridCol) + 1;
+                var colIdx = PathIndex.FromArrayIndex(tableGrid.Elements<Drawing.GridColumn>().ToList().IndexOf(newGridCol));
                 return $"{parentPath}/col[{colIdx}]";
     }
 
@@ -561,7 +629,11 @@ public partial class PowerPointHandler
                 var cPara = new Drawing.Paragraph();
                 if (properties.TryGetValue("text", out var cText) && !string.IsNullOrEmpty(cText))
                 {
+<<<<<<< HEAD
                     XmlTextValidator.ValidateOrThrow(cText, "text");
+=======
+                    XmlTextValidator.ValidateOrThrow(cText, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                     cPara.Append(new Drawing.Run(
                         new Drawing.RunProperties { Language = "en-US" },
                         new Drawing.Text { Text = cText }));
@@ -610,7 +682,7 @@ public partial class PowerPointHandler
                 }
 
                 GetSlide(cellSlidePart).Save();
-                var cellIdx = cellRow.Elements<Drawing.TableCell>().ToList().IndexOf(newCell) + 1;
+                var cellIdx = PathIndex.FromArrayIndex(cellRow.Elements<Drawing.TableCell>().ToList().IndexOf(newCell));
                 return $"{parentPath}/tc[{cellIdx}]";
     }
 

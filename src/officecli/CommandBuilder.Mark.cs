@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -38,7 +42,11 @@ static partial class CommandBuilder
         cmd.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(fileArg)!;
+<<<<<<< HEAD
             var path = result.GetValue(pathArg)!;
+=======
+            var path = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(pathArg)!)!;
+>>>>>>> upstream/main
             var rawProps = result.GetValue(propsOpt) ?? Array.Empty<string>();
 
             var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -46,7 +54,18 @@ static partial class CommandBuilder
             foreach (var p in rawProps)
             {
                 var eq = p.IndexOf('=');
+<<<<<<< HEAD
                 if (eq <= 0) continue;
+=======
+                if (eq <= 0)
+                {
+                    // Same rules as ParsePropsArray: a token --prop swallowed
+                    // that is not key=value is an error, never a silent drop.
+                    if (p.StartsWith("--") && p.Length > 2)
+                        throw new OfficeCli.Core.CliException($"Unrecognized option '{p}'.") { Code = "invalid_argument" };
+                    throw new OfficeCli.Core.CliException($"Invalid --prop '{p}': expected key=value.") { Code = "invalid_argument" };
+                }
+>>>>>>> upstream/main
                 var key = p[..eq];
                 var val = p[(eq + 1)..];
 
@@ -98,7 +117,11 @@ static partial class CommandBuilder
             // CONSISTENCY(find-regex): reuse WordHandler.Set.cs:60-61's regex→raw-string conversion
             // so mark and set share the exact same find/regex vocabulary (literal | r"..." | regex=true flag).
             // To change the find parsing protocol, grep "CONSISTENCY(find-regex)" and update every call site
+<<<<<<< HEAD
             // project-wide in one pass — never patch mark alone. See CLAUDE.md Design Principles.
+=======
+            // project-wide in one pass — never patch mark alone. See the project conventions Design Principles.
+>>>>>>> upstream/main
             props.TryGetValue("find", out var findText);
             findText ??= "";
             if (props.TryGetValue("regex", out var regexFlag) && ParseHelpers.IsTruthySafe(regexFlag)
@@ -253,7 +276,11 @@ static partial class CommandBuilder
         cmd.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(fileArg)!;
+<<<<<<< HEAD
             var pathVal = result.GetValue(pathOpt);
+=======
+            var pathVal = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(pathOpt));
+>>>>>>> upstream/main
             var allVal = result.GetValue(allOpt);
 
             // Require explicit choice — never silently default
@@ -368,5 +395,9 @@ static partial class CommandBuilder
     }
 
     private static string Truncate(string s, int max)
+<<<<<<< HEAD
         => s.Length <= max ? s : s.Substring(0, max - 1) + "…";
+=======
+        => s.Length <= max ? s : OfficeCli.Core.DisplayText.Truncate(s, max - 1);
+>>>>>>> upstream/main
 }

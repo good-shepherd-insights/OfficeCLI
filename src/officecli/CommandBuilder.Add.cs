@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -17,7 +21,11 @@ static partial class CommandBuilder
         {
             Description = "Parent DOM path. Conventions per handler: docx uses /body (or /body/p[N] for nested adds); xlsx uses /Sheet1 (or any sheet name); pptx slide uses '/' (slides hang off the presentation root), pptx shape uses /slide[N]. Wrap paths containing brackets in single quotes for zsh: '/slide[1]'."
         };
+<<<<<<< HEAD
         var addTypeOpt = new Option<string>("--type") { Description = "Element type to add (e.g. paragraph, run, table, sheet, row, cell, slide, shape, picture, ole, video)" };
+=======
+        var addTypeOpt = new Option<string>("--type") { Description = "Element type to add (e.g. paragraph, run, table, sheet, row, cell, slide, shape, picture, diagram/flowchart, ole, video)" };
+>>>>>>> upstream/main
         var addFromOpt = new Option<string?>("--from") { Description = "Copy from an existing element path (e.g. /slide[1]/shape[2])" };
         var addIndexOpt = new Option<int?>("--index")
         {
@@ -56,13 +64,21 @@ static partial class CommandBuilder
 
         addCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
+            // CONSISTENCY(numfmt-warning): see CommandBuilder.Set.cs — collect
+            // Core-layer advisory warnings for the JSON envelope.
+            if (json) OfficeCli.Core.WarningContext.Begin();
             var file = result.GetValue(addFileArg)!;
-            var parentPath = result.GetValue(addParentPathArg)!;
+            var parentPath = MsysPathHint.Restore(result.GetValue(addParentPathArg)!)!;
             var type = result.GetValue(addTypeOpt);
-            var from = result.GetValue(addFromOpt);
+            var from = MsysPathHint.Restore(result.GetValue(addFromOpt));
             var index = result.GetValue(addIndexOpt);
+<<<<<<< HEAD
             var after = result.GetValue(addAfterOpt);
             var before = result.GetValue(addBeforeOpt);
+=======
+            var after = MsysPathHint.Restore(result.GetValue(addAfterOpt));
+            var before = MsysPathHint.Restore(result.GetValue(addBeforeOpt));
+>>>>>>> upstream/main
             var props = result.GetValue(addPropsOpt);
             var force = result.GetValue(forceOption);
 
@@ -110,6 +126,14 @@ static partial class CommandBuilder
                     Console.Error.WriteLine("Hint: Properties must be passed with --prop flag, e.g. officecli add <file> <parent> --type picture --prop src=image.png");
                 }
             }
+
+            // TreatUnmatchedTokensAsErrors=false exists so the bare key=value
+            // warnings above can fire — but it also let a completely unknown
+            // `--flag value` pair (e.g. `--at A2`) vanish silently with exit 0,
+            // placing the element somewhere the caller did not intend. Any
+            // remaining unmatched --option that DetectUnmatchedKeyValues did
+            // not claim is a hard error, matching set/get behavior.
+            RejectUnknownOptionTokens(result, unmatchedKvWarnings);
 
             if (string.IsNullOrEmpty(type) && string.IsNullOrEmpty(from))
             {
@@ -248,8 +272,43 @@ static partial class CommandBuilder
                     });
                 }
 
+<<<<<<< HEAD
                 // Advisory warnings from the Word handler (e.g. unknown styleId
                 // referenced as-is, unresolved styleName with spaces skipped).
+=======
+                // Unrecognized LaTeX commands/environments from an equation
+                // parse. Surfaced with the same UX as unsupported_property
+                // (warning + JSON envelope + exit 2) — the equation is still
+                // written (lenient accept), but the literal-text fallback is no
+                // longer silent. CONSISTENCY: mirrored in ResidentServer.ExecuteAdd.
+                var unrecognizedLatex = handler switch
+                {
+                    OfficeCli.Handlers.WordHandler wlx => wlx.LastUnrecognizedLatex,
+                    OfficeCli.Handlers.PowerPointHandler plx => plx.LastUnrecognizedLatex,
+                    _ => null,
+                };
+                if (unrecognizedLatex is { Count: > 0 })
+                {
+                    foreach (var tok in unrecognizedLatex)
+                    {
+                        addWarnings.Add(new OfficeCli.Core.CliWarning
+                        {
+                            Message = $"unrecognized_latex_command: {tok}",
+                            Code = "unrecognized_latex_command",
+                            Suggestion = "Check the command spelling; see https://katex.org/docs/supported.html for supported syntax.",
+                        });
+                    }
+                }
+
+                // Advisory warnings from the Word handler (e.g. unknown styleId
+                // referenced as-is, unresolved styleName with spaces skipped).
+                // These do NOT flip the exit code: the requested value was still
+                // written (the styleId is stored as-is), so the mutation
+                // succeeded — exit 0 with the warning on stderr, mirroring Set's
+                // identical "style '…' not found — referenced as-is" path. Exit
+                // is reserved for "the value did not get written" (unsupported
+                // property below → 2; missing element → not_found).
+>>>>>>> upstream/main
                 if (handler is OfficeCli.Handlers.WordHandler addWhWarn
                     && addWhWarn.LastAddWarnings.Count > 0)
                 {
@@ -261,7 +320,10 @@ static partial class CommandBuilder
                             Code = "advisory",
                         });
                     }
+<<<<<<< HEAD
                     hadWarnings = true;
+=======
+>>>>>>> upstream/main
                 }
 
                 if (json)
@@ -286,6 +348,10 @@ static partial class CommandBuilder
                 else NotifyWatch(handler, file.FullName, parentPath);
 
                 if (unsupported.Count > 0) return 2;
+<<<<<<< HEAD
+=======
+                if (unrecognizedLatex is { Count: > 0 }) return 2;
+>>>>>>> upstream/main
             }
 
             return hadWarnings ? 2 : 0;
@@ -317,7 +383,11 @@ static partial class CommandBuilder
         removeCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(removeFileArg)!;
+<<<<<<< HEAD
             var path = result.GetValue(removePathArg)!;
+=======
+            var path = MsysPathHint.Restore(result.GetValue(removePathArg)!)!;
+>>>>>>> upstream/main
             var shift = result.GetValue(shiftOption);
             var props = result.GetValue(removePropsOpt);
             var parsedProps = (props != null && props.Length > 0) ? ParsePropsArray(props) : null;
@@ -371,7 +441,15 @@ static partial class CommandBuilder
         var moveFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var movePathArg = new Argument<string>("path") { Description = "DOM path of the element to move" };
         var moveToOpt = new Option<string?>("--to") { Description = "Target parent path. If omitted, reorders within the current parent" };
+<<<<<<< HEAD
         var moveIndexOpt = new Option<int?>("--index") { Description = "Insert position (0-based). If omitted, appends to end" };
+=======
+        // Post-removal splice: the element is detached first and the index is
+        // applied to what remains, so moving p[1] to index 2 in [P1,P2,P3,P4]
+        // yields [P2,P3,P1,P4] — not "insert before the current p[3]". The
+        // two readings only differ for backward moves; say it in the help.
+        var moveIndexOpt = new Option<int?>("--index") { Description = "Insert position (0-based) among the remaining siblings after the element is detached — moving p[1] to --index 2 in [P1,P2,P3,P4] gives [P2,P3,P1,P4]. If omitted, appends to end" };
+>>>>>>> upstream/main
         var moveAfterOpt = new Option<string?>("--after") { Description = "Move after the element at this path" };
         var moveBeforeOpt = new Option<string?>("--before") { Description = "Move before the element at this path" };
         // --prop currently carries trackChange.author/date/id for the
@@ -392,11 +470,16 @@ static partial class CommandBuilder
         moveCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(moveFileArg)!;
-            var path = result.GetValue(movePathArg)!;
-            var to = result.GetValue(moveToOpt);
+            var path = MsysPathHint.Restore(result.GetValue(movePathArg)!)!;
+            var to = MsysPathHint.Restore(result.GetValue(moveToOpt));
             var index = result.GetValue(moveIndexOpt);
+<<<<<<< HEAD
             var after = result.GetValue(moveAfterOpt);
             var before = result.GetValue(moveBeforeOpt);
+=======
+            var after = MsysPathHint.Restore(result.GetValue(moveAfterOpt));
+            var before = MsysPathHint.Restore(result.GetValue(moveBeforeOpt));
+>>>>>>> upstream/main
             var props = result.GetValue(movePropsOpt);
 
             // Validate mutual exclusivity of --index, --after, --before
@@ -453,8 +536,13 @@ static partial class CommandBuilder
         swapCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(swapFileArg)!;
+<<<<<<< HEAD
             var path1 = result.GetValue(swapPath1Arg)!;
             var path2 = result.GetValue(swapPath2Arg)!;
+=======
+            var path1 = MsysPathHint.Restore(result.GetValue(swapPath1Arg)!)!;
+            var path2 = MsysPathHint.Restore(result.GetValue(swapPath2Arg)!)!;
+>>>>>>> upstream/main
 
             if (TryResident(file.FullName, req =>
             {

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -33,7 +37,11 @@ internal partial class ChartSvgRenderer
     /// boxWhisker) which dispatch to new dedicated emitters in
     /// RenderChartSvgContent.
     /// </summary>
+<<<<<<< HEAD
     public static ChartInfo ExtractCxChartInfo(CX.Chart chart)
+=======
+    public static ChartInfo ExtractCxChartInfo(CX.Chart chart, Dictionary<string, string>? themeColors = null)
+>>>>>>> upstream/main
     {
         var info = new ChartInfo();
 
@@ -46,8 +54,13 @@ internal partial class ChartSvgRenderer
             var titleRpr = chartTitle.Descendants<Drawing.RunProperties>().FirstOrDefault();
             if (titleRpr?.FontSize?.HasValue == true)
                 info.TitleFontSize = $"{titleRpr.FontSize.Value / 100.0}pt";
+<<<<<<< HEAD
             var titleColor = titleRpr?.GetFirstChild<Drawing.SolidFill>()
                 ?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+=======
+            // Title color: resolve srgbClr AND schemeClr/sysClr/prstClr through the theme.
+            var titleColor = ExtractFontColor(titleRpr, themeColors);
+>>>>>>> upstream/main
             if (!string.IsNullOrEmpty(titleColor)) info.TitleFontColor = $"#{titleColor}";
         }
 
@@ -103,6 +116,7 @@ internal partial class ChartSvgRenderer
 
             info.Series.Add((seriesName, values));
 
+<<<<<<< HEAD
             // Series fill color
             var spPrFill = series.GetFirstChild<CX.ShapeProperties>()
                 ?.GetFirstChild<Drawing.SolidFill>()
@@ -113,6 +127,12 @@ internal partial class ChartSvgRenderer
             if (!string.IsNullOrEmpty(spPrFill)
                 && spPrFill.Length is 3 or 6 or 8
                 && spPrFill.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
+=======
+            // Series fill color — resolve srgbClr AND schemeClr/sysClr/prstClr through the
+            // theme map (ExtractFillColor hex-gates its result, so it is safe to interpolate).
+            var spPrFill = ExtractFillColor(series.GetFirstChild<CX.ShapeProperties>(), themeColors);
+            if (!string.IsNullOrEmpty(spPrFill))
+>>>>>>> upstream/main
                 info.Colors.Add($"#{spPrFill}");
         }
 
@@ -193,16 +213,28 @@ internal partial class ChartSvgRenderer
                 var valDefRPr = valTxPr?.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
                 if (valDefRPr?.FontSize?.HasValue == true)
                     info.ValFontPx = (int)(valDefRPr.FontSize.Value / 100.0);
+<<<<<<< HEAD
                 info.ValFontColor = ExtractFontColor(valDefRPr);
+=======
+                info.ValFontColor = ExtractFontColor(valDefRPr, themeColors);
+>>>>>>> upstream/main
 
                 // Major gridline color
                 var valGl = valAxis.Elements().FirstOrDefault(e => e.LocalName == "majorGridlines");
                 var valGlSpPr = valGl?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+<<<<<<< HEAD
                 info.GridlineColor = ExtractLineColor(valGlSpPr);
 
                 // Axis spine color
                 var valSpPr = valAxis.Elements().FirstOrDefault(e => e.LocalName == "spPr");
                 info.AxisLineColor = ExtractLineColor(valSpPr);
+=======
+                info.GridlineColor = ExtractLineColor(valGlSpPr, themeColors);
+
+                // Axis spine color
+                var valSpPr = valAxis.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+                info.AxisLineColor = ExtractLineColor(valSpPr, themeColors);
+>>>>>>> upstream/main
             }
 
             if (catAxis != null)
@@ -227,7 +259,11 @@ internal partial class ChartSvgRenderer
                 var catDefRPr = catTxPr?.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
                 if (catDefRPr?.FontSize?.HasValue == true)
                     info.CatFontPx = (int)(catDefRPr.FontSize.Value / 100.0);
+<<<<<<< HEAD
                 info.CatFontColor = ExtractFontColor(catDefRPr);
+=======
+                info.CatFontColor = ExtractFontColor(catDefRPr, themeColors);
+>>>>>>> upstream/main
 
                 // Category-axis spine color (cataxis.line / axisline) — if
                 // only axisline was set, both axes received identical outlines;
@@ -237,7 +273,11 @@ internal partial class ChartSvgRenderer
                 if (info.AxisLineColor == null)
                 {
                     var catSpPr = catAxis.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+<<<<<<< HEAD
                     info.AxisLineColor = ExtractLineColor(catSpPr);
+=======
+                    info.AxisLineColor = ExtractLineColor(catSpPr, themeColors);
+>>>>>>> upstream/main
                 }
             }
         }
@@ -273,9 +313,15 @@ internal partial class ChartSvgRenderer
         // even though the XML is perfectly correct — the fills only
         // surface in Excel itself.
         var plotSpPr = plotArea?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+<<<<<<< HEAD
         info.PlotFillColor = ExtractFillColor(plotSpPr);
         var chartSpPr = chartSpace?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
         info.ChartFillColor = ExtractFillColor(chartSpPr);
+=======
+        info.PlotFillColor = ExtractFillColor(plotSpPr, themeColors);
+        var chartSpPr = chartSpace?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+        info.ChartFillColor = ExtractFillColor(chartSpPr, themeColors);
+>>>>>>> upstream/main
 
         // ---- Legend ----
         // Presence-based (cx omits the element entirely to hide the legend,
@@ -290,7 +336,11 @@ internal partial class ChartSvgRenderer
             var legendDefRPr = legendTxPr?.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
             if (legendDefRPr?.FontSize?.HasValue == true)
                 info.LegendFontSize = $"{legendDefRPr.FontSize.Value / 100.0:0.##}pt";
+<<<<<<< HEAD
             info.LegendFontColor = ExtractFontColor(legendDefRPr);
+=======
+            info.LegendFontColor = ExtractFontColor(legendDefRPr, themeColors);
+>>>>>>> upstream/main
         }
 
         return info;

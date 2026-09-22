@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -21,6 +25,46 @@ public partial class ExcelHandler
     /// the caller wires in an SVG image part. Keeps Add/Set picture paths
     /// free of inline extension boilerplate.
     /// </summary>
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// CONSISTENCY(shape-line): build a shape <a:ln> outline from the compound
+    /// 'color[:width[:style]]' form (mirrors the pptx shape line grammar and
+    /// the xlsx Set path). 'none' → NoFill outline. width in points; style is
+    /// a prstDash token (solid/dash/dot/dashdot/longdash). Single-place OOXML
+    /// mutation so Add and Set stay identical.
+    /// </summary>
+    private static Drawing.Outline BuildShapeOutline(string value)
+    {
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
+            return new Drawing.Outline(new Drawing.NoFill());
+
+        var parts = value.Split(':');
+        var outline = new Drawing.Outline(DrawingColorBuilder.BuildSolidFill(parts[0]));
+        if (parts.Length > 1
+            && double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var wpt))
+        {
+            outline.Width = (int)Math.Round(wpt * EmuConverter.EmuPerPoint);
+        }
+        if (parts.Length > 2)
+        {
+            var dash = parts[2].ToLowerInvariant() switch
+            {
+                "dash" => Drawing.PresetLineDashValues.Dash,
+                "dot" => Drawing.PresetLineDashValues.Dot,
+                "dashdot" => Drawing.PresetLineDashValues.DashDot,
+                "longdash" => Drawing.PresetLineDashValues.LargeDash,
+                "solid" => Drawing.PresetLineDashValues.Solid,
+                _ => (Drawing.PresetLineDashValues?)null
+            };
+            if (dash != null)
+                outline.AppendChild(new Drawing.PresetDash { Val = dash });
+        }
+        return outline;
+    }
+
+>>>>>>> upstream/main
     private static XDR.BlipFill BuildPictureBlipFill(string pngRelId, string? svgRelId)
         => BuildPictureBlipFill(pngRelId, svgRelId, null);
 
@@ -77,6 +121,24 @@ public partial class ExcelHandler
                     $"Invalid srcRect '{compound}'. Expected 'l=10,r=10,t=5,b=5' (any subset; values are percent 0-100). "
                     + "For raw l/t/r/b numbers use cropLeft/cropTop/cropRight/cropBottom keys.");
         }
+<<<<<<< HEAD
+=======
+        // CONSISTENCY(picture-crop): bare composite `crop=l,t,r,b` — the exact
+        // form Get emits (and pptx Add already accepts). Without it, dump→batch
+        // replay warned UNSUPPORTED and silently dropped the srcRect.
+        if (properties.TryGetValue("crop", out var cropAll) && !string.IsNullOrWhiteSpace(cropAll)
+            && !cropAll.Contains('='))
+        {
+            var cropParts = cropAll.Split(',');
+            var cropVals = cropParts.Length == 4
+                ? cropParts.Select(ParseCropPercent).ToArray()
+                : null;
+            if (cropVals == null || !cropVals.All(v => v.HasValue))
+                throw new ArgumentException(
+                    $"Invalid crop '{cropAll}'. Expected four comma-separated percentages in l,t,r,b order (e.g. '10,15,5,20').");
+            l = cropVals[0]; t = cropVals[1]; r = cropVals[2]; b = cropVals[3];
+        }
+>>>>>>> upstream/main
         foreach (var (key, fld) in new[] { ("crop.l", "l"), ("crop.r", "r"), ("crop.t", "t"), ("crop.b", "b") })
         {
             if (properties.TryGetValue(key, out var vs) && !string.IsNullOrWhiteSpace(vs))
@@ -262,7 +324,11 @@ public partial class ExcelHandler
         gradFill.AppendChild(gsLst);
         gradFill.AppendChild(new Drawing.LinearGradientFill
         {
+<<<<<<< HEAD
             Angle = anglePart * 60000,
+=======
+            Angle = ParseHelpers.GradientAngleToOoxmlUnits(anglePart),
+>>>>>>> upstream/main
             Scaled = true
         });
         return gradFill;
@@ -270,6 +336,25 @@ public partial class ExcelHandler
 
     // ==================== Picture Helpers ====================
 
+<<<<<<< HEAD
+=======
+    // Pictures can hang off any of the three anchor kinds AddPicture emits
+    // (twoCellAnchor / oneCellAnchor / absoluteAnchor). Enumerate in document
+    // order so picture[N] indexing is stable across mixed anchor kinds — every
+    // consumer (Get / Query / Set / Remove / dump) must use this enumerator or
+    // their index spaces diverge and oneCell/absolute pictures silently vanish
+    // from dump output.
+    internal static IEnumerable<OpenXmlCompositeElement> EnumeratePictureAnchors(XDR.WorksheetDrawing wsDrawing)
+    {
+        foreach (var child in wsDrawing.ChildElements)
+        {
+            if (child is XDR.TwoCellAnchor or XDR.OneCellAnchor or XDR.AbsoluteAnchor
+                && child.Descendants<XDR.Picture>().Any())
+                yield return (OpenXmlCompositeElement)child;
+        }
+    }
+
+>>>>>>> upstream/main
     private DocumentNode? GetPictureNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
     {
         var drawingsPart = worksheetPart.DrawingsPart;
@@ -278,9 +363,13 @@ public partial class ExcelHandler
         var wsDrawing = drawingsPart.WorksheetDrawing;
         if (wsDrawing == null) return null;
 
+<<<<<<< HEAD
         var picAnchors = wsDrawing.Elements<XDR.TwoCellAnchor>()
             .Where(a => a.Descendants<XDR.Picture>().Any())
             .ToList();
+=======
+        var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
+>>>>>>> upstream/main
 
         if (index < 1 || index > picAnchors.Count)
             return null;
@@ -300,6 +389,33 @@ public partial class ExcelHandler
             }
             if (!string.IsNullOrEmpty(nvProps.Name?.Value))
                 node.Format["name"] = nvProps.Name.Value;
+<<<<<<< HEAD
+=======
+            // P11 readback — Add writes `title=` into cNvPr @title; without
+            // this the key was write-only and dump silently dropped it.
+            if (!string.IsNullOrEmpty(nvProps.Title?.Value))
+                node.Format["title"] = nvProps.Title.Value;
+            // P8 readback — Add writes a picture hyperlink as <a:hlinkClick>
+            // under cNvPr (external via a DrawingsPart relationship, or
+            // internal via @location). Without this the hyperlink was
+            // write-only and dropped on Get/dump.
+            var picHlink = nvProps.GetFirstChild<Drawing.HyperlinkOnClick>();
+            if (picHlink != null)
+            {
+                if (!string.IsNullOrEmpty(picHlink.Id?.Value))
+                {
+                    var rel = worksheetPart.DrawingsPart?.HyperlinkRelationships
+                        .FirstOrDefault(r => r.Id == picHlink.Id.Value);
+                    if (rel != null) node.Format["hyperlink"] = rel.Uri.ToString();
+                }
+                else
+                {
+                    var loc = picHlink.GetAttributes()
+                        .FirstOrDefault(a => a.LocalName == "location").Value;
+                    if (!string.IsNullOrEmpty(loc)) node.Format["hyperlink"] = "#" + loc;
+                }
+            }
+>>>>>>> upstream/main
         }
 
         ReadAnchorPosition(anchor, node);
@@ -338,6 +454,32 @@ public partial class ExcelHandler
                 node.Format["crop"] = $"{cl / 1000.0:0.##},{ct / 1000.0:0.##},{cr / 1000.0:0.##},{cb / 1000.0:0.##}";
         }
 
+<<<<<<< HEAD
+=======
+        // P6 readback: opacity from <a:blip><a:alphaModFix amt="N"/> (0..100000
+        // scale; Add takes percent). Mirrors BuildPictureBlipFill. Omitted when
+        // fully opaque (no alphaModFix node).
+        var picBlip = picture.BlipFill?.GetFirstChild<Drawing.Blip>();
+        var picAlpha = picBlip?.GetFirstChild<Drawing.AlphaModulationFixed>();
+        if (picAlpha?.Amount?.Value is { } alphaAmt && alphaAmt < 100000)
+            node.Format["opacity"] = (int)Math.Round(alphaAmt / 1000.0);
+
+        // P10 readback: decorative flag from <xdr:cNvPr><a:extLst><a:ext
+        // uri="{FF2B5EF4-...}"><a16:decorative val="1"/>. Mirrors the Add
+        // emit; the a16:decorative node is an unknown element.
+        var picCNvPrRead = picture.NonVisualPictureProperties?.NonVisualDrawingProperties;
+        if (picCNvPrRead != null)
+        {
+            // Search the whole cNvPr subtree — the a:extLst under cNvPr is a
+            // distinct strongly-typed child, so a GetFirstChild<ExtensionList>
+            // misses it; Descendants() reaches the unknown a16:decorative node.
+            bool decorative = picCNvPrRead.Descendants()
+                .Any(e => e.LocalName == "decorative"
+                    && e.GetAttributes().Any(a => a.LocalName == "val" && a.Value == "1"));
+            if (decorative) node.Format["decorative"] = true;
+        }
+
+>>>>>>> upstream/main
         return node;
     }
 
@@ -357,6 +499,154 @@ public partial class ExcelHandler
         }
     }
 
+<<<<<<< HEAD
+=======
+    internal sealed class DumpDrawingHyperlinkSpec
+    {
+        public string Id { get; set; } = "";
+        public string Target { get; set; } = "";
+        public bool IsExternal { get; set; }
+    }
+
+    internal sealed class DumpShapeReplayItem
+    {
+        // Exactly one of ShapeIndex / GroupAnchorXml is populated.
+        public int? ShapeIndex { get; set; }
+        public string? GroupAnchorXml { get; set; }
+        public List<DumpDrawingHyperlinkSpec> GroupHyperlinks { get; set; } = [];
+        public string? Warning { get; set; }
+    }
+
+    // Compact, trimming-safe carrier used inside the dump JSON string value:
+    // base64(id),base64(target),0|1 entries separated by '|'. Base64 never
+    // contains ',' or '|', so no reflection-based JSON serializer is needed
+    // inside the single-file published executable.
+    internal static string EncodeDumpDrawingHyperlinks(
+        IEnumerable<DumpDrawingHyperlinkSpec> hyperlinks)
+    {
+        static string B64(string value) => Convert.ToBase64String(
+            System.Text.Encoding.UTF8.GetBytes(value));
+        return string.Join("|", hyperlinks.Select(h =>
+            $"{B64(h.Id)},{B64(h.Target)},{(h.IsExternal ? "1" : "0")}"));
+    }
+
+    internal static List<DumpDrawingHyperlinkSpec> DecodeDumpDrawingHyperlinks(
+        string encoded)
+    {
+        static string FromB64(string value) => System.Text.Encoding.UTF8.GetString(
+            Convert.FromBase64String(value));
+        var result = new List<DumpDrawingHyperlinkSpec>();
+        if (string.IsNullOrEmpty(encoded)) return result;
+        foreach (var entry in encoded.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var fields = entry.Split(',');
+            if (fields.Length != 3 || (fields[2] != "0" && fields[2] != "1"))
+                throw new FormatException(
+                    "Expected base64(id),base64(target),0|1 entries separated by '|'.");
+            result.Add(new DumpDrawingHyperlinkSpec
+            {
+                Id = FromB64(fields[0]),
+                Target = FromB64(fields[1]),
+                IsExternal = fields[2] == "1",
+            });
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Build the dump replay sequence for worksheet shapes without destroying
+    /// real DrawingML groups. A grouped TwoCellAnchor is carried verbatim when
+    /// every relationship referenced inside it is a hyperlink relationship;
+    /// those lightweight relationships can be recreated safely on replay.
+    ///
+    /// Groups that reference package parts (pictures/charts/etc.) fall back to
+    /// the existing leaf-shape path with an explicit warning. Copying those
+    /// parts requires a recursive part-graph carrier and raw XML alone would
+    /// leave dangling r:embed/r:id values.
+    /// </summary>
+    internal List<DumpShapeReplayItem> GetDumpShapeReplayItems(string sheetName)
+    {
+        var result = new List<DumpShapeReplayItem>();
+        var worksheet = FindWorksheet(sheetName);
+        var drawingsPart = worksheet?.DrawingsPart;
+        var wsDrawing = drawingsPart?.WorksheetDrawing;
+        if (drawingsPart == null || wsDrawing == null) return result;
+
+        const string relNs =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        int leafIndex = 0;
+
+        foreach (var anchor in wsDrawing.Elements<XDR.TwoCellAnchor>())
+        {
+            var leaves = anchor.Descendants<XDR.Shape>().ToList();
+            var firstLeafIndex = leafIndex + 1;
+            leafIndex += leaves.Count;
+
+            var group = anchor.GetFirstChild<XDR.GroupShape>();
+            if (group == null)
+            {
+                for (int i = 0; i < leaves.Count; i++)
+                    result.Add(new DumpShapeReplayItem { ShapeIndex = firstLeafIndex + i });
+                continue;
+            }
+
+            var referencedIds = anchor
+                .Descendants()
+                .Prepend(anchor)
+                .SelectMany(e => e.GetAttributes())
+                .Where(a => a.NamespaceUri == relNs
+                    && (a.LocalName == "id" || a.LocalName == "embed" || a.LocalName == "link")
+                    && !string.IsNullOrEmpty(a.Value))
+                .Select(a => a.Value!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var hyperlinks = new List<DumpDrawingHyperlinkSpec>();
+            var unsupportedIds = new List<string>();
+            foreach (var rid in referencedIds)
+            {
+                var hyperlink = drawingsPart.HyperlinkRelationships
+                    .FirstOrDefault(r => r.Id == rid);
+                if (hyperlink == null)
+                {
+                    unsupportedIds.Add(rid);
+                    continue;
+                }
+                hyperlinks.Add(new DumpDrawingHyperlinkSpec
+                {
+                    Id = hyperlink.Id ?? rid,
+                    Target = hyperlink.Uri.ToString(),
+                    IsExternal = hyperlink.IsExternal,
+                });
+            }
+
+            if (unsupportedIds.Count == 0)
+            {
+                result.Add(new DumpShapeReplayItem
+                {
+                    GroupAnchorXml = anchor.OuterXml,
+                    GroupHyperlinks = hyperlinks,
+                });
+                continue;
+            }
+
+            var warning =
+                $"grouped drawing references non-hyperlink relationship(s) {string.Join(", ", unsupportedIds)}; "
+                + "the group was flattened because its dependent package parts cannot yet be carried safely";
+            for (int i = 0; i < leaves.Count; i++)
+            {
+                result.Add(new DumpShapeReplayItem
+                {
+                    ShapeIndex = firstLeafIndex + i,
+                    Warning = i == 0 ? warning : null,
+                });
+            }
+        }
+
+        return result;
+    }
+
+>>>>>>> upstream/main
     private DocumentNode? GetShapeNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
     {
         var drawingsPart = worksheetPart.DrawingsPart;
@@ -378,6 +668,31 @@ public partial class ExcelHandler
         if (nvProps?.Name?.Value != null)
             node.Format["name"] = nvProps.Name.Value;
 
+<<<<<<< HEAD
+=======
+        // Shape hyperlinks live under <xdr:cNvPr><a:hlinkClick>. Group shapes
+        // are flattened to leaf shapes for Get/dump, so preserve each leaf link.
+        if (nvProps != null)
+        {
+            var shapeHlink = nvProps.GetFirstChild<Drawing.HyperlinkOnClick>();
+            if (shapeHlink != null)
+            {
+                if (!string.IsNullOrEmpty(shapeHlink.Id?.Value))
+                {
+                    var rel = drawingsPart.HyperlinkRelationships
+                        .FirstOrDefault(r => r.Id == shapeHlink.Id.Value);
+                    if (rel != null) node.Format["hyperlink"] = rel.Uri.ToString();
+                }
+                else
+                {
+                    var loc = shapeHlink.GetAttributes()
+                        .FirstOrDefault(a => a.LocalName == "location").Value;
+                    if (!string.IsNullOrEmpty(loc)) node.Format["hyperlink"] = "#" + loc;
+                }
+            }
+        }
+
+>>>>>>> upstream/main
         // Text — shape TextBody has one <a:p> per paragraph, each with
         // zero-or-more <a:r>/<a:t> runs. Concatenate runs within a
         // paragraph, then join paragraphs with '\n' so multi-line shape
@@ -453,6 +768,28 @@ public partial class ExcelHandler
         var spPr = shape.ShapeProperties;
         if (spPr?.GetFirstChild<Drawing.NoFill>() != null)
             node.Format["fill"] = "none";
+<<<<<<< HEAD
+=======
+        else if (spPr?.GetFirstChild<Drawing.GradientFill>() is { } shapeGradFill)
+        {
+            // SH6 readback — reconstruct the "C1-C2[-C3][:angle]" spec that
+            // BuildShapeGradientFill consumes, so dump→batch replays the
+            // gradient instead of silently dropping it to the default fill.
+            var stopColors = shapeGradFill.GetFirstChild<Drawing.GradientStopList>()?
+                .Elements<Drawing.GradientStop>()
+                .Select(gs => gs.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value)
+                .Where(v => !string.IsNullOrEmpty(v))
+                .ToList();
+            if (stopColors is { Count: >= 2 })
+            {
+                var spec = string.Join("-", stopColors.Select(v => ParseHelpers.FormatHexColor(v!)));
+                var linAngle = shapeGradFill.GetFirstChild<Drawing.LinearGradientFill>()?.Angle?.Value ?? 0;
+                var angleDeg = (int)Math.Round(linAngle / 60000.0);
+                if (angleDeg != 0) spec += $":{angleDeg}";
+                node.Format["gradientFill"] = spec;
+            }
+        }
+>>>>>>> upstream/main
         else
         {
             var shapeFill = spPr?.GetFirstChild<Drawing.SolidFill>();
@@ -573,6 +910,27 @@ public partial class ExcelHandler
             var softEdge = activeEffects.GetFirstChild<Drawing.SoftEdge>();
             if (softEdge?.Radius?.HasValue == true)
                 node.Format["softEdge"] = $"{softEdge.Radius.Value / EmuConverter.EmuPerPointF:0.##}pt";
+<<<<<<< HEAD
+=======
+            // reflection readback — Add/Set build a:reflection (via
+            // DrawingEffectsHelper.BuildReflection) but Get omitted it, so the
+            // Get-driven dump silently dropped it. BuildReflection encodes the
+            // preset/strength in @endPos (1/1000 percent); emit the numeric
+            // percent so `set reflection=<pct>` re-parses its own readback
+            // (true/half/full/tight all normalize to the same endPos on replay).
+            var reflection = activeEffects.GetFirstChild<Drawing.Reflection>();
+            if (reflection?.EndPosition?.HasValue == true)
+                node.Format["reflection"] = reflection.EndPosition.Value switch
+                {
+                    // Mirror PowerPointHandler.NodeBuilder reflection readback:
+                    // preset names for the canonical strengths, numeric percent
+                    // otherwise. Each re-parses via BuildReflection on replay.
+                    55000 => "tight",
+                    90000 => "half",
+                    100000 => "full",
+                    _ => (reflection.EndPosition.Value / 1000).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                };
+>>>>>>> upstream/main
         }
 
         return node;
@@ -584,6 +942,94 @@ public partial class ExcelHandler
     /// Set position/size properties (x, y, width, height) on a TwoCellAnchor.
     /// Returns true if the key was handled, false otherwise.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // OOXML spreadsheet-drawing extents/positions (<xdr:ext>, <xdr:pos>) are
+    // Int32-bounded EMU (ST_PositiveCoordinate32). Values beyond that pass
+    // SDK save silently but fail schema validation (MaxInclusive) and make
+    // real Excel refuse the workbook (0x800A03EC) — reject at input instead
+    // of persisting an unopenable file. Only oneCell/absolute anchors hit
+    // this: twoCell anchors split spans into whole-column/row markers.
+    internal static long ValidateDrawingCoordEmu(long emu, string key)
+    {
+        if (emu > int.MaxValue)
+            throw new ArgumentException(
+                $"Picture/shape {key} is out of range for a oneCell/absolute drawing anchor: " +
+                $"{emu} EMU exceeds the OOXML limit 2147483647 EMU (~23.5in per axis).");
+        return emu;
+    }
+
+    // Anchor-kind dispatch mirroring ReadAnchorPosition: oneCell keeps x/y as
+    // cell indices but sizes via <xdr:ext> EMU; absolute positions and sizes
+    // are all EMU (ParseEmu accepts "2cm"/"1in"/"NNNemu"/bare EMU).
+    private static bool TrySetAnchorPosition(OpenXmlCompositeElement anchorEl, string key, string value)
+    {
+        switch (anchorEl)
+        {
+            case XDR.TwoCellAnchor two:
+                return TrySetAnchorPosition(two, key, value);
+            case XDR.OneCellAnchor one:
+                switch (key)
+                {
+                    case "x":
+                        if (one.FromMarker?.ColumnId != null)
+                            one.FromMarker.ColumnId.Text = ParseAnchorOrigin(value, "x").ToString();
+                        return true;
+                    case "y":
+                        if (one.FromMarker?.RowId != null)
+                            one.FromMarker.RowId.Text = ParseAnchorOrigin(value, "y").ToString();
+                        return true;
+                    case "width":
+                    {
+                        var ext = one.GetFirstChild<XDR.Extent>();
+                        if (ext != null) ext.Cx = ValidateDrawingCoordEmu(EmuConverter.ParseEmu(value), key);
+                        return true;
+                    }
+                    case "height":
+                    {
+                        var ext = one.GetFirstChild<XDR.Extent>();
+                        if (ext != null) ext.Cy = ValidateDrawingCoordEmu(EmuConverter.ParseEmu(value), key);
+                        return true;
+                    }
+                    default:
+                        return false;
+                }
+            case XDR.AbsoluteAnchor abs:
+                switch (key)
+                {
+                    case "x":
+                    {
+                        var pos = abs.GetFirstChild<XDR.Position>();
+                        if (pos != null) pos.X = ValidateDrawingCoordEmu(EmuConverter.ParseEmu(value), key);
+                        return true;
+                    }
+                    case "y":
+                    {
+                        var pos = abs.GetFirstChild<XDR.Position>();
+                        if (pos != null) pos.Y = ValidateDrawingCoordEmu(EmuConverter.ParseEmu(value), key);
+                        return true;
+                    }
+                    case "width":
+                    {
+                        var ext = abs.GetFirstChild<XDR.Extent>();
+                        if (ext != null) ext.Cx = ValidateDrawingCoordEmu(EmuConverter.ParseEmu(value), key);
+                        return true;
+                    }
+                    case "height":
+                    {
+                        var ext = abs.GetFirstChild<XDR.Extent>();
+                        if (ext != null) ext.Cy = ValidateDrawingCoordEmu(EmuConverter.ParseEmu(value), key);
+                        return true;
+                    }
+                    default:
+                        return false;
+                }
+            default:
+                return false;
+        }
+    }
+
+>>>>>>> upstream/main
     private static bool TrySetAnchorPosition(XDR.TwoCellAnchor anchor, string key, string value)
     {
         switch (key)
@@ -631,6 +1077,50 @@ public partial class ExcelHandler
     /// <summary>
     /// Read position/size from a TwoCellAnchor into a DocumentNode's Format dictionary.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // Anchor-kind dispatch: oneCell/absolute anchors carry their size in an
+    // <xdr:ext> (EMU) instead of a To marker, and absolute carries x/y as EMU
+    // <xdr:pos>. Emit raw "NNNemu" for EMU-exact values (same exactness
+    // convention as the dump emitter's width/height) plus an anchorMode key
+    // (omitted for the twoCell default) so dump→batch replays the same anchor
+    // kind.
+    private static void ReadAnchorPosition(OpenXmlCompositeElement anchor, DocumentNode node)
+    {
+        switch (anchor)
+        {
+            case XDR.TwoCellAnchor two:
+                ReadAnchorPosition(two, node);
+                return;
+            case XDR.OneCellAnchor one:
+            {
+                node.Format["anchorMode"] = "oneCell";
+                var from = one.FromMarker;
+                if (from != null)
+                {
+                    node.Format["x"] = from.ColumnId?.Text ?? "0";
+                    node.Format["y"] = from.RowId?.Text ?? "0";
+                }
+                var ext = one.GetFirstChild<XDR.Extent>();
+                if (ext?.Cx?.HasValue == true) node.Format["width"] = $"{ext.Cx.Value}emu";
+                if (ext?.Cy?.HasValue == true) node.Format["height"] = $"{ext.Cy.Value}emu";
+                return;
+            }
+            case XDR.AbsoluteAnchor abs:
+            {
+                node.Format["anchorMode"] = "absolute";
+                var pos = abs.GetFirstChild<XDR.Position>();
+                if (pos?.X?.HasValue == true) node.Format["x"] = $"{pos.X.Value}emu";
+                if (pos?.Y?.HasValue == true) node.Format["y"] = $"{pos.Y.Value}emu";
+                var ext = abs.GetFirstChild<XDR.Extent>();
+                if (ext?.Cx?.HasValue == true) node.Format["width"] = $"{ext.Cx.Value}emu";
+                if (ext?.Cy?.HasValue == true) node.Format["height"] = $"{ext.Cy.Value}emu";
+                return;
+            }
+        }
+    }
+
+>>>>>>> upstream/main
     private static void ReadAnchorPosition(XDR.TwoCellAnchor anchor, DocumentNode node)
     {
         var from = anchor.FromMarker;
@@ -832,12 +1322,17 @@ public partial class ExcelHandler
                     break;
                 default: return true;
             }
+<<<<<<< HEAD
             InsertEffectInSchemaOrder(effectList, newEffect);
+=======
+            OfficeCli.Core.DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, newEffect);
+>>>>>>> upstream/main
         }
         return true;
     }
 
     /// <summary>
+<<<<<<< HEAD
     /// Insert an effectLst child at the correct DrawingML CT_EffectList schema position:
     /// blur → fillOverlay → glow → innerShdw → outerShdw → prstShdw → reflection → softEdge.
     /// </summary>
@@ -881,6 +1376,8 @@ public partial class ExcelHandler
     }
 
     /// <summary>
+=======
+>>>>>>> upstream/main
     /// Parse x, y, width, height from properties with given defaults. Used by both picture Add and shape Add.
     /// </summary>
     // CONSISTENCY(shape-preset): mirror PowerPointHandler.ParsePresetShape token
@@ -1161,14 +1658,72 @@ public partial class ExcelHandler
         if (!m.Success) return false;
         fromCol = ColumnNameToIndex(m.Groups[1].Value) - 1;
         fromRow = int.Parse(m.Groups[2].Value) - 1;
+<<<<<<< HEAD
+=======
+        ValidateAnchorCell(fromCol, fromRow, value!.Split(':')[0]);
+>>>>>>> upstream/main
         if (m.Groups[3].Success)
         {
             toCol = ColumnNameToIndex(m.Groups[3].Value) - 1;
             toRow = int.Parse(m.Groups[4].Value) - 1;
+<<<<<<< HEAD
+=======
+            ValidateAnchorCell(toCol, toRow, value.Split(':')[1]);
+            // Inverted ranges (D4:B2) written verbatim produce a twoCellAnchor
+            // whose from exceeds to; real Excel refuses the file (0x800A03EC)
+            // while schema validation stays green. Normalize per axis, same
+            // as Excel treats a backwards drag-select.
+            NormalizeAnchorRect(ref fromCol, ref fromRow, ref toCol, ref toRow);
+>>>>>>> upstream/main
         }
         return true;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>Swap anchor corners per axis so from ≤ to.</summary>
+    internal static void NormalizeAnchorRect(ref int fromCol, ref int fromRow, ref int toCol, ref int toRow)
+    {
+        if (toCol >= 0 && toCol < fromCol) (fromCol, toCol) = (toCol, fromCol);
+        if (toRow >= 0 && toRow < fromRow) (fromRow, toRow) = (toRow, fromRow);
+    }
+
+    /// <summary>
+    /// Bounds-check a parsed 0-based anchor cell against Excel's real grid
+    /// (A1..XFD1048576). Row 0 (A0) parses to -1 and columns past XFD wrap
+    /// into indices Excel refuses (0x800A03EC) while schema validation stays
+    /// green — reject at parse time instead.
+    /// </summary>
+    internal static void ValidateAnchorCell(int col0, int row0, string original)
+    {
+        const int MaxCol0 = 16383;      // XFD
+        const int MaxRow0 = 1048575;    // 1,048,576 rows, 0-based
+        if (col0 < 0 || col0 > MaxCol0 || row0 < 0 || row0 > MaxRow0)
+            throw new ArgumentException(
+                $"Anchor cell '{original}' is outside Excel's grid (A1..XFD1048576).");
+    }
+
+    /// <summary>
+    /// Clamp a TwoCellAnchor span computed from x/y/width/height (column/row
+    /// units) to Excel's grid. The FROM marker must be a real cell
+    /// (A1..XFD1048576) and still throws if outside it. The TO marker is the
+    /// exclusive right/bottom edge, so it may legitimately sit one past the last
+    /// cell (col 16384 / row 1048576) — a picture/shape placed near XFD simply
+    /// ends at the grid edge, which is what real Excel does. A width/height that
+    /// walks the TO marker further than that (e.g. x=1,width=16384 → toCol 16385)
+    /// was silently persisted and made Excel refuse the file (0x800A03EC), so the
+    /// TO marker is clamped to the ceiling here rather than written out of range.
+    /// Returns the clamped (toCol, toRow).
+    /// </summary>
+    internal static (int toCol, int toRow) ClampAnchorSpan(int fromCol, int fromRow, int toCol, int toRow, string original)
+    {
+        ValidateAnchorCell(fromCol, fromRow, original);
+        const int MaxToCol = 16384;     // exclusive right edge of XFD
+        const int MaxToRow = 1048576;   // exclusive bottom edge of the last row
+        return (Math.Clamp(toCol, fromCol, MaxToCol), Math.Clamp(toRow, fromRow, MaxToRow));
+    }
+
+>>>>>>> upstream/main
     /// <summary>
     /// Return true if the given anchor= value is one of the recognized
     /// anchorMode tokens (oneCell/twoCell/absolute). Used by the picture

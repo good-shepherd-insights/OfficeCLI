@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -17,10 +21,18 @@ public partial class ExcelHandler
 {
 
     // Map a table-column totals-row function token to its OOXML enum and the
+<<<<<<< HEAD
     // SUBTOTAL function code Excel uses. Unknown tokens fall back to SUM (109)
     // — previously all non-"sum" tokens silently became SUM; this keeps the
     // same fallback for unknown tokens but routes known ones to the right
     // enum + SUBTOTAL code.
+=======
+    // SUBTOTAL function code Excel uses. Unknown tokens throw — the earlier
+    // SUM fallback silently changed the aggregation the user asked for
+    // (silent-accept enum-miss family). Every token the dump emitter can
+    // produce (TotalsRowFunction InnerText, lowercased) is enumerated below,
+    // so dump→batch replay never hits the throw.
+>>>>>>> upstream/main
     internal static (TotalsRowFunctionValues, int) MapTotalsRowFunction(string tok) => tok switch
     {
         "sum" => (TotalsRowFunctionValues.Sum, 109),
@@ -33,14 +45,40 @@ public partial class ExcelHandler
         "var" or "variance" => (TotalsRowFunctionValues.Variance, 110),
         "none" or "label" or "" => (TotalsRowFunctionValues.None, 0),
         "custom" => (TotalsRowFunctionValues.Custom, 109),
+<<<<<<< HEAD
         _ => (TotalsRowFunctionValues.Sum, 109)
     };
 
+=======
+        _ => throw new ArgumentException(
+            $"Unknown totals-row function '{tok}'. Valid: sum, average, count, countNums, max, min, stdDev, var, none, custom.")
+    };
+
+    /// <summary>
+    /// Text of a CT_Rst — a shared-string item (<c>&lt;si&gt;</c>) or an inline
+    /// string (<c>&lt;is&gt;</c>) — EXCLUDING its <c>&lt;rPh&gt;</c> phonetic
+    /// guide. Issue #343: <c>InnerText</c> concatenates the guide into the value,
+    /// so a Japanese cell read back as "項目コウモク" instead of "項目". The guide
+    /// annotates the base text rather than being part of it, and is surfaced
+    /// separately as <c>Format["phonetic"]</c>. Both SDK types derive from
+    /// RstType, so every cell-text read shares this one rule.
+    /// </summary>
+    internal static string RstTextWithoutPhonetic(RstType? rst)
+        => rst == null
+            ? ""
+            : rst.Text?.Text
+                ?? string.Concat(rst.Elements<Run>().Select(r => r.Text?.Text ?? ""));
+
+>>>>>>> upstream/main
     private string GetCellDisplayValue(Cell cell, Core.FormulaEvaluator? evaluator = null)
     {
         if (cell.DataType?.Value == CellValues.InlineString)
         {
+<<<<<<< HEAD
             return cell.InlineString?.InnerText ?? "";
+=======
+            return RstTextWithoutPhonetic(cell.InlineString);
+>>>>>>> upstream/main
         }
 
         var value = cell.CellValue?.Text ?? "";
@@ -51,16 +89,34 @@ public partial class ExcelHandler
             if (sst?.SharedStringTable != null && int.TryParse(value, out int idx))
             {
                 var item = sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(idx);
+<<<<<<< HEAD
                 return item?.InnerText ?? value;
             }
         }
 
+=======
+                if (item != null) return RstTextWithoutPhonetic(item);
+            }
+        }
+
+        // Boolean cells store 0/1 in <v> per the OOXML spec, but Excel displays
+        // (and users expect) TRUE/FALSE. Decode it here so .Text matches what
+        // Excel renders — the write side already accepts TRUE/FALSE, and the
+        // dump emitter reads the raw 0/1 separately, so this is display-only.
+        if (cell.DataType?.Value == CellValues.Boolean)
+            return value == "1" ? "TRUE" : "FALSE";
+
+>>>>>>> upstream/main
         // Formula cells: if there's a cached value, return it.
         // If not, try to evaluate; otherwise emit a sentinel so callers can
         // distinguish "formula not evaluated" from "cell contains the literal
         // text `=FOO`". The sentinel matches Excel's `#…!` error-code shape
         // so it sorts visually next to #REF!/#VALUE!/etc.
+<<<<<<< HEAD
         if (string.IsNullOrEmpty(value) && cell.CellFormula?.Text != null)
+=======
+        if (string.IsNullOrEmpty(value) && Core.SharedFormulaResolver.ResolveText(cell) is { } formulaText)
+>>>>>>> upstream/main
         {
             // Missing-sheet refs: ResolveSheetCellResult silently returns 0
             // and the error path surfaces a fake #REF!. Neither value is
@@ -68,11 +124,19 @@ public partial class ExcelHandler
             // that suppresses computedValue and reports evaluated=false —
             // view text must emit the sentinel to keep the two readbacks
             // (view text vs Format["evaluated"]) consistent.
+<<<<<<< HEAD
             if (FormulaReferencesMissingSheet(cell.CellFormula.Text))
                 return "#OCLI_NOTEVAL!";
             if (evaluator != null)
             {
                 var report = evaluator.EvaluateForReport(cell.CellFormula.Text);
+=======
+            if (FormulaReferencesMissingSheet(formulaText))
+                return "#OCLI_NOTEVAL!";
+            if (evaluator != null)
+            {
+                var report = evaluator.EvaluateForReport(formulaText);
+>>>>>>> upstream/main
                 if (report.Status == Core.EvalReportStatus.Evaluated)
                     return report.Result!.ToCellValueText();
                 // Error values (#DIV/0!, #VALUE!, …) surface directly so users
@@ -96,7 +160,12 @@ public partial class ExcelHandler
             var (numFmtId, formatCode) = ExcelDataFormatter.GetCellFormat(cell, _doc.WorkbookPart);
             if (numFmtId > 0)
             {
+<<<<<<< HEAD
                 var formatted = ExcelDataFormatter.TryFormat(numVal, numFmtId, formatCode);
+=======
+                var is1904 = IsWorkbookDate1904();
+                var formatted = ExcelDataFormatter.TryFormat(numVal, numFmtId, formatCode, is1904);
+>>>>>>> upstream/main
                 if (formatted != null) return formatted;
             }
         }
@@ -104,6 +173,36 @@ public partial class ExcelHandler
         return value;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// True when the workbook uses the 1904 date system (Date1904=true). The
+    /// stored serial for a date differs from the 1900 system by 1462 days, so
+    /// every date write and read must consult this flag to stay consistent.
+    /// </summary>
+    private bool IsWorkbookDate1904()
+        => _doc.WorkbookPart?.Workbook?.WorkbookProperties?.Date1904?.Value == true;
+
+    // Underlying stored value for COMPARISON, as opposed to GetCellDisplayValue's
+    // formatted string. A percentage cell compares as 0.5 (not "50%") and a date
+    // as its serial (not "2024-01-15"), so `row[Pct>0.3]` / `row[Hired>45000]`
+    // evaluate against the real number instead of the display text. Non-numeric
+    // cells (text, shared strings, formula results, sentinels) are identical to
+    // the display path, so equality on a formatted literal still works.
+    private string GetCellRawComparisonValue(Cell cell, Core.FormulaEvaluator? evaluator = null)
+    {
+        if (cell.DataType == null)
+        {
+            var raw = cell.CellValue?.Text;
+            if (!string.IsNullOrEmpty(raw) && double.TryParse(raw,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out _))
+                return raw;
+        }
+        return GetCellDisplayValue(cell, evaluator);
+    }
+
+>>>>>>> upstream/main
     private static bool IsCellInMergeRange(string cellRef, string? rangeRef)
     {
         if (string.IsNullOrEmpty(rangeRef) || !rangeRef.Contains(':')) return false;
@@ -122,8 +221,20 @@ public partial class ExcelHandler
     private static bool RangesOverlap(string rangeA, string rangeB)
     {
         if (string.IsNullOrEmpty(rangeA) || string.IsNullOrEmpty(rangeB)) return false;
+<<<<<<< HEAD
         var (a1, a2) = SplitRange(rangeA);
         var (b1, b2) = SplitRange(rangeB);
+=======
+        // Whole-column (A:A) and whole-row (1:3) tokens are legal sqref
+        // members (ValidateSqref admits them), but ParseCellReference below
+        // rejects a bare "A"/"1" — a second dataValidation Add on a sheet
+        // holding any whole-row/col range threw even when geometrically
+        // disjoint. Expand them to explicit rectangles first.
+        var expandedA = ExpandWholeRowColRange(rangeA);
+        var expandedB = ExpandWholeRowColRange(rangeB);
+        var (a1, a2) = SplitRange(expandedA);
+        var (b1, b2) = SplitRange(expandedB);
+>>>>>>> upstream/main
         var (aSc, aSr) = ParseCellReference(a1);
         var (aEc, aEr) = ParseCellReference(a2);
         var (bSc, bSr) = ParseCellReference(b1);
@@ -138,6 +249,44 @@ public partial class ExcelHandler
         return aSci <= bEci && bSci <= aEci && aSr <= bEr && bSr <= aEr;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Canonicalize an inverted CELL:CELL range (D5:A1 → A1:D5, per axis).
+    /// Well-formed input passes through untouched (keeps $ anchors);
+    /// inverted input is rebuilt without $ (matching the printArea rule).
+    /// </summary>
+    internal static string NormalizeA1Range(string range)
+    {
+        var nm = System.Text.RegularExpressions.Regex.Match(range.Trim(),
+            @"^\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!nm.Success) return range;
+        var nc1 = ColumnNameToIndex(nm.Groups[1].Value.ToUpperInvariant());
+        var nc2 = ColumnNameToIndex(nm.Groups[3].Value.ToUpperInvariant());
+        var nr1 = long.Parse(nm.Groups[2].Value);
+        var nr2 = long.Parse(nm.Groups[4].Value);
+        if (nc1 <= nc2 && nr1 <= nr2) return range;
+        var colA = nc1 <= nc2 ? nm.Groups[1].Value : nm.Groups[3].Value;
+        var colB = nc1 <= nc2 ? nm.Groups[3].Value : nm.Groups[1].Value;
+        return $"{colA}{Math.Min(nr1, nr2)}:{colB}{Math.Max(nr1, nr2)}";
+    }
+
+    // A:A → A1:A1048576, 1:3 → A1:XFD3. Non-whole ranges pass through.
+    private static string ExpandWholeRowColRange(string range)
+    {
+        var wm = System.Text.RegularExpressions.Regex.Match(range.Trim(),
+            @"^\$?([A-Z]+)\$?:\$?([A-Z]+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (wm.Success)
+            return $"{wm.Groups[1].Value}1:{wm.Groups[2].Value}1048576";
+        var rm = System.Text.RegularExpressions.Regex.Match(range.Trim(),
+            @"^\$?([0-9]+)\$?:\$?([0-9]+)$");
+        if (rm.Success)
+            return $"A{rm.Groups[1].Value}:XFD{rm.Groups[2].Value}";
+        return range;
+    }
+
+>>>>>>> upstream/main
     private static (string, string) SplitRange(string range)
     {
         if (!range.Contains(':')) return (range, range);
@@ -176,6 +325,29 @@ public partial class ExcelHandler
 
     private static void InsertMergeCellChecked(MergeCells mergeCells, string newRangeRef, WorksheetPart? worksheetPart = null)
     {
+<<<<<<< HEAD
+=======
+        try
+        {
+            InsertMergeCellCheckedCore(mergeCells, newRangeRef, worksheetPart);
+        }
+        catch
+        {
+            // Callers create the <mergeCells> container before this check
+            // runs. If the merge is rejected and the container is left
+            // childless, an empty <x:mergeCells/> stays in the worksheet —
+            // schema-INVALID (count >= 1 required), so a failed call
+            // corrupted a previously-fine file. Remove the empty shell
+            // before rethrowing.
+            if (!mergeCells.Elements<MergeCell>().Any() && mergeCells.Parent != null)
+                mergeCells.Remove();
+            throw;
+        }
+    }
+
+    private static void InsertMergeCellCheckedCore(MergeCells mergeCells, string newRangeRef, WorksheetPart? worksheetPart = null)
+    {
+>>>>>>> upstream/main
         ValidateMergeRefLiteral(newRangeRef);
         var refUpper = newRangeRef.ToUpperInvariant();
         foreach (var existing in mergeCells.Elements<MergeCell>())
@@ -209,9 +381,44 @@ public partial class ExcelHandler
                 }
             }
         }
+<<<<<<< HEAD
         mergeCells.AppendChild(new MergeCell { Reference = refUpper });
     }
 
+=======
+        // Advisory only — a multi-million-cell merge is legal OOXML and
+        // validates green, but real Excel stalls for minutes opening it
+        // (empirically: 16384x1 renders in seconds; 1024x100000 hangs past
+        // a 120s render timeout). Warn so the caller knows the file may be
+        // unusable in practice; do not reject (lenient-input convention).
+        if (TryParseRangeDims(refUpper, out var mergeRows, out var mergeCols)
+            && (long)mergeRows * mergeCols > 10_000_000)
+        {
+            Console.Error.WriteLine(
+                $"Warning: merge range '{refUpper}' spans {(long)mergeRows * mergeCols:N0} cells; " +
+                "real Excel can hang for minutes opening merges this large.");
+        }
+        mergeCells.AppendChild(new MergeCell { Reference = refUpper });
+    }
+
+    private static bool TryParseRangeDims(string range, out int rows, out int cols)
+    {
+        rows = cols = 0;
+        var dimParts = range.Split(':');
+        if (dimParts.Length != 2) return false;
+        var m1 = System.Text.RegularExpressions.Regex.Match(dimParts[0], @"^([A-Z]+)(\d+)$");
+        var m2 = System.Text.RegularExpressions.Regex.Match(dimParts[1], @"^([A-Z]+)(\d+)$");
+        if (!m1.Success || !m2.Success) return false;
+        var c1 = ColumnNameToIndex(m1.Groups[1].Value);
+        var c2 = ColumnNameToIndex(m2.Groups[1].Value);
+        var r1 = int.Parse(m1.Groups[2].Value);
+        var r2 = int.Parse(m2.Groups[2].Value);
+        rows = Math.Abs(r2 - r1) + 1;
+        cols = Math.Abs(c2 - c1) + 1;
+        return true;
+    }
+
+>>>>>>> upstream/main
     private DocumentNode GetCellRange(string sheetName, SheetData sheetData, string range, int depth, WorksheetPart? part = null)
     {
         var parts = range.Split(':');
@@ -285,8 +492,14 @@ public partial class ExcelHandler
             || value.Equals("-Infinity", StringComparison.Ordinal)
             || value.Equals("+Infinity", StringComparison.Ordinal))
             return (1, 0.0, value);
+<<<<<<< HEAD
         if (double.TryParse(value, System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var num))
+=======
+        // Same numeric definition as storage and formulas: "1,5" is text, so it
+        // sorts with the strings instead of landing between 14 and 16.
+        if (Core.NumericText.TryParse(value, out var num))
+>>>>>>> upstream/main
         {
             // Defensive: even non-literal inputs can produce non-finite doubles
             // (e.g. "1e999" overflows to +Infinity). Keep those in the string bucket.
@@ -495,4 +708,81 @@ public partial class ExcelHandler
             }
         }
     }
+<<<<<<< HEAD
+=======
+
+    // DATA-CORRUPTION(xlsx/table-header-name): Excel requires each
+    // <tableColumn name="..."> to EXACTLY match the visible text of its
+    // header-row cell; a mismatch makes the file unopenable
+    // (0x800A03EC). When `add table` runs over empty header cells the
+    // columns get auto names (Column1, Column2, ...). If the user later
+    // overwrites a header cell with a real value, the worksheet says
+    // "Product" while the table still says "Column1". This pass — called
+    // after every cell value write — re-syncs the matching tableColumn's
+    // name to the header cell's text. Mirrors the naming/escaping logic
+    // in AddTable (GetCellDisplayValue + Column{n} fallback + uniqueness).
+    private void MaybeSyncTableHeaderName(WorksheetPart worksheet, string cellRef)
+    {
+        var (cellCol, cellRow) = ParseCellReference(cellRef.ToUpperInvariant());
+        var cellColIdx = ColumnNameToIndex(cellCol);
+
+        foreach (var tdp in worksheet.TableDefinitionParts.ToList())
+        {
+            var table = tdp.Table;
+            if (table == null) continue;
+            // Tables with no header row (HeaderRowCount=0) have no column
+            // names tied to cells — skip them.
+            if (table.HeaderRowCount != null && table.HeaderRowCount.Value == 0) continue;
+            if (table.Reference?.Value is not string rangeRef || !rangeRef.Contains(':')) continue;
+
+            var parts = rangeRef.Split(':');
+            var (startColName, startRow) = ParseCellReference(parts[0]);
+            var (endColName, _) = ParseCellReference(parts[1]);
+            var startColIdx = ColumnNameToIndex(startColName);
+            var endColIdx = ColumnNameToIndex(endColName);
+
+            // Header row is the first row of the table reference. Only act
+            // when the written cell is on that row and within the span.
+            if (cellRow != (int)startRow) continue;
+            if (cellColIdx < startColIdx || cellColIdx > endColIdx) continue;
+
+            var tableColumns = table.GetFirstChild<TableColumns>();
+            if (tableColumns == null) continue;
+            var cols = tableColumns.Elements<TableColumn>().ToList();
+            int colOffset = cellColIdx - startColIdx; // 0-based position in table
+            if (colOffset < 0 || colOffset >= cols.Count) continue;
+            var targetCol = cols[colOffset];
+
+            // Read the header cell's current display text.
+            var sheetData = worksheet.Worksheet?.GetFirstChild<SheetData>();
+            var hdrRow = sheetData?.Elements<Row>()
+                .FirstOrDefault(r => r.RowIndex?.Value == startRow);
+            var headerCell = hdrRow?.Elements<Cell>()
+                .FirstOrDefault(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
+            var text = headerCell != null ? GetCellDisplayValue(headerCell) : null;
+
+            // Excel rejects empty/duplicate column names. If the header was
+            // cleared, keep the existing (prior/auto) name to stay valid —
+            // never write an empty name.
+            if (string.IsNullOrEmpty(text)) continue;
+
+            // Already in sync — nothing to do.
+            if (string.Equals(targetCol.Name?.Value, text, StringComparison.Ordinal)) continue;
+
+            // Uniqueness: if another column already uses this name, leave the
+            // current name to avoid producing a duplicate (pre-existing edge);
+            // at minimum this never produces a header/column mismatch worse
+            // than before.
+            var used = new HashSet<string>(
+                cols.Where(c => !ReferenceEquals(c, targetCol))
+                    .Select(c => c.Name?.Value ?? "")
+                    .Where(n => !string.IsNullOrEmpty(n)),
+                StringComparer.OrdinalIgnoreCase);
+            if (used.Contains(text)) continue;
+
+            targetCol.Name = text;
+            table.Save();
+        }
+    }
+>>>>>>> upstream/main
 }

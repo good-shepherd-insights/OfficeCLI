@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using OfficeCli.Core;
@@ -16,6 +20,14 @@ public static partial class PptxBatchEmitter
     {
         // Internal relationship id — unstable across packages, see WordBatchEmitter.
         "relId",
+<<<<<<< HEAD
+=======
+        // Read-side convenience derived from a mermaid picture's alt-text
+        // (`alt=mermaid:<source>`). The alt already carries + round-trips the
+        // source, so re-emitting `mermaid=<source>` too would double the payload
+        // and add an inert prop AddPicture ignores. Storage is alt; drop the mirror.
+        "mermaid",
+>>>>>>> upstream/main
         // CONSISTENCY(animation-spid-roundtrip): cNvPr id used to be a skip
         // key on the assumption that ids auto-renumber. But PowerPoint
         // animations reference target shapes by raw id (<p:spTgt spid="N"/>),
@@ -89,6 +101,12 @@ public static partial class PptxBatchEmitter
         // OneOnBool helper (R43 779099bc) — same lexical-form concern as
         // the setter pinned to "1".
         "hmerge", "vmerge",
+<<<<<<< HEAD
+=======
+        // Get-only computed placeholder classification; AddShape has no case
+        // for it, so every dumped shape replayed with an UNSUPPORTED warning.
+        "isTitle",
+>>>>>>> upstream/main
     };
 
     // Shape-level `animation` is filtered above. The same readback emits
@@ -249,6 +267,26 @@ public static partial class PptxBatchEmitter
             // reading Format["fill"].
         }
 
+<<<<<<< HEAD
+=======
+        // Same double-emit shape as gradientRaw: textWarpRaw carries the
+        // verbatim <a:prstTxWarp> incl. avLst adjust values; the companion
+        // textWarp preset-name key would reset the warp to defaults if it
+        // applied after the raw install.
+        if (result.ContainsKey("textWarpRaw"))
+            result.Remove("textWarp");
+
+        // textOutlineRaw carries the verbatim run <a:ln>; the width:color
+        // compound (and its split keys) would rebuild a plain solid stroke
+        // over it.
+        if (result.ContainsKey("textOutlineRaw"))
+        {
+            result.Remove("textOutline");
+            result.Remove("textOutline.width");
+            result.Remove("textOutline.color");
+        }
+
+>>>>>>> upstream/main
         return result;
     }
 }

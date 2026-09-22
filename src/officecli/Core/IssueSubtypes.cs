@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 namespace OfficeCli.Core;
@@ -24,6 +28,24 @@ public static class IssueSubtypes
     public const string DefinedNameBroken = "definedname_broken";
     public const string DefinedNameTargetMissing = "definedname_target_missing";
     public const string BrokenPartRef = "broken_part_ref";
+<<<<<<< HEAD
+=======
+    /// <summary>xlsx-only: a visible numeric/date cell with an explicit,
+    /// width-stable number format cannot fit its formatted value in the visible
+    /// column budget. General and unresolved formats are intentionally skipped
+    /// because Excel can adapt their display to the available width. Format
+    /// bucket, Warning.</summary>
+    public const string NumericOverflow = "numeric_overflow";
+    /// <summary>xlsx-only: a visible General-formatted numeric cell whose value
+    /// needs more than 11 significant digits. Excel's General display caps
+    /// there and switches to scientific notation REGARDLESS of column width,
+    /// so the delivered document shows a rounded number with no visual cue and
+    /// widening the column does not fix it — the remedy is an explicit number
+    /// format. Disjoint from <see cref="NumericOverflow"/>, which covers the
+    /// opposite case (an explicit format that cannot fit the column).
+    /// Format bucket, Warning.</summary>
+    public const string GeneralPrecisionLoss = "general_precision_loss";
+>>>>>>> upstream/main
     /// <summary>pptx-only: notesSlide raw-set passthrough references an
     /// rId (<c>r:embed</c> / <c>r:link</c>) the dump pass cannot reproduce
     /// on the replay target (e.g. a non-image rel attached to a NotesSlidePart
@@ -32,6 +54,23 @@ public static class IssueSubtypes
     /// as an UnsupportedWarning during dump; the surfaced site is the slide
     /// owning the notes (<c>/slide[N]/notes</c>).</summary>
     public const string NotesUnresolvedRid = "notes_unresolved_rid";
+<<<<<<< HEAD
+=======
+    /// <summary>pptx-only: a shape with its own opaque dark solid fill carries
+    /// opaque dark text (fill brightness &lt; 30%, run brightness &lt; 80%) — the
+    /// text is unreadable when projected. Declared-model only: the shape's
+    /// explicit fill is compared against its explicit run colors, so the
+    /// backdrop is unambiguous (no z-order guesswork). Scheme/inherited colors,
+    /// translucent runs, and colors carrying lumMod/shade transforms are
+    /// skipped to keep false positives near zero. Format bucket, Warning.</summary>
+    public const string LowContrast = "low_contrast";
+
+    /// <summary>pptx-only: a picture whose box aspect ratio differs from its
+    /// source pixels' (crop and stretch inset folded in) by more than 5% —
+    /// the image is being stretched. Pictures covering the whole slide are
+    /// skipped (a texture pulled over a background is intentional).</summary>
+    public const string PictureAspectDistorted = "picture_aspect_distorted";
+>>>>>>> upstream/main
 
     /// <summary>Broad IssueType bucket names — the canonical surface shown
     /// in error messages and help. Single-letter aliases (<see cref="BucketAliases"/>)
@@ -55,6 +94,7 @@ public static class IssueSubtypes
     {
         FormulaNotEvaluated, FormulaCacheStale, FormulaRefMissingSheet, FormulaEvalError,
         FieldNotEvaluated, FieldCacheStale,
+<<<<<<< HEAD
         SlideFieldNotEvaluated, NotesUnresolvedRid,
         ChartSeriesRefMissingSheet, ChartCacheStale,
         DefinedNameBroken, DefinedNameTargetMissing,
@@ -64,6 +104,16 @@ public static class IssueSubtypes
     /// <summary>Subtypes that are scanned by default and surface under
     /// <c>--type content</c>. Opt-in subtypes (currently only
     /// <see cref="ChartCacheStale"/>) require an exact-name request.</summary>
+=======
+        SlideFieldNotEvaluated, NotesUnresolvedRid, LowContrast, PictureAspectDistorted,
+        ChartSeriesRefMissingSheet, ChartCacheStale,
+        DefinedNameBroken, DefinedNameTargetMissing,
+        BrokenPartRef, NumericOverflow, GeneralPrecisionLoss,
+    };
+
+    /// <summary>Subtypes that require an exact-name request rather than being
+    /// scanned by default or via their broad issue bucket.</summary>
+>>>>>>> upstream/main
     public static readonly string[] OptInSubtypes = new[] { ChartCacheStale };
 
     /// <summary>One-line summary suitable for the CLI <c>--type</c> help
@@ -75,12 +125,21 @@ public static class IssueSubtypes
         return "Issue type filter. Broad buckets: "
             + string.Join(", ", BucketNames)
             + " (alias " + string.Join(", ", BucketAliases) + "). "
+<<<<<<< HEAD
             + "Subtypes (Content bucket, returned by default and via --type content): "
             + string.Join(", ", defaults) + ". "
             + "Opt-in only (request by exact name; not included in --type content): "
             + string.Join(", ", OptInSubtypes) + ". "
             + "Subtypes are format-specific — formula_* / chart_* / definedname_* apply to xlsx, "
             + "field_* to docx, slide_field_* / notes_unresolved_rid / broken_part_ref to pptx; requesting a subtype that does not apply to "
+=======
+            + "Subtypes (returned by default and via their matching broad bucket): "
+            + string.Join(", ", defaults) + ". "
+            + "Opt-in only (request by exact name; not included in --type content): "
+            + string.Join(", ", OptInSubtypes) + ". "
+            + "Subtypes are format-specific — formula_* / chart_* / definedname_* / numeric_overflow apply to xlsx, "
+            + "field_* to docx, slide_field_* / notes_unresolved_rid / broken_part_ref / low_contrast / picture_aspect_distorted to pptx; requesting a subtype that does not apply to "
+>>>>>>> upstream/main
             + "the queried file returns count=0 (not an error). "
             + "All values are case-insensitive and surrounding whitespace is trimmed.";
     }

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -538,7 +542,11 @@ internal static partial class PivotTableHelper
         // numeric nor regular strings; they will be emitted as ErrorItem elements.
         bool valuesAreNumeric = values.Length > 0 && values.All(v =>
             string.IsNullOrEmpty(v) || v == ErrorCellSentinel
+<<<<<<< HEAD
             || double.TryParse(v, System.Globalization.CultureInfo.InvariantCulture, out _));
+=======
+            || NumericText.TryParse(v, out _));
+>>>>>>> upstream/main
         // When forceStringIndexed is true (axis fields), report isNumeric=false
         // so downstream record-writing code uses the valueIndex map to emit
         // <x v="N"/> references instead of <n v="..."/> direct values. The
@@ -899,7 +907,11 @@ internal static partial class PivotTableHelper
                 {
                     record.AppendChild(new NumberItem
                     {
+<<<<<<< HEAD
                         Val = double.Parse(v, System.Globalization.CultureInfo.InvariantCulture)
+=======
+                        Val = NumericText.TryParse(v, out var nv) ? nv : 0
+>>>>>>> upstream/main
                     });
                 }
                 else if (fieldValueIndex[f].TryGetValue(v, out var idx))

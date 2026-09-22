@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.Json;
@@ -349,10 +353,14 @@ internal static class SchemaHelpLoader
     /// </summary>
     internal static string TruncateForError(string s, int maxChars)
     {
+<<<<<<< HEAD
         if (s.Length <= maxChars) return s;
         var cut = maxChars;
         if (cut > 0 && char.IsHighSurrogate(s[cut - 1])) cut--;
         return s[..cut] + "…";
+=======
+        return OfficeCli.Core.DisplayText.Truncate(s, maxChars);
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -684,6 +692,46 @@ internal static class SchemaHelpLoader
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Return the schema-declared property names for (format, element) that are
+    /// usable with <paramref name="verb"/> (e.g. "set"), sorted. Used to build the
+    /// dynamic "valid props: …" guidance hint so it never drifts from the schema
+    /// (which is itself kept in sync with the handler via schema-verify tooling).
+    /// Lenient on unknown format/element (returns empty).
+    /// </summary>
+    internal static IReadOnlyList<string> ListProperties(string format, string element, string verb)
+    {
+        if (string.IsNullOrEmpty(format) || string.IsNullOrEmpty(element))
+            return Array.Empty<string>();
+
+        JsonDocument doc;
+        try { doc = LoadSchema(NormalizeFormat(format), element); }
+        catch { return Array.Empty<string>(); }
+
+        using (doc)
+        {
+            if (!doc.RootElement.TryGetProperty("properties", out var propsEl)
+                || propsEl.ValueKind != JsonValueKind.Object)
+                return Array.Empty<string>();
+
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var prop in propsEl.EnumerateObject())
+            {
+                // Skip read-only / computed props (effective.*, evaluated, …) — the
+                // schema marks them with the verb flag set to false.
+                if (prop.Value.ValueKind == JsonValueKind.Object
+                    && prop.Value.TryGetProperty(verb, out var verbFlag)
+                    && verbFlag.ValueKind == JsonValueKind.False)
+                    continue;
+                names.Add(prop.Name);
+            }
+            return names.ToList();
+        }
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Phase-1 schema/handler parity helper. Given a set of keys (e.g.
     /// the <c>DocumentNode.Format</c> keys returned by a handler's Get),
     /// return those that the schema doesn't declare as valid for
@@ -744,7 +792,11 @@ internal static class SchemaHelpLoader
         int bestDist = int.MaxValue;
         foreach (var c in candidates)
         {
+<<<<<<< HEAD
             var dist = LevenshteinDistance(lower, c.ToLowerInvariant());
+=======
+            var dist = OfficeCli.Core.EditDistance.Damerau(lower, c.ToLowerInvariant());
+>>>>>>> upstream/main
             // Accept distance up to max(2, len/3) — same rule CommandBuilder uses.
             var maxDist = Math.Max(2, lower.Length / 3);
             if (dist <= maxDist && dist < bestDist)
@@ -756,6 +808,7 @@ internal static class SchemaHelpLoader
 
         return best ?? substringHit;
     }
+<<<<<<< HEAD
 
     private static int LevenshteinDistance(string s, string t)
     {
@@ -779,4 +832,6 @@ internal static class SchemaHelpLoader
 
         return d[s.Length, t.Length];
     }
+=======
+>>>>>>> upstream/main
 }

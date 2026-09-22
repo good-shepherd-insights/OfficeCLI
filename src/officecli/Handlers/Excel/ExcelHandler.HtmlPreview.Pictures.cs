@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 //
 // Render embedded xlsx pictures (xdr:pic in the worksheet drawing) as
@@ -21,9 +25,15 @@ public partial class ExcelHandler
     /// existing overlay positioning code can consume the result). The image
     /// part is inlined as a data: URI.
     /// </summary>
+<<<<<<< HEAD
     private List<(int fromRow, int toRow, int fromCol, int toCol, string html)> CollectSheetPictures(WorksheetPart worksheetPart)
     {
         var result = new List<(int fromRow, int toRow, int fromCol, int toCol, string html)>();
+=======
+    private List<(int fromRow, int toRow, int fromCol, int toCol, double colOffsetPt, string html)> CollectSheetPictures(WorksheetPart worksheetPart)
+    {
+        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, double colOffsetPt, string html)>();
+>>>>>>> upstream/main
         var drawingsPart = worksheetPart.DrawingsPart;
         if (drawingsPart?.WorksheetDrawing == null) return result;
 
@@ -59,7 +69,13 @@ public partial class ExcelHandler
 
             var sb = new StringBuilder();
             sb.Append($"<img class=\"xlsx-picture\" src=\"{dataUri}\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none\"/>");
+<<<<<<< HEAD
             result.Add((fromRow, toRow, fromCol, toCol, sb.ToString()));
+=======
+            // 0 offset: pictures fill their anchor box via the overlay loop's
+            // whole-column sum (no sub-column remainder threaded for pictures).
+            result.Add((fromRow, toRow, fromCol, toCol, 0.0, sb.ToString()));
+>>>>>>> upstream/main
         }
 
         return result;

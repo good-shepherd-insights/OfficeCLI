@@ -269,5 +269,9 @@ officecli get tables.docx '/body/tbl[1]'
 officecli get tables.docx '/body/tbl[1]/tr[2]/tc[1]'
 
 # List all rows in a table
+<<<<<<< HEAD
 officecli query tables.docx '/body/tbl[4]' row
+=======
+officecli query tables.docx '/body/tbl[4]/row'
+>>>>>>> upstream/main
 ```

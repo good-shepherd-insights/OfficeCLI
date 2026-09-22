@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -16,8 +20,15 @@ namespace OfficeCli.Handlers;
 public partial class WordHandler
 {
     public string Add(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+<<<<<<< HEAD
     {
         Modified = true;
+=======
+        => MarkModified(() => AddCore(parentPath, type, position, properties));
+
+    private string AddCore(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+    {
+>>>>>>> upstream/main
         // The signature is non-nullable, but the body uses `type?.Equals(...)`
         // below to short-circuit header/footer routing — that null-conditional
         // makes the C# flow analyzer treat `type` as nullable from that point
@@ -44,6 +55,10 @@ public partial class WordHandler
         // it as a WARNING line so curated-surface gaps stop being silent.
         LastAddUnsupportedProps = new List<string>();
         LastAddWarnings = new List<string>();
+<<<<<<< HEAD
+=======
+        LastUnrecognizedLatex = new List<string>();
+>>>>>>> upstream/main
 
         // Reject negative --index up front with a clean message instead of
         // letting it fall through and surface as a raw .NET
@@ -134,6 +149,39 @@ public partial class WordHandler
         // whole index).
         if (parent is Body) ClearBodyChildIndex();
 
+<<<<<<< HEAD
+=======
+        // PERF(nav-child-cache): a run/cell add under a paragraph (parent != Body)
+        // does NOT change the body-direct index above, but it DOES change the
+        // paragraph's run set — so a cached /<para>/r[K] (or /<row>/tc[K]) list
+        // must be dropped or a later resolve returns stale runs. This must fire
+        // on EXIT, not here at entry: an --after/--before add navigates to its
+        // anchor (e.g. /body/tbl[1]/tr[2]) DURING the add, which repopulates the
+        // very row/cell cache from the PRE-insert tree; an entry-only clear would
+        // then be overwritten and leave the positional insert resolving against a
+        // stale index (symptom: `add row --before tr[2]` lands at the wrong slot).
+        // Always-armed (cheap Dictionary.Clear; build-time nav caches are empty,
+        // so the append fast-path is untouched). Mirrors the _anchorCacheGuard
+        // exit-timing rationale below.
+        using var _navChildCacheGuard = new NavCacheClearGuard(this);
+
+        // --after/--before poisons the cache mid-Add: ResolveAnchorPosition
+        // navigates to the anchor, which REBUILDS the child-index cache from
+        // the pre-mutation tree; the positional insert then leaves it stale
+        // for the rest of the session (symptom: "No tbl found at /body" while
+        // the same error lists tbl(1) as available — navigation read the
+        // poisoned cache, the error message enumerated the live DOM).
+        // AddParagraph invalidates after its own positional insert, but other
+        // types (table, ...) did not — so arm an exit-invalidate guard, the
+        // same pattern Remove/Move/Swap/CopyFrom use (BodyCacheGuard, "must
+        // invalidate on exit, after the structural change has happened").
+        // Conditional on an anchor position: the append hot path (batch replay
+        // of thousands of paragraphs) must keep its caches or it turns O(n²).
+        using var _anchorCacheGuard = parent is Body && (position?.After != null || position?.Before != null)
+            ? new BodyCacheGuard(this)
+            : default;
+
+>>>>>>> upstream/main
         // Reject add operations whose parent/child combination would produce
         // schema-invalid OOXML (e.g. /body/sectPr accepting a paragraph child,
         // or /body/p[N] accepting a nested paragraph/table). `position` is
@@ -174,6 +222,14 @@ public partial class WordHandler
         {
             "paragraph" or "p" => AddParagraph(parent, parentPath, index, properties),
             "equation" or "formula" or "math" => AddEquation(parent, parentPath, index, properties),
+            // `diagram` is overloaded: the mermaid synthesizer (mermaid/text/dsl/src)
+            // and the dump→batch verbatim carrier that rebuilds a native OOXML
+            // SmartArt diagram from raw parts (carries `runXml`). Route to mermaid
+            // only when it is NOT the parts carrier; `flowchart` is always mermaid.
+            "flowchart" => AddDiagram(parent, parentPath, index, properties),
+            "diagram" when !properties.ContainsKey("runXml")
+                => AddDiagram(parent, parentPath, index, properties),
+            "markdown" or "md" => AddMarkdown(parent, parentPath, index, properties),
             "run" or "r" => AddRun(parent, parentPath, index, properties),
             "table" or "tbl" => AddTable(parent, parentPath, index, properties),
             "row" or "tr" => AddRow(parent, parentPath, index, properties),
@@ -184,8 +240,22 @@ public partial class WordHandler
             "chart" => AddChart(parent, parentPath, index, properties),
             "picture" or "image" or "img" => AddPicture(parent, parentPath, index, properties),
             "ole" or "oleobject" or "object" or "embed" => AddOle(parent, parentPath, index, properties),
+<<<<<<< HEAD
             "comment" => AddComment(parent, parentPath, index, properties),
             "bookmark" => AddBookmark(parent, parentPath, index, properties),
+=======
+            // Unified verbatim part-owning carrier (dump→batch only). The former
+            // per-element verbs (chartpart/diagram/smartart/vmlshape/drawingshape/
+            // activex) differed only in a marker check and all delegated to the
+            // same routine; they remain accepted as input aliases for hand-written
+            // batches, but the emitter now emits the single canonical `inlinedparts`.
+            "inlinedparts" or "chartpart" or "activex" or "diagram" or "smartart"
+                or "vmlshape" or "drawingshape"
+                => AddInlinedPartsRun(parent, parentPath, properties, "inlinedparts"),
+            "comment" => AddComment(parent, parentPath, index, properties),
+            "bookmark" => AddBookmark(parent, parentPath, index, properties),
+            "bookmarkend" => AddBookmarkEnd(parent, parentPath, index, properties),
+>>>>>>> upstream/main
             "permstart" or "permend" => AddPerm(parent, parentPath, index, properties, type),
             "hyperlink" or "link" => AddHyperlink(parent, parentPath, index, properties),
             "section" or "sectionbreak" => AddSection(parent, parentPath, index, properties),
@@ -230,6 +300,18 @@ public partial class WordHandler
             "commentrangestart" or "commentrangeend" or "commentreference" =>
                 throw new ArgumentException(
                     $"Cannot add '{type}' directly. Adding a bare comment range marker into a paragraph destroys existing runs (schema-aware sequence reset). Use `add --type comment --prop start=... --prop end=... --prop text=...` to create the comment atomically."),
+<<<<<<< HEAD
+=======
+            // Reject altChunk: it embeds alternate-format payloads (HTML/RTF
+            // fragments) via OOXML relationship-bound parts. AddDefault would
+            // fall through to TryCreateTypedElement which writes user props
+            // as raw unnamespaced attrs (e.g. src=...) — schema-invalid; Word
+            // rejects the file. Batch dump already warns+drops altChunk for
+            // the same reason.
+            "altchunk" =>
+                throw new ArgumentException(
+                    "Cannot add 'altChunk' directly. altChunk embeds alternate-format payloads via OOXML relationships which require a curated implementation. Use the batch import or raw-set path for round-trip fidelity."),
+>>>>>>> upstream/main
             _ => AddDefault(parent, parentPath, index, properties, type),
         };
         }
@@ -306,8 +388,15 @@ public partial class WordHandler
 
         // /body/sectPr cannot contain added children via `add` — the section
         // element only holds layout primitives (pgSz, pgMar, cols, ...), all
+<<<<<<< HEAD
         // of which are managed via `set` on /body/sectPr instead.
         if (parent is SectionProperties)
+=======
+        // of which are managed via `set` on /body/sectPr instead. EXCEPTION:
+        // header/footer adds are routed by section selector; the actual part
+        // attachment runs via ResolveTargetSectPrForHeaderFooter.
+        if (parent is SectionProperties && t != "header" && t != "footer")
+>>>>>>> upstream/main
         {
             throw new ArgumentException(
                 $"Cannot add '{type}' under {parentPath}. SectionProperties only holds layout metadata; use 'officecli set' to modify pgSz, pgMar, cols, etc.");
@@ -403,12 +492,28 @@ public partial class WordHandler
                 case "oleobject":
                 case "object":
                 case "embed":
+<<<<<<< HEAD
+=======
+                // The inlined-parts carrier wraps the run in a cell paragraph, same
+                // as AddOle — block-level schema requirement satisfied. Old verb
+                // aliases kept alongside the unified `inlinedparts`.
+                case "inlinedparts":
+                case "activex":
+                case "diagram":
+                case "smartart":
+                case "vmlshape":
+                case "drawingshape":
+>>>>>>> upstream/main
                     break;
                 // BUG-FIX(B2): bookmark is an inline-level construct, but
                 // AddBookmark redirects into the cell's first paragraph
                 // (auto-creating one if needed) so the resulting XML stays
                 // schema-valid (cell only accepts block-level children).
                 case "bookmark":
+<<<<<<< HEAD
+=======
+                case "bookmarkend":
+>>>>>>> upstream/main
                     break;
                 case "cell":
                 case "tc":
@@ -436,11 +541,26 @@ public partial class WordHandler
                 $"Cannot add '{type}' under {parentPath}: numbering definitions belong under /numbering.");
         }
 
+<<<<<<< HEAD
         // /numbering only accepts numbering definitions (num, abstractNum). Reject everything else
         // so a stray --type p doesn't corrupt numbering.xml.
         if (parent is Numbering)
         {
             if (t != "num" && t != "abstractnum")
+=======
+        // /numbering only accepts numbering definitions. Reject stray curated
+        // types (a typo'd --type p) so they can't corrupt numbering.xml. A
+        // namespace-prefixed type (e.g. w:abstractNum, w:num, w:numPicBullet) is
+        // an explicit generic-add request — the dump→batch recursive emitter
+        // rebuilds the whole subtree this way, bypassing the curated
+        // abstractNum/num seeding (which auto-fills 9 default levels). Let those
+        // through to AddDefault, mirroring how /styles children (w:pPr, w:rPr,
+        // w:tblStylePr, …) reach the generic path. CONSISTENCY(numbering-typed-decomp).
+        if (parent is Numbering)
+        {
+            bool prefixedGeneric = t.Contains(':');
+            if (t != "num" && t != "abstractnum" && !prefixedGeneric)
+>>>>>>> upstream/main
                 throw new ArgumentException(
                     $"Cannot add '{type}' under /numbering. /numbering only holds numbering definitions — use --type num (with --prop abstractNumId=N) or --type abstractNum.");
         }
@@ -528,6 +648,9 @@ public partial class WordHandler
     }
 
     public (string RelId, string PartPath) AddPart(string parentPartPath, string partType, Dictionary<string, string>? properties = null)
+        => MarkModified(() => AddPartCore(parentPartPath, partType, properties));
+
+    private (string RelId, string PartPath) AddPartCore(string parentPartPath, string partType, Dictionary<string, string>? properties)
     {
         var mainPart = _doc.MainDocumentPart!;
 
@@ -604,6 +727,17 @@ public partial class WordHandler
                     if (settingsPart.Settings.GetFirstChild<DisplayBackgroundShape>() == null)
                         settingsPart.Settings.AddChild(new DisplayBackgroundShape());
                     settingsPart.Settings.Save();
+                    break;
+
+                case "recalcfields":
+                    // Compute + write cached values we can do WITHOUT a layout
+                    // engine: today that's SEQ numbering (document-order count).
+                    // PAGE/PAGEREF/TOC page numbers need pagination — pair with
+                    // `--prop updateFields=true` to defer those to Word.
+                    if (value.Trim().ToLowerInvariant() is "seq" or "all" or "true" or "")
+                        RecalcSeqFields();
+                    else
+                        (unsupported ??= new()).Add($"recalcFields={value} (supported: seq)");
                     break;
 
                 case "defaultfont":
@@ -731,6 +865,19 @@ public partial class WordHandler
                             "trackedchanges" => DocumentProtectionValues.TrackedChanges,
                             _ => DocumentProtectionValues.Forms
                         };
+<<<<<<< HEAD
+=======
+                        // BUG-DUMP-PROTECTION-ENFORCE: honor an accompanying
+                        // protectionEnforced flag so a protection mode that is
+                        // DEFINED-but-NOT-ENFORCED in the source (w:enforcement="0")
+                        // round-trips as unenforced. Forcing enforcement on flips
+                        // Word into form-fill mode and shifts every line ~12px.
+                        // Default to enforced when the flag is absent so the
+                        // single-command `set / --prop protection=forms` still means
+                        // "enforce".
+                        bool enforce = !properties.TryGetValue("protectionEnforced", out var enfVal)
+                            || enfVal == null || IsTruthy(enfVal);
+>>>>>>> upstream/main
                         if (existing != null)
                         {
                             // Update Edit + Enforcement in place; preserve any
@@ -738,14 +885,22 @@ public partial class WordHandler
                             // that were injected via raw-set. A replace-new
                             // path would silently destroy the password payload.
                             existing.Edit = new EnumValue<DocumentProtectionValues>(editValue);
+<<<<<<< HEAD
                             existing.Enforcement = new OnOffValue(true);
+=======
+                            existing.Enforcement = new OnOffValue(enforce);
+>>>>>>> upstream/main
                         }
                         else
                         {
                             var prot = new DocumentProtection
                             {
                                 Edit = new EnumValue<DocumentProtectionValues>(editValue),
+<<<<<<< HEAD
                                 Enforcement = new OnOffValue(true)
+=======
+                                Enforcement = new OnOffValue(enforce)
+>>>>>>> upstream/main
                             };
                             // CONSISTENCY(settings-schema-order): w:documentProtection
                             // must precede w:compat / w:charSpacingControl in w:settings
@@ -760,6 +915,29 @@ public partial class WordHandler
                     break;
                 }
 
+<<<<<<< HEAD
+=======
+                case "protectionenforced":
+                {
+                    // BUG-DUMP-PROTECTION-ENFORCE: enforcement state for
+                    // documentProtection. Apply to the existing protection element
+                    // if one is present; a no-op when there is none (the
+                    // `protection` case — which may run before or after this one in
+                    // the same multi-prop op, dict order being unspecified — is
+                    // authoritative and reads this flag directly). Having a real
+                    // case also stops the generic-setting fallthrough from emitting
+                    // a spurious warning on a round-tripped protectionEnforced prop.
+                    var enfPart = _doc.MainDocumentPart?.DocumentSettingsPart;
+                    var existingProt = enfPart?.Settings?.GetFirstChild<DocumentProtection>();
+                    if (existingProt != null)
+                    {
+                        existingProt.Enforcement = new OnOffValue(IsTruthy(value));
+                        enfPart!.Settings!.Save();
+                    }
+                    break;
+                }
+
+>>>>>>> upstream/main
                 default:
                     // Try document settings, section layout, compatibility, and docDefaults
                     var lowerKey = key.ToLowerInvariant();

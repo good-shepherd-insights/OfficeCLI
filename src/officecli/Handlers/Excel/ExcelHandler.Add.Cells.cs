@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -19,6 +23,11 @@ public partial class ExcelHandler
 {
     private string AddSheet(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
+<<<<<<< HEAD
+=======
+        if (parentPath.TrimStart('/').Contains('/'))
+            RejectSheetPathSuffix(parentPath, "sheet", "Use / or an existing sheet path (/Sheet1) as the parent; position with --index.");
+>>>>>>> upstream/main
         var index = position?.Index;
         var workbookPart = _doc.WorkbookPart
             ?? throw new InvalidOperationException("Workbook not found");
@@ -32,10 +41,29 @@ public partial class ExcelHandler
         // the auto-generated SheetN default is always safe.
         if (properties.ContainsKey("name"))
             ValidateSheetName(name);
+<<<<<<< HEAD
+=======
+        // Probe ifExists UNCONDITIONALLY: it is only acted on when the name
+        // collides, but reading it inside that branch meant the tracking
+        // dictionary reported it as unsupported_property on every clean
+        // subtree-dump replay (the emitter always emits it).
+        var claimIfExists = properties.TryGetValue("ifExists", out var ifExistsVal)
+            && ifExistsVal.Equals("use", StringComparison.OrdinalIgnoreCase);
+>>>>>>> upstream/main
         var caseMatch = sheets.Elements<Sheet>()
             .FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
         if (caseMatch != null)
         {
+<<<<<<< HEAD
+=======
+            // ifExists=use: claim the existing sheet as a success no-op.
+            // Emitted by single-sheet subtree dumps, whose batch must replay
+            // both onto a workbook lacking the sheet (create it) and back
+            // onto one that already has it (merge into it) — the hard
+            // duplicate-name error below broke the second case.
+            if (claimIfExists)
+                return $"/{caseMatch.Name}";
+>>>>>>> upstream/main
             // Distinguish the BlankDocCreator-shipped placeholder sheet
             // (untouched, claimable by the first Add) from a real
             // user-created sheet (collision is a genuine error). The
@@ -91,13 +119,36 @@ public partial class ExcelHandler
         {
             var refSheet = sheets.Elements<Sheet>().ElementAt(pos);
             sheets.InsertBefore(newSheet, refSheet);
+<<<<<<< HEAD
+=======
+
+            // localSheetId on <definedName> is a 0-based position into
+            // <sheets>; inserting mid-list shifts every sheet at/after the
+            // insert point up by one, so scoped names (printArea, print
+            // titles, scoped named ranges) must shift with them or they
+            // silently rebind to the sheet now occupying the old position.
+            var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
+            if (definedNames != null)
+            {
+                foreach (var dn in definedNames.Elements<DefinedName>())
+                {
+                    var lid = dn.LocalSheetId?.Value;
+                    if (lid.HasValue && lid.Value >= (uint)pos)
+                        dn.LocalSheetId = lid.Value + 1;
+                }
+            }
+>>>>>>> upstream/main
         }
         else
         {
             sheets.AppendChild(newSheet);
         }
 
+<<<<<<< HEAD
         // Add/Set symmetry (CLAUDE.md): apply autoFilter / tabColor / hidden
+=======
+        // Add/Set symmetry (the project conventions): apply autoFilter / tabColor / hidden
+>>>>>>> upstream/main
         // at creation time by funneling into the same code paths Set uses,
         // so property bags accepted by Set are also accepted by Add.
         var sheetLevelForwarded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -137,8 +188,28 @@ public partial class ExcelHandler
         return true;
     }
 
+<<<<<<< HEAD
     private string AddRow(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
+=======
+    /// <summary>
+    /// `add --type row|col|sheet` takes a SHEET path. A cell or range suffix
+    /// (/Sheet1/Z9) used to be dropped without a word, so the element landed at
+    /// the default position while the caller believed it had named one.
+    /// </summary>
+    private static void RejectSheetPathSuffix(string parentPath, string what, string positionHint)
+    {
+        var segs = parentPath.TrimStart('/').Split('/', 2);
+        if (segs.Length > 1 && segs[1].Length > 0)
+            throw new Core.CliException(
+                $"add --type {what} takes a sheet path (/{segs[0]}); the '{segs[1]}' suffix in '{parentPath}' is not used.")
+            { Code = "invalid_path", Suggestion = positionHint };
+    }
+
+    private string AddRow(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+    {
+        RejectSheetPathSuffix(parentPath, "row", "Position a row with --index N, --after /Sheet1/row[K] or --before /Sheet1/row[K].");
+>>>>>>> upstream/main
         var segments = parentPath.TrimStart('/').Split('/', 2);
         var sheetName = segments[0];
         var worksheet = FindWorksheet(sheetName)
@@ -194,8 +265,30 @@ public partial class ExcelHandler
         // down. Gate only on "inserting at a position" (index set), NOT on the
         // presence of cell data at/below — sheet-level structures (CF / merge /
         // dataValidation) anchored on still-empty cells must shift too. Mirrors
+<<<<<<< HEAD
         // AddCol, which always calls ShiftColumnsRight on a positional insert.
         // When nothing sits at/below rowIdx this is a harmless no-op.
+=======
+        // AddCol, which calls ShiftColumnsRight on every positional insert
+        // (CONSISTENCY(add-row-col-shift)). When nothing sits at/below rowIdx this
+        // is a harmless no-op.
+        // Validate all props BEFORE the structural shift (same atomicity rule
+        // as AddCol): a height/outline parse failure after ShiftRowsDown left
+        // the shift applied even though the add reported an error.
+        double? parsedRowHeight = null;
+        if (properties.TryGetValue("height", out var addRowHeight) && !string.IsNullOrWhiteSpace(addRowHeight))
+            parsedRowHeight = ParseRowHeightPoints(addRowHeight);
+        byte? parsedRowOutline = null;
+        if (properties.TryGetValue("outline", out var addRowOutline)
+            || properties.TryGetValue("outlinelevel", out addRowOutline)
+            || properties.TryGetValue("group", out addRowOutline))
+        {
+            if (!byte.TryParse(addRowOutline, out var addRowOutlineVal) || addRowOutlineVal > 7)
+                throw new ArgumentException($"Invalid 'outline' value: '{addRowOutline}'. Expected an integer 0-7 (outline/group level).");
+            parsedRowOutline = addRowOutlineVal;
+        }
+
+>>>>>>> upstream/main
         bool needsShift = index.HasValue;
         if (needsShift)
             ShiftRowsDown(worksheet, rowIdx);
@@ -204,9 +297,15 @@ public partial class ExcelHandler
 
         // CONSISTENCY(add-set-symmetry): accept height/hidden at creation
         // time, mirroring SetRow semantics (ExcelHandler.Set.cs L3157-3164).
+<<<<<<< HEAD
         if (properties.TryGetValue("height", out var addRowHeight) && !string.IsNullOrWhiteSpace(addRowHeight))
         {
             newRow.Height = ParseRowHeightPoints(addRowHeight);
+=======
+        if (parsedRowHeight is { } rh)
+        {
+            newRow.Height = rh;
+>>>>>>> upstream/main
             newRow.CustomHeight = true;
         }
         if (properties.TryGetValue("hidden", out var addRowHidden))
@@ -214,6 +313,18 @@ public partial class ExcelHandler
             newRow.Hidden = addRowHidden.Equals("true", StringComparison.OrdinalIgnoreCase)
                 || addRowHidden == "1" || addRowHidden.Equals("yes", StringComparison.OrdinalIgnoreCase);
         }
+<<<<<<< HEAD
+=======
+        // CONSISTENCY(add-set-symmetry): accept outline/group + collapsed at
+        // creation, mirroring SetRow (ExcelHandler.Set.cs L2823-2832).
+        if (parsedRowOutline is { } rowOutlineVal)
+            newRow.OutlineLevel = rowOutlineVal;
+        if (properties.TryGetValue("collapsed", out var addRowCollapsed))
+        {
+            newRow.Collapsed = addRowCollapsed.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || addRowCollapsed == "1" || addRowCollapsed.Equals("yes", StringComparison.OrdinalIgnoreCase);
+        }
+>>>>>>> upstream/main
 
         // Create cells if cols specified
         if (properties.TryGetValue("cols", out var colsStr))
@@ -404,7 +515,44 @@ public partial class ExcelHandler
                 ShiftCellsDownInColumn(cellSheetData, shiftCol, shiftRow);
         }
 
+<<<<<<< HEAD
         var cell = FindOrCreateCell(cellSheetData, cellRef);
+=======
+        // Atomicity: validate a type=boolean value BEFORE FindOrCreateCell
+        // appends the cell to the sheet. A throw AFTER the cell is created
+        // used to leave a corrupt <c t="b"><v>garbage</v></c> persisted on
+        // disk (real Excel then refuses the file, 0x800A03EC) even though the
+        // Add reported an error. The later in-switch check stays as a
+        // defense-in-depth guard.
+        {
+            var upfrontType = properties.GetValueOrDefault("type")?.ToLowerInvariant();
+            var upfrontValue = (properties.GetValueOrDefault("value")
+                ?? properties.GetValueOrDefault("text"))?.Trim().ToLowerInvariant();
+            if ((upfrontType is "boolean" or "bool") && !string.IsNullOrEmpty(upfrontValue)
+                && upfrontValue is not ("true" or "false" or "yes" or "no" or "1" or "0"))
+                throw new ArgumentException(
+                    $"Cannot store '{properties.GetValueOrDefault("value") ?? properties.GetValueOrDefault("text")}' as boolean; " +
+                    "value must be true/false, yes/no, or 1/0. Use type=string to keep the literal text.");
+        }
+
+        // Atomicity: FindOrCreateCell materializes a <c> stub if the cell did
+        // not exist. A validation throw further down (bad textRotation, bad
+        // color, bad merge ref, ...) must not leave that stub — or the value
+        // already written into it — persisted while the command reports
+        // Error/exit 1. Capture pre-existence, then roll the new cell back on
+        // any throw. Mirrors the Set-side rollback (ExcelHandler.Set.cs).
+        var cellPreExisted = cellSheetData.Elements<Row>()
+            .SelectMany(r => r.Elements<Cell>())
+            .Any(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
+
+        var cell = FindOrCreateCell(cellSheetData, cellRef);
+        // Clone for rollback of a pre-existing cell (restore original state);
+        // a newly created cell is removed instead (see catch below).
+        var cellBackup = cell.CloneNode(true);
+
+        try
+        {
+>>>>>>> upstream/main
 
         // CONSISTENCY(cell-value-alias): Set accepts "text" as alias for
         // "value" (see WordHandler.Set cell text handling); mirror that here.
@@ -438,6 +586,7 @@ public partial class ExcelHandler
                 Console.Error.WriteLine(
                     "Warning: Both value= and formula= supplied — using formula, value ignored.");
             }
+<<<<<<< HEAD
             // Auto-detect formula: value starting with '=' is treated as formula
             if (value.StartsWith('=') && value.Length > 1)
             {
@@ -445,6 +594,41 @@ public partial class ExcelHandler
                 ValidateFormulaCellRefs(value);
                 cell.CellFormula = new CellFormula(Core.PivotTableHelper.SanitizeXmlText(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(value.TrimStart('=')))));
                 cell.CellValue = null;
+=======
+            // Auto-detect formula: value starting with '=' is treated as
+            // formula — UNLESS type=string was supplied (explicitly, or forced
+            // by the apostrophe branch above). Mirrors the Set-path gate; see
+            // ExcelHandler.Set.cs case "value".
+            // The Text number format ("@") — already on the cell, or applied
+            // by this same call — keeps an '='-leading entry literal, as in Set.
+            var addForcedString = (properties.TryGetValue("type", out var addTypeVal)
+                    && addTypeVal.Equals("string", StringComparison.OrdinalIgnoreCase))
+                || IsTextNumberFormat(properties)
+                || CellCarriesTextFormat(cell);
+            if (!addForcedString && value.StartsWith('=') && value.Length > 1)
+            {
+                RejectCrossWorkbookFormula(value);
+                ValidateFormulaCellRefs(value);
+                // CONSISTENCY(value-child-uniqueness): a <c> may hold at most
+                // one value child. Drop any stale <is> placeholder (table
+                // header cells emit <is><t>ColumnN</t></is>) before writing
+                // the formula; a cell with both <f>/<v> and <is> is invalid
+                // OOXML that real Excel rejects with 0x800A03EC.
+                cell.RemoveAllChildren<InlineString>();
+                cell.CellFormula = new CellFormula(Core.PivotTableHelper.SanitizeXmlText(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(value.TrimStart('=')))));
+                cell.CellValue = null;
+                // CONSISTENCY(cell-formula-calc): Set and import both stamp
+                // fullCalcOnLoad AND evaluate/cache the result when writing a
+                // formula; Add doing neither left a bare <f> whose Get type
+                // diverged from the replayed file (String vs Error).
+                EnsureFullCalcOnLoad();
+                {
+                    var addEvalSd = GetSheet(cellWorksheet).GetFirstChild<SheetData>();
+                    if (addEvalSd != null)
+                        WriteFormulaResultToCell(cell,
+                            new Core.FormulaEvaluator(addEvalSd, _doc.WorkbookPart).TryEvaluateFull(value.TrimStart('=')));
+                }
+>>>>>>> upstream/main
             }
             else
             {
@@ -453,6 +637,14 @@ public partial class ExcelHandler
                 // the old formula re-evaluates on open / in html preview
                 // and overrides the literal the caller just set.
                 cell.CellFormula = null;
+<<<<<<< HEAD
+=======
+                // CONSISTENCY(value-child-uniqueness): also drop any stale
+                // <is> inline-string child (table header placeholders write
+                // <is><t>ColumnN</t></is>). A cell carrying both <v> and <is>
+                // is invalid OOXML — real Excel refuses to open it (0x800A03EC).
+                cell.RemoveAllChildren<InlineString>();
+>>>>>>> upstream/main
                 // R2-2: strip XML-illegal chars (e.g. U+0000) from the cell
                 // value before it gets serialized to sheet1.xml. Without
                 // this, a NUL byte from upstream data would crash every
@@ -465,8 +657,47 @@ public partial class ExcelHandler
                 // any non-finite double (NaN/Infinity), matching the
                 // already-string behavior of "Infinity"/"-Infinity" (which
                 // TryParse rejects under default culture).
+<<<<<<< HEAD
                 if (!double.TryParse(safeValue, out var dbl) || !double.IsFinite(dbl))
                     cell.DataType = new EnumValue<CellValues>(CellValues.String);
+=======
+                // R-bt-1: an ISO-date value combined with an explicit date-like
+                // numberformat and no type= means the user unambiguously wants
+                // a date cell. Without coercion the numberformat is inert on a
+                // t="str" cell — displays/sorts/filters as text in real Excel.
+                // Import's type detection already coerces ISO dates; mirror it
+                // here for this intent-clear case only (bare ISO strings
+                // without a format keep their existing string semantics).
+                if (!properties.ContainsKey("type")
+                    && (properties.GetValueOrDefault("numberformat")
+                        ?? properties.GetValueOrDefault("numfmt")
+                        ?? properties.GetValueOrDefault("format")) is { } nfRaw
+                    && System.Text.RegularExpressions.Regex.IsMatch(nfRaw, "[ymdhs]", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                    && TryParseIsoDateFlexible(safeValue.Trim(), out var inferredDate)
+                    && inferredDate >= new System.DateTime(1900, 1, 1))
+                {
+                    cell.CellValue = new CellValue(
+                        ExcelDataFormatter.ToExcelSerial(inferredDate, IsWorkbookDate1904()).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    cell.DataType = null;
+                }
+                // Identifier-shaped digit strings (leading zero, >15 digits)
+                // are text unless the caller says type=number — the same rule
+                // Set and import apply; numeric storage loses the zeros / tail.
+                else if (LooksLikeIdentifierNotNumber(safeValue)
+                    && !(properties.TryGetValue("type", out var addNumType)
+                         && addNumType.ToLowerInvariant() is "number" or "num"))
+                    cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                // HasValidThousandsGrouping: AllowThousands reads "1,5" as 15,
+                // silently 10x-ing a decimal-comma value (issue #352 follow-up).
+                else if (!HasValidThousandsGrouping(safeValue)
+                    || !double.TryParse(safeValue, out var dbl) || !double.IsFinite(dbl))
+                    cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                else
+                    // R-fuzz2-1: TryParse accepts spellings Excel's <v> parser
+                    // does not ("+5", "1,234", padded). Store the canonical
+                    // form; literal digits are preserved when already canonical.
+                    cell.CellValue = new CellValue(NormalizeNumericCellText(safeValue, dbl));
+>>>>>>> upstream/main
             }
         }
         if (properties.TryGetValue("formula", out var formula))
@@ -482,17 +713,44 @@ public partial class ExcelHandler
             ValidateFormulaCellRefs(fTrim);
             var addCellFormula = new CellFormula(Core.PivotTableHelper.SanitizeXmlText(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(fTrim))));
             // Dynamic-array functions (SORT/FILTER/UNIQUE/SEQUENCE/XLOOKUP/LET/etc.)
+<<<<<<< HEAD
             // must carry t="array" ref="<cellRef>" on the cell-level CellFormula —
             // without it Excel 365 rejects the file (0x800A03EC) on open. The
             // anchor reference is the single cell being written; Excel spills
             // adjacent cells at runtime.
+=======
+            // carry t="array" ref="<cellRef>" on the cell-level CellFormula PLUS a
+            // cm cell-metadata index into an XLDAPR record (EnsureDynamicArrayMetadata)
+            // — t="array" alone is a legacy CSE array locked to the anchor; the
+            // XLDAPR metadata is what makes Excel 365 spill. The anchor reference is
+            // the single cell being written; Excel recomputes the spill extent and
+            // fills adjacent cells at runtime.
+>>>>>>> upstream/main
             if (Core.ModernFunctionQualifier.IsDynamicArrayFormula(fTrim) && cell.CellReference?.Value != null)
             {
                 addCellFormula.FormulaType = CellFormulaValues.Array;
                 addCellFormula.Reference = cell.CellReference.Value;
+<<<<<<< HEAD
             }
             cell.CellFormula = addCellFormula;
             cell.CellValue = null;
+=======
+                EnsureDynamicArrayMetadata(cell);
+            }
+            // CONSISTENCY(value-child-uniqueness): clear any stale <is> so the
+            // cell never carries both a formula and an inline string (invalid
+            // OOXML, 0x800A03EC in real Excel).
+            cell.RemoveAllChildren<InlineString>();
+            cell.CellFormula = addCellFormula;
+            cell.CellValue = null;
+            EnsureFullCalcOnLoad(); // CONSISTENCY(cell-formula-calc): see value-branch note.
+            {
+                var addEvalSd2 = GetSheet(cellWorksheet).GetFirstChild<SheetData>();
+                if (addEvalSd2 != null)
+                    WriteFormulaResultToCell(cell,
+                        new Core.FormulaEvaluator(addEvalSd2, _doc.WorkbookPart).TryEvaluateFull(fTrim));
+            }
+>>>>>>> upstream/main
         }
         // CE1: allow `runs=<json>` without an explicit `type=richtext`.
         if (!properties.ContainsKey("type") && properties.ContainsKey("runs"))
@@ -506,6 +764,23 @@ public partial class ExcelHandler
             }
             else
             {
+<<<<<<< HEAD
+=======
+                // Validate a boolean retype BEFORE mutating DataType. When the
+                // cell already holds text and type=boolean arrives with no new
+                // value, the switch below would stamp t="b" onto that text and
+                // only the later check would throw — leaving a corrupt
+                // <c t="b"><v>hello</v></c> Excel refuses (0x800A03EC). The
+                // R114 upfront guard only sees the incoming value=, not the
+                // existing cell text, so guard that here too.
+                if ((cellType.Equals("boolean", StringComparison.OrdinalIgnoreCase)
+                        || cellType.Equals("bool", StringComparison.OrdinalIgnoreCase))
+                    && cell.CellValue?.Text?.Trim().ToLowerInvariant() is { Length: > 0 } existingBool
+                    && existingBool is not ("true" or "false" or "yes" or "no" or "1" or "0"))
+                    throw new ArgumentException(
+                        $"Cannot store '{cell.CellValue?.Text}' as boolean; value must be true/false, yes/no, or 1/0. " +
+                        "Use type=string to keep the literal text.");
+>>>>>>> upstream/main
                 cell.DataType = cellType.ToLowerInvariant() switch
                 {
                     "string" or "str" => new EnumValue<CellValues>(CellValues.String),
@@ -532,6 +807,33 @@ public partial class ExcelHandler
                         cell.CellValue = new CellValue("1");
                     else if (boolText == "false" || boolText == "no" || boolText == "0")
                         cell.CellValue = new CellValue("0");
+<<<<<<< HEAD
+=======
+                    else if (!string.IsNullOrEmpty(boolText))
+                        // A t="b" cell whose value isn't 0/1 makes real Excel
+                        // refuse the whole file (0x800A03EC). Reject up front,
+                        // mirroring the type=date guard.
+                        throw new ArgumentException(
+                            $"Cannot store '{cell.CellValue?.Text}' as boolean; value must be true/false, yes/no, or 1/0. " +
+                            "Use type=string to keep the literal text.");
+                }
+                // A type=number cell stores its value in <v> with no t=
+                // attribute, so a non-numeric value produces spec-invalid
+                // numeric content (<v>notanumber</v>) that makes real Excel
+                // refuse the whole file (0x800A03EC) while schema validation
+                // stays green. Reject up front, mirroring the boolean/date
+                // guards above.
+                if (cellType.ToLowerInvariant() is "number" or "num")
+                {
+                    var numText = cell.CellValue?.Text?.Trim();
+                    if (!string.IsNullOrEmpty(numText)
+                        && (!double.TryParse(numText, System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture, out var numDbl)
+                            || !double.IsFinite(numDbl)))
+                        throw new ArgumentException(
+                            $"Cannot store '{cell.CellValue?.Text}' as number; value must be a finite numeric literal. " +
+                            "Use type=string to keep the literal text.");
+>>>>>>> upstream/main
                 }
                 // CONSISTENCY(cell-type-parity): mirror Set's value auto-detect
                 // path (ExcelHandler.Set.cs lines 1025-1033) — parse the cell
@@ -552,7 +854,11 @@ public partial class ExcelHandler
                                 $"Cannot store '{dateText}' as date; Excel does not support dates before 1900-01-01 " +
                                 $"(serial epoch is 1899-12-30). Use type=string to keep the literal text.");
                         cell.CellValue = new CellValue(
+<<<<<<< HEAD
                             dt.ToOADate().ToString(System.Globalization.CultureInfo.InvariantCulture));
+=======
+                            ExcelDataFormatter.ToExcelSerial(dt, IsWorkbookDate1904()).ToString(System.Globalization.CultureInfo.InvariantCulture));
+>>>>>>> upstream/main
                     }
                     else if (!string.IsNullOrEmpty(dateText))
                     {
@@ -598,23 +904,61 @@ public partial class ExcelHandler
         // Array formula support during Add
         if (properties.TryGetValue("arrayformula", out var arrFormula))
         {
+<<<<<<< HEAD
+=======
+            // arrayformula=true|1|yes is flag intent ("make my formula= an
+            // array formula"), not formula text. Writing it verbatim replaced
+            // the real formula with the literal string "true" — silent
+            // corruption. Substitute the companion formula= text; without one
+            // there is nothing to convert, so reject clearly.
+            if (arrFormula.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || arrFormula == "1"
+                || arrFormula.Equals("yes", StringComparison.OrdinalIgnoreCase))
+            {
+                arrFormula = properties.GetValueOrDefault("formula")
+                    ?? cell.CellFormula?.Text
+                    ?? throw new ArgumentException(
+                        "arrayformula=true requires a formula: pass the text directly (arrayformula=\"B1:B3*C1:C3\") or combine with formula=.");
+            }
+>>>>>>> upstream/main
             RejectCrossWorkbookFormula(arrFormula);
             ValidateFormulaCellRefs(arrFormula);
             // BUG-R36-B1: if ref was a range (A1:C3), use the full range as
             // arrRef so the array formula spills correctly; otherwise default
             // to the single cellRef.
             var arrRef = arrayFormulaRefRange ?? properties.GetValueOrDefault("ref", cellRef);
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(value-child-uniqueness): drop any stale <is> placeholder
+            // so the cell holds a single value child (invalid otherwise).
+            cell.RemoveAllChildren<InlineString>();
+>>>>>>> upstream/main
             cell.CellFormula = new CellFormula(Core.PivotTableHelper.SanitizeXmlText(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(arrFormula.TrimStart('=')))))
             {
                 FormulaType = CellFormulaValues.Array,
                 Reference = arrRef
             };
+<<<<<<< HEAD
+=======
+            EnsureFullCalcOnLoad(); // CONSISTENCY(cell-formula-calc)
+>>>>>>> upstream/main
             cell.CellValue = null;
         }
 
         // Hyperlink support during Add
+<<<<<<< HEAD
         if (properties.TryGetValue("link", out var linkUrl) && !string.IsNullOrEmpty(linkUrl))
         {
+=======
+        if ((properties.TryGetValue("link", out var linkUrl) || properties.TryGetValue("url", out linkUrl)) && !string.IsNullOrEmpty(linkUrl))
+        {
+            // Validate the scheme BEFORE creating the <hyperlinks> container
+            // (same fix as the Set path): a rejected scheme used to leave an
+            // empty schema-invalid <x:hyperlinks/> behind — Excel 0x800A03EC.
+            var addLinkIsInternal = ResolveInternalHyperlinkLocation(linkUrl) != null;
+            if (!addLinkIsInternal)
+                Core.HyperlinkUriValidator.RequireSafeScheme(linkUrl, "link");
+>>>>>>> upstream/main
             var ws = GetSheet(cellWorksheet);
             var hyperlinksEl = ws.GetFirstChild<Hyperlinks>();
             if (hyperlinksEl == null)
@@ -638,7 +982,15 @@ public partial class ExcelHandler
             // R37-B: detect internal `[#]Sheet!Cell` (and quoted variants);
             // emit as @location with no relationship.
             // CONSISTENCY(internal-hyperlink): same detection used in Set.cs.
+<<<<<<< HEAD
             var addInternalLoc = TryParseInternalHyperlinkLocation(linkUrl);
+=======
+            // H2b: display (OOXML @display) — friendly text Excel shows for
+            // the link. Handler-as-truth: consumed here so it is not reported
+            // unsupported (schema hyperlink.json documents cell display=).
+            var hlDisplay = properties.GetValueOrDefault("display");
+            var addInternalLoc = ResolveInternalHyperlinkLocation(linkUrl);
+>>>>>>> upstream/main
             if (addInternalLoc != null)
             {
                 var hl = new Hyperlink
@@ -647,6 +999,10 @@ public partial class ExcelHandler
                     Location = addInternalLoc
                 };
                 if (!string.IsNullOrEmpty(hlTip)) hl.Tooltip = hlTip;
+<<<<<<< HEAD
+=======
+                if (!string.IsNullOrEmpty(hlDisplay)) hl.Display = hlDisplay;
+>>>>>>> upstream/main
                 hyperlinksEl.AppendChild(hl);
             }
             else
@@ -658,10 +1014,32 @@ public partial class ExcelHandler
                 var hl = new Hyperlink { Reference = cellRef.ToUpperInvariant(), Id = hlRel.Id };
                 if (!string.IsNullOrEmpty(hlTip))
                     hl.Tooltip = hlTip;
+<<<<<<< HEAD
+=======
+                if (!string.IsNullOrEmpty(hlDisplay)) hl.Display = hlDisplay;
+>>>>>>> upstream/main
                 hyperlinksEl.AppendChild(hl);
             }
         }
 
+<<<<<<< HEAD
+=======
+        // In-cell image ("Place in Cell" richValue) during Add — parity with
+        // the Set cell `image=` case (ExcelHandler.Set.Cells.cs).
+        if (properties.TryGetValue("image", out var inCellImg) && !string.IsNullOrEmpty(inCellImg)
+            && !inCellImg.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            // CONSISTENCY(picture-alt): same alt aliases as the picture element.
+            var inCellAlt = properties.GetValueOrDefault("alt")
+                ?? properties.GetValueOrDefault("altText")
+                ?? properties.GetValueOrDefault("alttext")
+                ?? properties.GetValueOrDefault("description")
+                ?? properties.GetValueOrDefault("image.alt");
+            if (inCellAlt != null) Core.ParseHelpers.ValidateXmlText(inCellAlt, "alt");
+            SetInCellImage(cell, inCellImg, inCellAlt);
+        }
+
+>>>>>>> upstream/main
         // CONSISTENCY(cell-prop-hints): mirror Set's CellPropHints check
         // here. Before the style filter runs, flag any ambiguous flat
         // keys (e.g. `color` — is it font.color or fill?) as unsupported.
@@ -729,6 +1107,14 @@ public partial class ExcelHandler
         // "type below a table → table grows" UX.
         MaybeExpandTablesForCell(cellWorksheet, cellRef);
 
+<<<<<<< HEAD
+=======
+        // DATA-CORRUPTION(xlsx/table-header-name): if this write landed on a
+        // table header cell, keep <tableColumn name> in sync with the header
+        // text — Excel rejects the file otherwise.
+        MaybeSyncTableHeaderName(cellWorksheet, cellRef);
+
+>>>>>>> upstream/main
         // R20-02: accept `merge=A1:C3` on cell Add (parity with `set`).
         // This is the same merge logic used by Set range action; we
         // apply it post-creation so users can merge in a single Add
@@ -758,10 +1144,43 @@ public partial class ExcelHandler
         DeleteCalcChainIfPresent();
         SaveWorksheet(cellWorksheet);
         return $"/{cellSheetName}/{cellRef}";
+<<<<<<< HEAD
+=======
+        }
+        catch
+        {
+            if (cellPreExisted)
+            {
+                // Restore the pre-existing cell to its original state so a
+                // failed Add makes no partial change (mirrors Set-side rollback).
+                cell.Parent?.ReplaceChild(cellBackup, cell);
+            }
+            else
+            {
+                // Newly created by this Add — remove the stub (and its now-empty
+                // row) so a failed create leaves no ghost cell/value behind.
+                var newRow = cell.Parent as Row;
+                cell.Remove();
+                if (newRow != null && !newRow.Elements<Cell>().Any())
+                {
+                    var sd = newRow.Parent as SheetData;
+                    var rIdx = newRow.RowIndex?.Value;
+                    newRow.Remove();
+                    if (sd != null && rIdx.HasValue)
+                        _rowIndex?.GetValueOrDefault(sd)?.Remove(rIdx.Value);
+                }
+            }
+            throw;
+        }
+>>>>>>> upstream/main
     }
 
     private string AddCol(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
+<<<<<<< HEAD
+=======
+        RejectSheetPathSuffix(parentPath, "col", "Position a column with --index N, --after /Sheet1/col[X] or --before /Sheet1/col[X].");
+>>>>>>> upstream/main
         var colSegments = parentPath.TrimStart('/').Split('/', 2);
         var colSheetName = colSegments[0];
         var colWorksheet = FindWorksheet(colSheetName)
@@ -839,6 +1258,7 @@ public partial class ExcelHandler
 
         var insertColIdx = ColumnNameToIndex(insertColName);
 
+<<<<<<< HEAD
         // Shift existing data and metadata right, except when this is an
         // idempotent re-add of an already-existing single-column <col> entry —
         // in that case the user just wants to mutate width/hidden in place,
@@ -848,6 +1268,38 @@ public partial class ExcelHandler
             ?.Elements<Column>()
             .FirstOrDefault(c => c.Min?.Value == (uint)insertColIdx && c.Max?.Value == (uint)insertColIdx);
         if (preExistingExactCol == null)
+=======
+        // A positional insert ALWAYS shifts existing data + metadata right,
+        // exactly like AddRow's ShiftRowsDown gate (needsShift = index.HasValue).
+        // The earlier guard skipped the shift whenever a single-column <col>
+        // already sat at insertColIdx — but that is true for ANY column merely
+        // carrying a stored width, so a formatted worksheet's `add col` silently
+        // dropped the shift and corrupted data. Insert is a purely structural
+        // shift, never gated on stored column width (standard spreadsheet
+        // semantics); mutating width/hidden in place is the job of
+        // `set /Sheet/col[X]`.
+        // CONSISTENCY(add-row-col-shift): mirror AddRow's positional-insert gate.
+        // Validate EVERY property BEFORE the structural shift: a parse failure
+        // after ShiftColumnsRight left the shift applied ("Error" + data moved
+        // one column right anyway) and an empty <cols/> shell on disk —
+        // schema-invalid (cols requires >= 1 col child), so a REJECTED add
+        // corrupted a previously-fine file (0x800A03EC in real Excel).
+        bool hasColWidth = properties.TryGetValue("width", out var widthStr) && !string.IsNullOrWhiteSpace(widthStr);
+        double parsedColWidth = hasColWidth ? ParseColWidthChars(widthStr!) : 0;
+        bool hasColHidden = properties.TryGetValue("hidden", out var addColHidden);
+        byte? parsedColOutline = null;
+        if (properties.TryGetValue("outline", out var addColOutline)
+            || properties.TryGetValue("outlinelevel", out addColOutline)
+            || properties.TryGetValue("group", out addColOutline))
+        {
+            if (!byte.TryParse(addColOutline, out var addColOutlineVal) || addColOutlineVal > 7)
+                throw new ArgumentException($"Invalid 'outline' value: '{addColOutline}'. Expected an integer 0-7 (outline/group level).");
+            parsedColOutline = addColOutlineVal;
+        }
+
+        bool colNeedsShift = index.HasValue || !string.IsNullOrEmpty(colLetterProp);
+        if (colNeedsShift)
+>>>>>>> upstream/main
         {
             ShiftColumnsRight(colWorksheet, insertColIdx);
             DeleteCalcChainIfPresent();
@@ -856,8 +1308,11 @@ public partial class ExcelHandler
         // CONSISTENCY(add-set-symmetry): always materialize a <col> element so
         // Get/Query can find the column even when no width/hidden was supplied.
         // Width/Hidden are attached only when the caller provides them.
+<<<<<<< HEAD
         bool hasColWidth = properties.TryGetValue("width", out var widthStr) && !string.IsNullOrWhiteSpace(widthStr);
         bool hasColHidden = properties.TryGetValue("hidden", out var addColHidden);
+=======
+>>>>>>> upstream/main
         {
             var ws = GetSheet(colWorksheet);
             var columns = ws.GetFirstChild<Columns>() ?? ws.PrependChild(new Columns());
@@ -872,14 +1327,43 @@ public partial class ExcelHandler
             };
             if (hasColWidth)
             {
+<<<<<<< HEAD
                 newCol.Width = ParseColWidthChars(widthStr!);
                 newCol.CustomWidth = true;
             }
+=======
+                newCol.Width = parsedColWidth;
+                newCol.CustomWidth = true;
+            }
+            else if (newCol.Width == null)
+            {
+                // A <col> with no width attribute renders ZERO-width in real
+                // Excel (verified via remote render: the inserted column and
+                // its cells visually vanish while Get/dump still see them).
+                // Materializing for Get/Query symmetry must therefore carry
+                // the sheet's default width explicitly.
+                newCol.Width = ws.SheetFormatProperties?.DefaultColumnWidth?.Value
+                    ?? ws.SheetFormatProperties?.BaseColumnWidth?.Value + 0.43
+                    ?? 8.43;
+            }
+>>>>>>> upstream/main
             if (hasColHidden)
             {
                 newCol.Hidden = addColHidden!.Equals("true", StringComparison.OrdinalIgnoreCase)
                     || addColHidden == "1" || addColHidden.Equals("yes", StringComparison.OrdinalIgnoreCase);
             }
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(add-set-symmetry): accept outline/group + collapsed at
+            // creation, mirroring SetColumn (ExcelHandler.Set.cs L2624-2632).
+            if (parsedColOutline is { } outlineVal)
+                newCol.OutlineLevel = outlineVal;
+            if (properties.TryGetValue("collapsed", out var addColCollapsed))
+            {
+                newCol.Collapsed = addColCollapsed.Equals("true", StringComparison.OrdinalIgnoreCase)
+                    || addColCollapsed == "1" || addColCollapsed.Equals("yes", StringComparison.OrdinalIgnoreCase);
+            }
+>>>>>>> upstream/main
             if (existingCol == null)
                 columns.AppendChild(newCol);
         }
@@ -924,7 +1408,24 @@ public partial class ExcelHandler
         }
         if (runSsi == null)
         {
+<<<<<<< HEAD
             runSsi = new SharedStringItem();
+=======
+            // Converting a plain-string / inline-string / numeric cell to rich
+            // text: preserve the cell's existing content as the first unstyled
+            // run instead of silently discarding it. Without this, adding the
+            // first run to a cell that already had a value threw the value away
+            // (e.g. value="Hello World" + add run "Hi" → cell became just "Hi").
+            string? runExistingText = runCell.DataType?.Value == CellValues.InlineString
+                ? RstTextWithoutPhonetic(runCell.InlineString)
+                : runCell.CellValue?.Text;
+
+            runSsi = new SharedStringItem();
+            if (!string.IsNullOrEmpty(runExistingText))
+                runSsi.AppendChild(new Run(
+                    new Text(runExistingText) { Space = SpaceProcessingModeValues.Preserve }));
+            runCell.RemoveAllChildren<InlineString>();
+>>>>>>> upstream/main
             runSst.AppendChild(runSsi);
             var newSstIdx = runSst.Elements<SharedStringItem>().Count() - 1;
             runCell.CellValue = new CellValue(newSstIdx.ToString());
@@ -934,13 +1435,21 @@ public partial class ExcelHandler
         var newRun = new Run();
         var newRunProps = new RunProperties();
         var runText = properties.GetValueOrDefault("text", "");
+<<<<<<< HEAD
+=======
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(runText, "run text");
+>>>>>>> upstream/main
 
         // CONSISTENCY(tracking-dict): read each prop via TryGetValue (not a
         // foreach over the dictionary). The foreach went through
         // IEnumerable.GetEnumerator on the Dictionary<> static type, which does
         // NOT fire TrackingPropertyDictionary's shadow GetEnumerator — so applied
         // keys like bold/italic were never marked accessed and surfaced as a
+<<<<<<< HEAD
         // false unsupported_property (exit 2). See CLAUDE.md tracking pitfalls.
+=======
+        // false unsupported_property (exit 2). See the project conventions tracking pitfalls.
+>>>>>>> upstream/main
         // Each helper accepts the short key plus its font.* alias.
         if ((properties.TryGetValue("bold", out var rBold) && ParseHelpers.IsTruthy(rBold)) ||
             (properties.TryGetValue("font.bold", out var rFBold) && ParseHelpers.IsTruthy(rFBold)))
@@ -1009,6 +1518,14 @@ public partial class ExcelHandler
 
         var rbRowIdx = uint.Parse(properties.GetValueOrDefault("row") ?? properties.GetValueOrDefault("index")
             ?? throw new ArgumentException("'row' property is required for rowbreak"));
+<<<<<<< HEAD
+=======
+        // A break id of 0 or beyond the grid fails the schema's Min/Max
+        // constraints — reject up front instead of writing invalid OOXML.
+        if (rbRowIdx < 1 || rbRowIdx > 1048576)
+            throw new ArgumentException(
+                $"Invalid 'row' value: '{rbRowIdx}'. Row breaks must be between 1 and 1048576.");
+>>>>>>> upstream/main
 
         var rowBreaks = rbWs.GetFirstChild<RowBreaks>();
         if (rowBreaks == null)
@@ -1016,12 +1533,26 @@ public partial class ExcelHandler
             rowBreaks = new RowBreaks();
             rbWs.AppendChild(rowBreaks);
         }
+<<<<<<< HEAD
         rowBreaks.AppendChild(new Break
         {
             Id = rbRowIdx,
             Max = 16383u,
             ManualPageBreak = true
         });
+=======
+        // Optional restricted column span (min/max) — mirrors the Set path so a
+        // dump-emitted `add rowbreak row=N min=.. max=..` reproduces a
+        // non-full-width break. Defaults to full width (max 16383) when absent.
+        var rbBreak = new Break { Id = rbRowIdx, Max = 16383u, ManualPageBreak = true };
+        if (properties.TryGetValue("min", out var rbMinS) && uint.TryParse(rbMinS, out var rbMin))
+            rbBreak.Min = rbMin;
+        if (properties.TryGetValue("max", out var rbMaxS) && uint.TryParse(rbMaxS, out var rbMax))
+            rbBreak.Max = rbMax;
+        if (properties.TryGetValue("manual", out var rbMan))
+            rbBreak.ManualPageBreak = IsTruthy(rbMan);
+        rowBreaks.AppendChild(rbBreak);
+>>>>>>> upstream/main
         rowBreaks.Count = (uint)rowBreaks.Elements<Break>().Count();
         rowBreaks.ManualBreakCount = rowBreaks.Count;
         SaveWorksheet(rbWorksheet);
@@ -1047,6 +1578,14 @@ public partial class ExcelHandler
         var cbColIdx = uint.TryParse(cbColStr, out var cbNumVal)
             ? cbNumVal
             : (uint)ColumnNameToIndex(cbColStr.ToUpperInvariant());
+<<<<<<< HEAD
+=======
+        // Same schema Min/Max guard as rowbreak: 0 / beyond-XFD ids write
+        // invalid OOXML that only surfaces at validate/open time.
+        if (cbColIdx < 1 || cbColIdx > 16384)
+            throw new ArgumentException(
+                $"Invalid 'col' value: '{cbColStr}'. Column breaks must be between 1 and 16384 (A-XFD).");
+>>>>>>> upstream/main
 
         var colBreaks = cbWs.GetFirstChild<ColumnBreaks>();
         if (colBreaks == null)
@@ -1054,12 +1593,24 @@ public partial class ExcelHandler
             colBreaks = new ColumnBreaks();
             cbWs.AppendChild(colBreaks);
         }
+<<<<<<< HEAD
         colBreaks.AppendChild(new Break
         {
             Id = cbColIdx,
             Max = 1048575u,
             ManualPageBreak = true
         });
+=======
+        // Optional restricted row span (min/max) — mirrors the Set path.
+        var cbBreak = new Break { Id = cbColIdx, Max = 1048575u, ManualPageBreak = true };
+        if (properties.TryGetValue("min", out var cbMinS) && uint.TryParse(cbMinS, out var cbMin))
+            cbBreak.Min = cbMin;
+        if (properties.TryGetValue("max", out var cbMaxS) && uint.TryParse(cbMaxS, out var cbMax))
+            cbBreak.Max = cbMax;
+        if (properties.TryGetValue("manual", out var cbMan))
+            cbBreak.ManualPageBreak = IsTruthy(cbMan);
+        colBreaks.AppendChild(cbBreak);
+>>>>>>> upstream/main
         colBreaks.Count = (uint)colBreaks.Elements<Break>().Count();
         colBreaks.ManualBreakCount = colBreaks.Count;
         SaveWorksheet(cbWorksheet);
@@ -1119,6 +1670,10 @@ public partial class ExcelHandler
                         if (p.NameEquals("text")) text = sv;
                         else pd[p.Name] = sv;
                     }
+<<<<<<< HEAD
+=======
+                    OfficeCli.Core.ParseHelpers.ValidateXmlText(text, "richtext run text");
+>>>>>>> upstream/main
                     gatheredRuns.Add((text, pd));
                 }
             }
@@ -1161,7 +1716,20 @@ public partial class ExcelHandler
             }
         }
 
+<<<<<<< HEAD
         foreach (var (runText, pd) in gatheredRuns)
+=======
+        // Drop empty-text runs that carry formatting props: real Excel refuses
+        // the whole workbook (0x800A03EC) when a formatting-only empty <r> is
+        // not the last run in the <si>. They render nothing, so dropping is
+        // lossless; keep one if removing all would leave an empty <si>.
+        var effectiveRuns = gatheredRuns
+            .Where(r => !(string.IsNullOrEmpty(r.text) && r.props.Count > 0)).ToList();
+        if (effectiveRuns.Count == 0 && gatheredRuns.Count > 0)
+            effectiveRuns.Add(gatheredRuns[^1]);
+
+        foreach (var (runText, pd) in effectiveRuns)
+>>>>>>> upstream/main
         {
             var run = new Run();
             var rp = new RunProperties();

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -17,7 +21,12 @@ public partial class PowerPointHandler
     // Chart text color — set per-chart, also used by SvgPreview
     private string _chartValueColor = "#D0D8E0";
 
+<<<<<<< HEAD
     private void RenderChart(StringBuilder sb, GraphicFrame gf, SlidePart slidePart, Dictionary<string, string> themeColors, string? dataPath = null)
+=======
+    private void RenderChart(StringBuilder sb, GraphicFrame gf, SlidePart slidePart, Dictionary<string, string> themeColors, string? dataPath = null,
+        (long x, long y, long cx, long cy)? overridePos = null)
+>>>>>>> upstream/main
     {
         var dataPathAttr = string.IsNullOrEmpty(dataPath) ? "" : $" data-path=\"{HtmlEncode(dataPath)}\"";
         // Position and size from p:xfrm
@@ -26,10 +35,17 @@ public partial class PowerPointHandler
         var ext = pxfrm?.GetFirstChild<Drawing.Extents>();
         if (off == null || ext == null) return;
 
-        var x = Units.EmuToPt(off.X?.Value ?? 0);
-        var y = Units.EmuToPt(off.Y?.Value ?? 0);
-        var w = Units.EmuToPt(ext.Cx?.Value ?? 0);
-        var h = Units.EmuToPt(ext.Cy?.Value ?? 0);
+        // R14-2: when nested in a group, position/size are re-projected into the
+        // group's child coordinate system by the caller (CalcGroupChildPos).
+        var posX = overridePos?.x ?? off.X?.Value ?? 0;
+        var posY = overridePos?.y ?? off.Y?.Value ?? 0;
+        var posCx = overridePos?.cx ?? ext.Cx?.Value ?? 0;
+        var posCy = overridePos?.cy ?? ext.Cy?.Value ?? 0;
+
+        var x = Units.EmuToPt(posX);
+        var y = Units.EmuToPt(posY);
+        var w = Units.EmuToPt(posCx);
+        var h = Units.EmuToPt(posCy);
 
         // Get chart part
         var chartEl = gf.Descendants().FirstOrDefault(e => e.LocalName == "chart" && e.NamespaceUri.Contains("chart"));
@@ -49,7 +65,11 @@ public partial class PowerPointHandler
                 var cxChart = extPart.ChartSpace?
                     .GetFirstChild<DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.Chart>();
                 if (cxChart == null) return;
+<<<<<<< HEAD
                 info = ChartSvgRenderer.ExtractCxChartInfo(cxChart);
+=======
+                info = ChartSvgRenderer.ExtractCxChartInfo(cxChart, themeColors);
+>>>>>>> upstream/main
                 chart = null;
                 plotArea = null;
             }
@@ -58,7 +78,11 @@ public partial class PowerPointHandler
                 chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
                 plotArea = chart?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.PlotArea>();
                 if (plotArea == null) return;
+<<<<<<< HEAD
                 info = ChartSvgRenderer.ExtractChartInfo(plotArea, chart);
+=======
+                info = ChartSvgRenderer.ExtractChartInfo(plotArea, chart, themeColors);
+>>>>>>> upstream/main
             }
             else return;
         }
@@ -86,8 +110,8 @@ public partial class PowerPointHandler
         };
 
         // SVG dimensions (scale EMU to reasonable SVG units)
-        var widthEmu = ext.Cx?.Value ?? 3600000;
-        var heightEmu = ext.Cy?.Value ?? 2520000;
+        var widthEmu = posCx != 0 ? posCx : 3600000;
+        var heightEmu = posCy != 0 ? posCy : 2520000;
         var svgW = (int)(widthEmu / 10000.0);
         var svgH = (int)(heightEmu / 10000.0);
         var titleH = string.IsNullOrEmpty(info.Title) ? 0 : 20;
@@ -115,11 +139,41 @@ public partial class PowerPointHandler
 
         // Container with chart background
         var bgStyle = info.ChartFillColor != null ? $"background:#{info.ChartFillColor};" : "background:transparent;";
+<<<<<<< HEAD
+=======
+        // Chart-area border (<c:chartSpace><c:spPr><a:ln>). No a:ln => no border.
+        if (info.ChartBorderColor != null)
+        {
+            var cbW = info.ChartBorderWidthEmu.HasValue ? info.ChartBorderWidthEmu.Value / 12700.0 * 4.0 / 3.0 : 1.0;
+            bgStyle += $"border:{cbW:0.##}px solid {ChartSvgRenderer.CssHexColor(info.ChartBorderColor)};";
+        }
+>>>>>>> upstream/main
         sb.AppendLine($"    <div class=\"shape\"{dataPathAttr} style=\"left:{x}pt;top:{y}pt;width:{w}pt;height:{h}pt;{bgStyle}display:flex;flex-direction:column;overflow:hidden\">");
 
-        // Title
+        // Title — honor the chart's own title run color when present (raw OOXML
+        // hex, needs '#' for valid CSS); otherwise fall back to the theme text color.
         if (!string.IsNullOrEmpty(info.Title))
-            sb.AppendLine($"      <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:4px;flex-shrink:0;color:{chartTextColor}\">{ChartSvgRenderer.HtmlEncode(info.Title)}</div>");
+        {
+            var titleColor = info.TitleFontColor != null ? ChartSvgRenderer.CssHexColor(info.TitleFontColor) : chartTextColor;
+            double.TryParse(info.TitleFontSize.Replace("pt", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var titlePt);
+            var titleInner = ChartSvgRenderer.BuildTitleInnerHtml(info, titleColor, info.TitleBold, titlePt > 0 ? titlePt : 14);
+            sb.AppendLine($"      <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:{(info.TitleBold ? "bold" : "normal")};padding:4px;flex-shrink:0;color:{titleColor}\">{titleInner}</div>");
+        }
+
+        // Legend position drives the plot+legend layout, mirroring the Word/Excel
+        // paths. right="r" → row, legend after plot; left="l" → row, legend before;
+        // top="t"/"tr" → column, legend before; bottom (default) → below the plot.
+        var legendSide = info.HasLegend && info.LegendPos is "r" or "l";
+        var legendTop  = info.HasLegend && info.LegendPos is "t" or "tr";
+
+        if (legendTop)
+            renderer.RenderLegendHtml(sb, info, chartTextColor);
+
+        if (legendSide)
+        {
+            var flexDir = info.LegendPos == "l" ? "row-reverse" : "row";
+            sb.AppendLine($"      <div style=\"display:flex;flex-direction:{flexDir};align-items:center;gap:8px;flex:1;min-height:0\">");
+        }
 
         // Legend position drives the plot+legend layout, mirroring the Word/Excel
         // paths. right="r" → row, legend after plot; left="l" → row, legend before;

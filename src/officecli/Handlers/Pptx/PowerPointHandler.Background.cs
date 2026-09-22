@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -486,8 +490,13 @@ public partial class PowerPointHandler
     /// Populate Format["background"] on a slide DocumentNode.
     /// Values mirror the input format: hex for solid, "C1-C2[-angle]" for gradient, "image" for blip.
     /// </summary>
+<<<<<<< HEAD
     private static void ReadSlideBackground(Slide slide, DocumentNode node)
         => ReadBackground(slide.CommonSlideData, node);
+=======
+    private static void ReadSlideBackground(Slide slide, DocumentNode node, OpenXmlPart? part = null)
+        => ReadBackground(slide.CommonSlideData, node, part);
+>>>>>>> upstream/main
 
     /// <summary>
     /// Read per-slide header/footer visibility flags from <c>&lt;p:hf&gt;</c>.
@@ -506,6 +515,7 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ReadSlideHeaderFooter(Slide slide, DocumentNode node)
     {
+<<<<<<< HEAD
         var hfEl = slide.ChildElements.FirstOrDefault(c => c.LocalName == "hf"
             && c.NamespaceUri == "http://schemas.openxmlformats.org/presentationml/2006/main");
         if (hfEl == null) return;
@@ -531,6 +541,60 @@ public partial class PowerPointHandler
     }
 
     internal static void ReadBackground(CommonSlideData? cSld, DocumentNode node)
+=======
+        // First, check legacy p:hf on slide (preserved for round-trip
+        // compatibility with files that already carry the invalid element).
+        var hfEl = slide.ChildElements.FirstOrDefault(c => c.LocalName == "hf"
+            && c.NamespaceUri == "http://schemas.openxmlformats.org/presentationml/2006/main");
+        static string? Bool(string v) => string.IsNullOrEmpty(v) ? null : (v is "1" or "true" ? "true" : "false");
+        if (hfEl != null)
+        {
+            // Walk raw attributes — GetAttribute(name, ns) on a strongly-typed
+            // HeaderFooter throws when the attribute isn't in its declared schema
+            // (the typed surface bound the missing ones via .Footer/.Header/...).
+            // Iterating the live attribute collection works regardless of whether
+            // the element is OpenXmlUnknownElement (post-reload) or HeaderFooter
+            // (same-session, post-Set).
+            foreach (var attr in hfEl.GetAttributes())
+            {
+                var b = Bool(attr.Value ?? "");
+                if (b == null) continue;
+                switch (attr.LocalName)
+                {
+                    case "ftr": node.Format["showFooter"] = b; break;
+                    case "sldNum": node.Format["showSlideNumber"] = b; break;
+                    case "dt": node.Format["showDate"] = b; break;
+                    case "hdr": node.Format["showHeader"] = b; break;
+                }
+            }
+        }
+
+        // Fall back to master placeholder presence — that is the rendering
+        // contract per OOXML (p:hf on p:sld is invalid; visibility is implied
+        // by ftr/sldNum/dt placeholders on the master). Only fill keys not
+        // already set by the legacy p:hf path.
+        var slidePart = slide.SlidePart;
+        var layoutPart = slidePart?.SlideLayoutPart;
+        var master = layoutPart?.SlideMasterPart?.SlideMaster;
+        if (master == null) return;
+        var phTypes = master.CommonSlideData?.ShapeTree?
+            .Descendants<PlaceholderShape>()
+            .Where(ph => ph.Type != null)
+            .Select(ph => ph.Type!.Value)
+            .ToHashSet() ?? new HashSet<PlaceholderValues>();
+        if (!node.Format.ContainsKey("showFooter")
+            && phTypes.Contains(PlaceholderValues.Footer))
+            node.Format["showFooter"] = "true";
+        if (!node.Format.ContainsKey("showSlideNumber")
+            && phTypes.Contains(PlaceholderValues.SlideNumber))
+            node.Format["showSlideNumber"] = "true";
+        if (!node.Format.ContainsKey("showDate")
+            && phTypes.Contains(PlaceholderValues.DateAndTime))
+            node.Format["showDate"] = "true";
+    }
+
+    internal static void ReadBackground(CommonSlideData? cSld, DocumentNode node, OpenXmlPart? part = null)
+>>>>>>> upstream/main
     {
         if (cSld?.Background == null) return;
 
@@ -633,9 +697,33 @@ public partial class PowerPointHandler
         }
         else if (blipFill != null)
         {
+            var blip = blipFill.GetFirstChild<Drawing.Blip>();
+
+            // R4-7: surface the embedded image's file name so the readback
+            // ("image:<file>") is round-trippable, instead of the bare
+            // non-round-trippable "image". Emit the suffixed form on a SEPARATE
+            // key (background.src) and keep Format["background"] == "image" so
+            // the long-standing bare-"image" contract (PptxMasterLayoutBackground
+            // / PptxSlideBackgroundR27 / OleTestTeam tests) is preserved.
             node.Format["background"] = "image";
+<<<<<<< HEAD
 
             var blip = blipFill.GetFirstChild<Drawing.Blip>();
+=======
+            var embedId = blip?.Embed?.Value;
+            if (!string.IsNullOrEmpty(embedId) && part != null)
+            {
+                try
+                {
+                    var imgPart = part.GetPartById(embedId!);
+                    var fileName = System.IO.Path.GetFileName(imgPart.Uri.ToString());
+                    if (!string.IsNullOrEmpty(fileName))
+                        node.Format["background.src"] = $"image:{fileName}";
+                }
+                catch { /* dangling rel — no src surfaced */ }
+            }
+
+>>>>>>> upstream/main
             var alphaMod = blip?.GetFirstChild<Drawing.AlphaModulationFixed>();
             if (alphaMod?.Amount?.HasValue == true)
             {
@@ -797,6 +885,50 @@ public partial class PowerPointHandler
     /// Radial:  "radial:C1-C2", "radial:C1-C2-tl" (focus: tl/tr/bl/br/center)
     /// Path:    "path:C1-C2", "path:C1-C2-tl"
     /// </summary>
+    /// <summary>
+    /// The lineGradient (outline) grammar documented in shape.json is a
+    /// COMMA-separated stop list ("color@pos,color@pos,...") with an optional
+    /// "angle=Ndeg" segment — distinct from the fill gradient's DASH-separated
+    /// form ("C1-C2" / "C@pos-C@pos[:angle]"). BuildGradientFill only speaks
+    /// the dash form, so a comma list arrived as a single token and collapsed
+    /// every stop onto the first color. Translate the comma form into the dash
+    /// form here, then hand off to the shared builder. A value that already
+    /// uses the dash form (no comma) — or the semicolon round-trip form, or a
+    /// radial:/path: prefix — passes through unchanged.
+    /// </summary>
+    internal static string NormalizeLineGradientSpec(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value;
+        // Forms the dash builder already owns: leave them alone.
+        if (value.IndexOf(',') < 0) return value;
+        if (value.StartsWith("linear;", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("radial:", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("path:", StringComparison.OrdinalIgnoreCase))
+            return value;
+
+        var segs = value.Split(',', StringSplitOptions.TrimEntries
+            | StringSplitOptions.RemoveEmptyEntries);
+        string? angleSeg = null;
+        var stops = new List<string>();
+        foreach (var seg in segs)
+        {
+            if (seg.StartsWith("angle=", StringComparison.OrdinalIgnoreCase))
+            {
+                // "angle=90deg" / "angle=90" → trailing dash-form angle token
+                var a = seg["angle=".Length..].Trim();
+                angleSeg = a.EndsWith("deg", StringComparison.OrdinalIgnoreCase)
+                    ? a : a + "deg";
+            }
+            else
+            {
+                stops.Add(seg);
+            }
+        }
+        var dash = string.Join('-', stops);
+        if (angleSeg != null) dash = dash + "-" + angleSeg;
+        return dash;
+    }
+
     internal static Drawing.GradientFill BuildGradientFill(string value)
     {
         // ReadGradientString emits semicolon-separated form

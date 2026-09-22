@@ -1,8 +1,13 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
@@ -12,8 +17,9 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
-    public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
+    public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
     {
+        var clip = ParseViewRange(range);
         var sb = new StringBuilder();
         var sheets = GetWorksheets();
         int sheetIdx = 0;
@@ -23,6 +29,7 @@ public partial class ExcelHandler
         foreach (var (sheetName, worksheetPart) in sheets)
         {
             if (truncated) break;
+            if (clip != null && !string.Equals(sheetName, clip.Value.Sheet, StringComparison.OrdinalIgnoreCase)) continue;
             sb.AppendLine($"=== Sheet: {sheetName} ===");
             var sheetData = GetSheet(worksheetPart).GetFirstChild<SheetData>();
             if (sheetData == null) continue;
@@ -35,6 +42,12 @@ public partial class ExcelHandler
                 lineNum++;
                 if (startLine.HasValue && lineNum < startLine.Value) continue;
                 if (endLine.HasValue && lineNum > endLine.Value) break;
+                if (clip != null)
+                {
+                    var rowRefClip = (int)(row.RowIndex?.Value ?? (uint)lineNum);
+                    if (rowRefClip < clip.Value.R1) continue;
+                    if (rowRefClip > clip.Value.R2) break;
+                }
 
                 if (maxLines.HasValue && emitted >= maxLines.Value)
                 {
@@ -46,7 +59,22 @@ public partial class ExcelHandler
                 var cellElements = row.Elements<Cell>();
                 if (cols != null)
                     cellElements = cellElements.Where(c => cols.Contains(ParseCellReference(c.CellReference?.Value ?? "A1").Column));
+<<<<<<< HEAD
                 var cells = cellElements.Select(c => GetCellDisplayValue(c, evaluator)).ToArray();
+=======
+                if (clip != null)
+                    cellElements = cellElements.Where(c =>
+                    {
+                        var ci = ColumnNameToIndex(ParseCellReference(c.CellReference?.Value ?? "A1").Column);
+                        return ci >= clip.Value.C1 && ci <= clip.Value.C2;
+                    });
+                // Prefix each cell with its A1 address so a sparse row stays unambiguous
+                // (tab-position != column when gaps collapse).
+                // Agents parse per tab-token with ^([A-Z]+\d+)=(.*)$.
+                var cells = cellElements
+                    .Select(c => $"{c.CellReference?.Value ?? "?"}={GetCellDisplayValue(c, evaluator)}")
+                    .ToArray();
+>>>>>>> upstream/main
                 var rowRef = row.RowIndex?.Value ?? (uint)lineNum;
                 sb.AppendLine($"[/{sheetName}/row[{rowRef}]] {string.Join("\t", cells)}");
                 emitted++;
@@ -57,6 +85,43 @@ public partial class ExcelHandler
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Parse a `view text --range` target ('Sheet1!A1:C10', '/Sheet1/A1:C10',
+    /// or a single cell 'Sheet1!B5') into an inclusive 1-based rectangle.
+    /// Corner order is normalized (C10:A1 works). The sheet must exist —
+    /// unknown names throw not_found listing the available sheets, mirroring
+    /// screenshot mode's range_target_not_found actionability.
+    /// </summary>
+    private (string Sheet, int R1, int C1, int R2, int C2)? ParseViewRange(string? range)
+    {
+        if (string.IsNullOrWhiteSpace(range)) return null;
+        var c = range.Trim();
+        // Sheet1!A1:C3 → /Sheet1/A1:C3 (same normalization as screenshot --range)
+        var bang = c.IndexOf('!');
+        if (bang > 0 && !c.StartsWith('/'))
+            c = "/" + c[..bang] + "/" + c[(bang + 1)..];
+        var m = Regex.Match(c, @"^/([^/]+)/([A-Za-z]{1,3}\d+)(?::([A-Za-z]{1,3}\d+))?$");
+        if (!m.Success)
+            throw new Core.CliException(
+                $"Invalid --range '{range}'. Expected 'Sheet1!A1:C10', '/Sheet1/A1:C10', or a single cell 'Sheet1!B5'.")
+            { Code = "invalid_value" };
+
+        var sheet = m.Groups[1].Value;
+        var names = GetWorksheets().Select(s => s.Item1).ToList();
+        var resolved = names.FirstOrDefault(n => string.Equals(n, sheet, StringComparison.OrdinalIgnoreCase));
+        if (resolved == null)
+            throw new Core.CliException(
+                $"--range sheet '{sheet}' not found. Available sheets: {string.Join(", ", names)}")
+            { Code = "not_found", ValidValues = names.ToArray() };
+
+        var (col1, row1) = ParseCellReference(m.Groups[2].Value);
+        var (col2, row2) = m.Groups[3].Success ? ParseCellReference(m.Groups[3].Value) : (col1, row1);
+        int c1 = ColumnNameToIndex(col1), c2 = ColumnNameToIndex(col2);
+        return (resolved,
+            Math.Min(row1, row2), Math.Min(c1, c2),
+            Math.Max(row1, row2), Math.Max(c1, c2));
     }
 
     public string ViewAsAnnotated(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
@@ -103,7 +168,11 @@ public partial class ExcelHandler
                 {
                     var cellRef = cell.CellReference?.Value ?? "?";
                     var value = GetCellDisplayValue(cell, evaluator);
+<<<<<<< HEAD
                     var formula = cell.CellFormula?.Text;
+=======
+                    var formula = Core.SharedFormulaResolver.ResolveText(cell);
+>>>>>>> upstream/main
                     var type = GetCellTypeName(cell);
 
                     var annotation = formula != null ? $"={formula}" : type;
@@ -368,8 +437,9 @@ public partial class ExcelHandler
         };
     }
 
-    public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
+    public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
     {
+        var clip = ParseViewRange(range);
         var sheetsArray = new JsonArray();
         var worksheets = GetWorksheets();
         int emitted = 0;
@@ -378,6 +448,7 @@ public partial class ExcelHandler
         foreach (var (sheetName, worksheetPart) in worksheets)
         {
             if (truncated) break;
+            if (clip != null && !string.Equals(sheetName, clip.Value.Sheet, StringComparison.OrdinalIgnoreCase)) continue;
             var sheetData = GetSheet(worksheetPart).GetFirstChild<SheetData>();
             if (sheetData == null) continue;
 
@@ -388,11 +459,23 @@ public partial class ExcelHandler
                 lineNum++;
                 if (startLine.HasValue && lineNum < startLine.Value) continue;
                 if (endLine.HasValue && lineNum > endLine.Value) break;
+                if (clip != null)
+                {
+                    var rowRefClip = (int)(row.RowIndex?.Value ?? (uint)lineNum);
+                    if (rowRefClip < clip.Value.R1) continue;
+                    if (rowRefClip > clip.Value.R2) break;
+                }
                 if (maxLines.HasValue && emitted >= maxLines.Value) { truncated = true; break; }
 
                 var cellElements = row.Elements<Cell>();
                 if (cols != null)
                     cellElements = cellElements.Where(c => cols.Contains(ParseCellReference(c.CellReference?.Value ?? "A1").Column));
+                if (clip != null)
+                    cellElements = cellElements.Where(c =>
+                    {
+                        var ci = ColumnNameToIndex(ParseCellReference(c.CellReference?.Value ?? "A1").Column);
+                        return ci >= clip.Value.C1 && ci <= clip.Value.C2;
+                    });
 
                 var cellsObj = new JsonObject();
                 foreach (var cell in cellElements)
@@ -462,6 +545,7 @@ public partial class ExcelHandler
         // sees sheet add/rename/delete between successive calls.
         _viewAsIssuesWorksheetCache = null;
         _viewAsIssuesSheetNameCache = null;
+<<<<<<< HEAD
 
         // Should the scan that produces issues of `subtypeName` run?
         // True when no filter is active, when the filter is the broad
@@ -502,7 +586,34 @@ public partial class ExcelHandler
             }
             return false;
         }
+=======
+>>>>>>> upstream/main
 
+        // Should the scan that produces issues of `subtypeName` run?
+        // True when no filter is active, when the filter is the broad bucket
+        // the subtype belongs to, or when the filter names the subtype exactly.
+        // Centralising this keeps every inline gate consistent with the final
+        // filter while avoiding expensive scans for unrelated buckets.
+        bool ShouldScan(string subtypeName, IssueType bucket = IssueType.Content)
+        {
+            if (issueType == null) return true;
+            var bucketMatch = bucket switch
+            {
+                IssueType.Format => string.Equals(issueType, "format", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(issueType, "f", StringComparison.OrdinalIgnoreCase),
+                IssueType.Content => string.Equals(issueType, "content", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(issueType, "c", StringComparison.OrdinalIgnoreCase),
+                IssueType.Structure => string.Equals(issueType, "structure", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(issueType, "s", StringComparison.OrdinalIgnoreCase),
+                _ => false
+            };
+            return string.Equals(issueType, subtypeName, StringComparison.OrdinalIgnoreCase)
+                || bucketMatch;
+        }
+
+        // cachedValue vs computedValue agreement (1e-9 relative tolerance for
+        // numerics) is shared with the save-time cache sweep — see
+        // CachedComputedAgree in ExcelHandler.FormulaCache.cs.
         var sheets = GetWorksheets();
         foreach (var (sheetName, worksheetPart) in sheets)
         {
@@ -535,7 +646,11 @@ public partial class ExcelHandler
                         // every other #VALUE!/#NAME?/#DIV/0!/etc. is the
                         // generic formula_eval_error — a real Excel-load
                         // error but without a more specific named cause.
+<<<<<<< HEAD
                         var fTextForErr = cell.CellFormula.Text;
+=======
+                        var fTextForErr = Core.SharedFormulaResolver.ResolveText(cell);
+>>>>>>> upstream/main
                         var isMissingSheetCause = value == "#REF!"
                             && fTextForErr != null
                             && FormulaReferencesMissingSheet(fTextForErr);
@@ -555,10 +670,17 @@ public partial class ExcelHandler
                             Message = semanticSubtype == Core.IssueSubtypes.FormulaRefMissingSheet
                                 ? $"Formula references missing sheet (cached as {value}; Excel would show #REF!)"
                                 : $"Formula error: {value}",
+<<<<<<< HEAD
                             Context = $"={cell.CellFormula.Text}"
                         });
                     }
                     else if (cell.CellFormula?.Text is { } fText
+=======
+                            Context = $"={fTextForErr}"
+                        });
+                    }
+                    else if (Core.SharedFormulaResolver.ResolveText(cell) is { } fText
+>>>>>>> upstream/main
                         && (ShouldScan(Core.IssueSubtypes.FormulaNotEvaluated)
                             || ShouldScan(Core.IssueSubtypes.FormulaCacheStale)
                             || ShouldScan(Core.IssueSubtypes.FormulaRefMissingSheet)))
@@ -663,6 +785,61 @@ public partial class ExcelHandler
             }
         }
 
+<<<<<<< HEAD
+=======
+        // Width-stable numeric/date cells whose visible formatted value cannot
+        // fit the column render as ### in Excel. Keep this before the other
+        // issue families so default output follows the worksheet scan order;
+        // each later family is gated too, so unrelated findings cannot consume
+        // an exact/broad Format request's --limit capacity.
+        if (ShouldScan(Core.IssueSubtypes.NumericOverflow, IssueType.Format))
+        {
+            int? remaining = limit.HasValue
+                ? Math.Max(0, limit.Value - issues.Count)
+                : null;
+            foreach (var finding in CheckAllNumericOverflow(remaining))
+            {
+                if (limit.HasValue && issues.Count >= limit.Value) break;
+                issues.Add(new DocumentIssue
+                {
+                    Id = $"N{++issueNum}",
+                    Type = IssueType.Format,
+                    Subtype = Core.IssueSubtypes.NumericOverflow,
+                    Severity = IssueSeverity.Warning,
+                    Path = finding.Path,
+                    Message = finding.Message,
+                    Context = finding.Context,
+                    Suggestion = finding.Suggestion
+                });
+            }
+        }
+
+        // General-formatted numbers past Excel's 11-significant-digit display
+        // cap. Width-independent, so it is a separate family from the fit scan
+        // above and carries a number-format suggestion instead of a width one.
+        if (ShouldScan(Core.IssueSubtypes.GeneralPrecisionLoss, IssueType.Format))
+        {
+            int? remaining = limit.HasValue
+                ? Math.Max(0, limit.Value - issues.Count)
+                : null;
+            foreach (var finding in CheckAllGeneralPrecisionLoss(remaining))
+            {
+                if (limit.HasValue && issues.Count >= limit.Value) break;
+                issues.Add(new DocumentIssue
+                {
+                    Id = $"N{++issueNum}",
+                    Type = IssueType.Format,
+                    Subtype = Core.IssueSubtypes.GeneralPrecisionLoss,
+                    Severity = IssueSeverity.Warning,
+                    Path = finding.Path,
+                    Message = finding.Message,
+                    Context = finding.Context,
+                    Suggestion = finding.Suggestion
+                });
+            }
+        }
+
+>>>>>>> upstream/main
         // Defined names whose body references a sheet that no longer exists.
         // Excel persists the stale ref (or writes #REF!) and silently returns
         // 0 in any formula using the name — see ResolveSheetCellResult. The
@@ -672,7 +849,13 @@ public partial class ExcelHandler
         // before the name was cleaned up.
         var workbook = _doc.WorkbookPart?.Workbook;
         var definedNames = workbook?.DefinedNames?.Elements<DefinedName>();
+<<<<<<< HEAD
         if (definedNames != null)
+=======
+        bool scanDefinedNameBroken = ShouldScan(Core.IssueSubtypes.DefinedNameBroken);
+        bool scanDefinedNameTargetMissing = ShouldScan(Core.IssueSubtypes.DefinedNameTargetMissing);
+        if (definedNames != null && (scanDefinedNameBroken || scanDefinedNameTargetMissing))
+>>>>>>> upstream/main
         {
             foreach (var dn in definedNames)
             {
@@ -680,12 +863,40 @@ public partial class ExcelHandler
                 var body = dn.Text?.Trim();
                 var name = dn.Name?.Value;
                 if (string.IsNullOrEmpty(body) || string.IsNullOrEmpty(name)) continue;
+<<<<<<< HEAD
+=======
+                // Scope index out of range: localSheetId is a 0-based
+                // position into <sheets>; a value >= the sheet count means
+                // real Excel refuses to open the file (0x800A03EC). Typical
+                // cause: a sheet remove/reorder that didn't renumber scopes.
+                var sheetCount = workbook?.Sheets?.Elements<Sheet>().Count() ?? 0;
+                var lid = dn.LocalSheetId?.Value;
+                if (lid.HasValue && lid.Value >= sheetCount)
+                {
+                    if (scanDefinedNameBroken)
+                    {
+                        issues.Add(new DocumentIssue
+                        {
+                            Id = $"D{++issueNum}",
+                            Type = IssueType.Content,
+                            Subtype = Core.IssueSubtypes.DefinedNameBroken,
+                            Severity = IssueSeverity.Error,
+                            Path = $"/namedrange[{name}]",
+                            Message = $"Defined name '{name}' has out-of-range scope localSheetId={lid.Value} (workbook has {sheetCount} sheet(s)); Excel will refuse to open this file",
+                            Context = body,
+                            Suggestion = "Rescope the name to an existing sheet index or remove it."
+                        });
+                    }
+                    continue;
+                }
+>>>>>>> upstream/main
                 // Body that is an error literal (#REF!) is already handled
                 // by the evaluator's TT.Error path (B3 fix) — that branch
                 // propagates the error to formulas. Surface it as an issue
                 // too so it's discoverable.
                 if (body.StartsWith('#') && body.EndsWith('!'))
                 {
+<<<<<<< HEAD
                     issues.Add(new DocumentIssue
                     {
                         Id = $"D{++issueNum}",
@@ -699,6 +910,25 @@ public partial class ExcelHandler
                     });
                     continue;
                 }
+=======
+                    if (scanDefinedNameBroken)
+                    {
+                        issues.Add(new DocumentIssue
+                        {
+                            Id = $"D{++issueNum}",
+                            Type = IssueType.Content,
+                            Subtype = Core.IssueSubtypes.DefinedNameBroken,
+                            Severity = IssueSeverity.Error,
+                            Path = $"/namedrange[{name}]",
+                            Message = $"Defined name '{name}' has error body {body}",
+                            Context = body,
+                            Suggestion = "Rebind to a valid range or remove it."
+                        });
+                    }
+                    continue;
+                }
+                if (!scanDefinedNameTargetMissing) continue;
+>>>>>>> upstream/main
                 if (!ChartRefSheetExists(body, out var missingSheet)) continue;
                 issues.Add(new DocumentIssue
                 {
@@ -721,6 +951,7 @@ public partial class ExcelHandler
         // ref becomes a silent landmine for the next refresh. Detect by
         // scanning every chart's c:f formulas and matching the sheet prefix
         // against the live workbook.
+<<<<<<< HEAD
         foreach (var (slug, formula) in EnumerateChartRefFormulas())
         {
             if (limit.HasValue && issues.Count >= limit.Value) break;
@@ -736,6 +967,26 @@ public partial class ExcelHandler
                 Context = formula,
                 Suggestion = "Restore the sheet, or rebuild the chart against an existing range."
             });
+=======
+        if (ShouldScan(Core.IssueSubtypes.ChartSeriesRefMissingSheet))
+        {
+            foreach (var (slug, formula) in EnumerateChartRefFormulas())
+            {
+                if (limit.HasValue && issues.Count >= limit.Value) break;
+                if (!ChartRefSheetExists(formula, out var missingSheet)) continue;
+                issues.Add(new DocumentIssue
+                {
+                    Id = $"R{++issueNum}",
+                    Type = IssueType.Content,
+                    Subtype = Core.IssueSubtypes.ChartSeriesRefMissingSheet,
+                    Severity = IssueSeverity.Error,
+                    Path = slug,
+                    Message = $"Chart series references missing sheet '{missingSheet}'",
+                    Context = formula,
+                    Suggestion = "Restore the sheet, or rebuild the chart against an existing range."
+                });
+            }
+>>>>>>> upstream/main
         }
 
         // Chart numCache vs live cell values — stale-cache detection.
@@ -798,6 +1049,7 @@ public partial class ExcelHandler
 
         // CONSISTENCY(text-overflow-check): merged in from former `check` command.
         // Emits wrapText-cells whose visible row-height budget can't fit the wrapped text.
+<<<<<<< HEAD
         foreach (var (path, msg) in CheckAllCellOverflow())
         {
             if (limit.HasValue && issues.Count >= limit.Value) break;
@@ -809,6 +1061,25 @@ public partial class ExcelHandler
                 Path = path,
                 Message = msg
             });
+=======
+        bool scanBroadFormat = issueType == null
+            || string.Equals(issueType, "format", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(issueType, "f", StringComparison.OrdinalIgnoreCase);
+        if (scanBroadFormat && (!limit.HasValue || issues.Count < limit.Value))
+        {
+            foreach (var (path, msg) in CheckAllCellOverflow())
+            {
+                if (limit.HasValue && issues.Count >= limit.Value) break;
+                issues.Add(new DocumentIssue
+                {
+                    Id = $"O{++issueNum}",
+                    Type = IssueType.Format,
+                    Severity = IssueSeverity.Warning,
+                    Path = path,
+                    Message = msg
+                });
+            }
+>>>>>>> upstream/main
         }
 
         // Subtype / type filter (mirrors WordHandler.ViewAsIssues). xlsx

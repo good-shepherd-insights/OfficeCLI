@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -18,16 +22,29 @@ internal static class MsysPathHint
     // means a future copy-edit can't desync them without the compiler noticing.
     private const string HintPrefix = "Git Bash rewrote";
 
+<<<<<<< HEAD
     // Mangled paths look like: lowercase drive letter, forward slashes,
     // optional trailing slash.  e.g. "d:/git/git/", "c:/program files/git/body".
     private static readonly Regex MangledShape = new(
         @"^[a-z]:/", RegexOptions.Compiled);
+=======
+    // Mangled paths look like: a drive letter, forward slashes, optional
+    // trailing slash.  e.g. "C:/Program Files/Git/", "D:/git/git/body".
+    // The drive letter is matched case-insensitively — the conversion emits an
+    // upper-case drive ("C:/...") in practice.
+    private static readonly Regex MangledShape = new(
+        @"^[A-Za-z]:/", RegexOptions.Compiled);
+>>>>>>> upstream/main
 
     // Scan for mangled-shape tokens embedded in a longer error message.
     // The token stops at whitespace, quotes, brackets, or sentence punctuation
     // so we don't slurp trailing words.
     private static readonly Regex MangledTokenInMessage = new(
+<<<<<<< HEAD
         @"[a-z]:/[^\s'""<>\)\]]+", RegexOptions.Compiled);
+=======
+        @"[A-Za-z]:/[^\s'""<>\)\]]+", RegexOptions.Compiled);
+>>>>>>> upstream/main
 
     // Marker files that identify an install as a real MSYS/Git/Cygwin root.
     // Each entry is a relative path from the candidate root directory.
@@ -39,6 +56,26 @@ internal static class MsysPathHint
     };
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// When <paramref name="arg"/> is a shell-rewritten leading-'/' path that
+    /// landed inside a real MSYS / Git Bash / Cygwin install root, return the
+    /// path the user originally typed (e.g. "C:/Program Files/Git/body" becomes
+    /// "/body", "C:/Program Files/Git/" becomes "/"). Otherwise return the value
+    /// unchanged. Callers wrap any positional DOM-path argument with this so a
+    /// shell-mangled "/body" is recovered before path resolution, while every
+    /// non-mangled input (real Windows file paths, selectors, "selected") passes
+    /// through untouched — recovery that can't confirm a real install root just
+    /// falls back to the original value.
+    /// </summary>
+    public static string? Restore(string? arg)
+    {
+        if (string.IsNullOrEmpty(arg)) return arg;
+        return TryRecoverOriginalPath(arg) ?? arg;
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Return a hint string when <paramref name="offendingPath"/> looks like a
     /// shell-rewritten argument that fell on disk inside a real MSYS / Git Bash
     /// / Cygwin install. Returns null when nothing matches — call site should
@@ -46,6 +83,25 @@ internal static class MsysPathHint
     /// </summary>
     public static string? TryDescribeRewrite(string? offendingPath)
     {
+<<<<<<< HEAD
+=======
+        var original = TryRecoverOriginalPath(offendingPath);
+        if (original == null) return null;
+
+        var doubled = "/" + original;
+        return $"{HintPrefix} '{original}' before officecli received it. " +
+               $"Use '{doubled}' or set MSYS_NO_PATHCONV=1.";
+    }
+
+    /// <summary>
+    /// Shared core: if <paramref name="offendingPath"/> has the mangled shape
+    /// and resolves to a path inside a real MSYS / Git Bash / Cygwin install
+    /// root, return the path the user most likely typed (always '/'-prefixed).
+    /// Returns null when nothing matches.
+    /// </summary>
+    private static string? TryRecoverOriginalPath(string? offendingPath)
+    {
+>>>>>>> upstream/main
         if (string.IsNullOrEmpty(offendingPath)) return null;
         if (!OperatingSystem.IsWindows()) return null;
         if (!MangledShape.IsMatch(offendingPath)) return null;
@@ -62,6 +118,7 @@ internal static class MsysPathHint
             {
                 var probeForward = probe.Replace(Path.DirectorySeparatorChar, '/');
                 var tail = offendingPath.TrimEnd('/');
+<<<<<<< HEAD
                 string original;
                 if (tail.Length <= probeForward.Length ||
                     !tail.StartsWith(probeForward, StringComparison.OrdinalIgnoreCase))
@@ -77,6 +134,17 @@ internal static class MsysPathHint
                 var doubled = "/" + original;
                 return $"{HintPrefix} '{original}' before officecli received it. " +
                        $"Use '{doubled}' or set MSYS_NO_PATHCONV=1.";
+=======
+                if (tail.Length <= probeForward.Length ||
+                    !tail.StartsWith(probeForward, StringComparison.OrdinalIgnoreCase))
+                {
+                    return "/";
+                }
+
+                var original = tail.Substring(probeForward.Length);
+                if (!original.StartsWith('/')) original = "/" + original;
+                return original;
+>>>>>>> upstream/main
             }
 
             var parent = Path.GetDirectoryName(probe);

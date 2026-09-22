@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.IO.Pipes;
@@ -20,6 +24,15 @@ public class ResidentServer : IDisposable
     // subsequent reopen sites (view-screenshot, page-count, refresh) use
     // the promoted mode rather than reverting to the ctor's editable=false.
     private bool _editable;
+<<<<<<< HEAD
+=======
+    // True when in-memory mutations have not yet been flushed to disk.
+    // PromoteToEditable() (the shared prelude of every mutating command and
+    // of batch) latches it true; ExecuteSave() and the idle-autosave clear it
+    // after a successful _handler.Save(). The idle-autosave watchdog uses it
+    // to skip flushing when nothing changed since the last save.
+    private volatile bool _dirty;
+>>>>>>> upstream/main
     // Stderr captured during DocumentHandlerFactory.Open (i.e. while the
     // constructor was building _handler). At that point there's no
     // per-command Console.SetError scope, so warnings written by plugin
@@ -54,6 +67,21 @@ public class ResidentServer : IDisposable
     private long _idleTimeoutTicks = ResolveIdleTimeout().Ticks;
     private TimeSpan CurrentIdleTimeout => TimeSpan.FromTicks(Volatile.Read(ref _idleTimeoutTicks));
     private CancellationTokenSource _idleCts = new();
+<<<<<<< HEAD
+=======
+    // Two independent idle timers, both reset by command activity (ResetIdleTimer):
+    //   - _idleCts (CurrentIdleTimeout, default 12min / 60s auto-start): on
+    //     elapse the resident shuts down — flush + release the file ("close").
+    //   - _autosaveCts (CurrentAutosaveInterval, adaptive 2s–10s by default):
+    //     on elapse, if the DOM is dirty, flush to disk but KEEP the resident
+    //     running ("save"). This makes edits visible to third-party readers
+    //     shortly after going idle without paying the O(n) reopen cost a
+    //     shutdown+restart would incur. Not started in off/each flush modes.
+    // The shorter autosave fires first; if the session stays idle the longer
+    // idle-shutdown follows. Autosave firing does NOT reset the shutdown timer,
+    // so the resident still exits the configured time after the last command.
+    private CancellationTokenSource _autosaveCts = new();
+>>>>>>> upstream/main
     private bool _disposed;
 
     // Safe stderr logging: the parent process may have redirected our stderr
@@ -90,6 +118,68 @@ public class ResidentServer : IDisposable
         return DefaultIdleTimeout;
     }
 
+<<<<<<< HEAD
+=======
+    // Flush policy: when a dirty in-memory DOM is written to disk so a
+    // third-party tool that opens the file directly (python-docx, openpyxl,
+    // Word, a renderer) sees recent edits without an explicit `save`/`close`.
+    // One knob, four modes (see Core/ResidentFlushPolicy.cs):
+    //   each — flush before every mutation command returns (deterministic)
+    //   auto — idle-debounced, interval adapts to measured save cost (default):
+    //          clamp(4 × EMA(save duration), 2s, 10s). Typical documents hug
+    //          the 2s floor; a data-heavy workbook whose save takes seconds
+    //          backs off automatically so background saves never eat more
+    //          than ~25% of wall-clock in a busy session.
+    //   <N>  — idle-debounced, fixed N seconds (the pre-adaptive behavior)
+    //   off  — flush only on save/close/shutdown
+    // Read from OFFICECLI_RESIDENT_FLUSH; the legacy
+    // OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS (integer seconds / 0 / "off") is
+    // honored when the new variable is unset. Paired with
+    // OFFICECLI_RESIDENT_IDLE_SECONDS (idle→close); idle modes are bounded
+    // the same way.
+    private static readonly ResidentFlushMode FlushMode;
+    private static readonly TimeSpan FixedFlushInterval;
+    static ResidentServer()
+    {
+        foreach (var env in new[] { "OFFICECLI_RESIDENT_FLUSH", "OFFICECLI_RESIDENT_IDLE_SAVE_SECONDS" })
+        {
+            if (ResidentFlushPolicy.TryParse(Environment.GetEnvironmentVariable(env),
+                    MinIdleSeconds, MaxIdleSeconds, out var mode, out var fixedInterval))
+            {
+                FlushMode = mode;
+                FixedFlushInterval = fixedInterval;
+                return;
+            }
+        }
+        FlushMode = ResidentFlushMode.Auto;
+    }
+
+    // Adaptive-interval state (auto mode): EMA of measured save durations and
+    // the derived debounce, both stored as atomically-readable primitives
+    // (CONSISTENCY(volatile-ticks): same pattern as _idleTimeoutTicks — the
+    // watchdog task reads them concurrently with command-thread writes).
+    // -1 bits = no sample yet. Writers all run under _commandLock.
+    private long _saveEmaMillis = -1;
+    private long _adaptiveIntervalTicks = ResidentFlushPolicy.MinAdaptiveInterval.Ticks;
+
+    private TimeSpan CurrentAutosaveInterval => FlushMode == ResidentFlushMode.Fixed
+        ? FixedFlushInterval
+        : TimeSpan.FromTicks(Volatile.Read(ref _adaptiveIntervalTicks));
+
+    // Fold one measured save duration into the adaptive debounce. Called after
+    // every successful _handler.Save() regardless of mode — the sample is
+    // cheap to record and keeps the estimate warm across mode-irrelevant
+    // saves (explicit `save`, each-mode flushes).
+    private void RecordSaveDuration(TimeSpan elapsed)
+    {
+        var prev = Volatile.Read(ref _saveEmaMillis);
+        var ema = ResidentFlushPolicy.NextEmaSeconds(
+            prev < 0 ? -1 : prev / 1000.0, elapsed.TotalSeconds);
+        Volatile.Write(ref _saveEmaMillis, (long)(ema * 1000));
+        Volatile.Write(ref _adaptiveIntervalTicks, ResidentFlushPolicy.IntervalForEma(ema).Ticks);
+    }
+
+>>>>>>> upstream/main
     // Runtime upgrade path for the idle timeout. Called from the ping
     // handler when a new `__set-idle-timeout__` request arrives. Returns
     // false if the seconds value is out of range. On success, the
@@ -133,8 +223,30 @@ public class ResidentServer : IDisposable
     // PromoteToEditable(); the promotion is sticky for the resident's
     // lifetime, matching the pre-existing reopen pattern used by
     // view-screenshot/page-count/refresh.
+<<<<<<< HEAD
     public ResidentServer(string filePath, bool editable = false)
     {
+=======
+    // When this resident started — written into the dirty marker so a later
+    // reader can tell a dead owner from a reused pid.
+    private readonly DateTime _startedUtc = DateTime.UtcNow;
+
+    /// <summary>
+    /// Single writer for <see cref="_dirty"/>: the clean→dirty edge writes the
+    /// on-disk marker, every clean edge removes it (issue #328).
+    /// </summary>
+    private void SetDirty(bool dirty)
+    {
+        var was = _dirty;
+        _dirty = dirty;
+        if (dirty && !was) ResidentDirtyMarker.Write(_filePath, _startedUtc);
+        else if (!dirty && was) ResidentDirtyMarker.Clear(_filePath);
+    }
+
+    public ResidentServer(string filePath, bool editable = false)
+    {
+        ResidentDirtyMarker.SweepStale();
+>>>>>>> upstream/main
         _filePath = Path.GetFullPath(filePath);
         _pipeName = GetPipeName(_filePath);
         _editable = editable;
@@ -156,7 +268,14 @@ public class ResidentServer : IDisposable
 
     public static string GetPipeName(string filePath)
     {
+<<<<<<< HEAD
         var fullPath = Path.GetFullPath(filePath);
+=======
+        // CONSISTENCY(path-identity): symlink-resolved so two path forms of the
+        // same file reach the SAME resident (see PathIdentity) — a second
+        // resident on the same document duplicates in-memory edits.
+        var fullPath = PathIdentity.Canonical(filePath);
+>>>>>>> upstream/main
         if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
             fullPath = fullPath.ToUpperInvariant();
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fullPath)))[..16];
@@ -226,6 +345,15 @@ public class ResidentServer : IDisposable
         // Start idle watchdog
         var idleTask = RunIdleWatchdogAsync(pingToken);
 
+<<<<<<< HEAD
+=======
+        // Start idle-autosave watchdog (flush-to-disk without shutdown). Skipped
+        // when auto-flush is disabled (off) or handled inline per command (each).
+        var autosaveTask = FlushMode is ResidentFlushMode.Off or ResidentFlushMode.Each
+            ? Task.CompletedTask
+            : RunAutosaveWatchdogAsync(pingToken);
+
+>>>>>>> upstream/main
         // Main command loop - accept connections concurrently, serialize
         // command execution. CONSISTENCY(pipe-precreate): same pre-create
         // pattern as RunPingResponderAsync (see BUG-FUZZER-R6-B-01). Creating
@@ -281,6 +409,10 @@ public class ResidentServer : IDisposable
 
         try { await pingTask; } catch (OperationCanceledException) { }
         try { await idleTask; } catch (OperationCanceledException) { }
+<<<<<<< HEAD
+=======
+        try { await autosaveTask; } catch (OperationCanceledException) { }
+>>>>>>> upstream/main
 
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
         foreach (var reg in signalRegs)
@@ -293,6 +425,13 @@ public class ResidentServer : IDisposable
         // RunIdleWatchdogAsync may race between Volatile.Read and .Token access.
         var oldCts = Interlocked.Exchange(ref _idleCts, new CancellationTokenSource());
         oldCts.Cancel();
+<<<<<<< HEAD
+=======
+        // Command activity also restarts the idle-autosave countdown so autosave
+        // only fires when the session is genuinely idle, never mid-workflow.
+        var oldAuto = Interlocked.Exchange(ref _autosaveCts, new CancellationTokenSource());
+        oldAuto.Cancel();
+>>>>>>> upstream/main
     }
 
     private async Task RunIdleWatchdogAsync(CancellationToken token)
@@ -311,6 +450,27 @@ public class ResidentServer : IDisposable
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(idleCts.Token, token);
                 await Task.Delay(currentTimeout, linked.Token);
 
+<<<<<<< HEAD
+=======
+                // The clock says idle — but "time since the last command
+                // boundary" is not the same as "nothing is running now". A single
+                // command that runs longer than the idle window (e.g. a large
+                // batch) produces no boundary event for its whole duration, so the
+                // countdown armed when it started expires while it is still in
+                // flight. Level-check the in-flight count before committing to
+                // shutdown: a command waiting on or holding the command lock keeps
+                // _pendingClients > 0 for its entire duration, so re-arm and wait
+                // again instead of tearing the resident down mid-command. Shutting
+                // down here would cancel the command's in-progress reply (the
+                // client then reports "not delivered") while the exit-time flush
+                // still writes the applied result to disk — a false failure over a
+                // silently persisted change. When the command finishes it resets
+                // the timer, so the next expiry counts a full window from
+                // completion and shuts down cleanly only when truly idle.
+                if (Volatile.Read(ref _pendingClients) > 0)
+                    continue;
+
+>>>>>>> upstream/main
                 // Reached here = idle timeout elapsed without reset.
                 // Kick off the ordered shutdown path instead of raw-
                 // cancelling _mainCts / _pingCts, so the "ping liveness ⇔
@@ -327,6 +487,102 @@ public class ResidentServer : IDisposable
         }
     }
 
+<<<<<<< HEAD
+=======
+    // Idle-autosave watchdog: mirrors RunIdleWatchdogAsync but, instead of
+    // shutting the resident down, flushes a dirty DOM to disk and keeps running.
+    // Disabled (never started) when the flush policy is off/each.
+    private async Task RunAutosaveWatchdogAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                var autoCts = Volatile.Read(ref _autosaveCts);
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(autoCts.Token, token);
+                // Re-read every iteration: in auto mode RecordSaveDuration
+                // adjusts the interval after each measured save. An in-flight
+                // delay keeps the old value until the next pass (same accepted
+                // lag as TrySetIdleTimeout's in-flight Task.Delay).
+                await Task.Delay(CurrentAutosaveInterval, linked.Token);
+                // Reached here = idle for the autosave interval without a reset.
+                await TryAutosaveAsync(token);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                // _autosaveCts was cancelled (command activity reset the timer);
+                // loop and wait again.
+            }
+        }
+    }
+
+    // Flush a dirty DOM to disk without stopping the resident. Serialized
+    // against commands via _commandLock so it never races a mutation. The
+    // under-lock _mainCts check makes it safe against shutdown: DoShutdownAsync
+    // cancels _mainCts BEFORE it drains the command lock, so if shutdown has
+    // begun we observe the cancellation here and skip the save (the shutdown
+    // Dispose flushes instead).
+    private async Task TryAutosaveAsync(CancellationToken token)
+    {
+        if (!_dirty || !_editable || _disposed) return;
+        SemaphoreSlim? acquired = null;
+        try
+        {
+            if (!await _commandLock.WaitAsync(TimeSpan.FromSeconds(5), token))
+                return; // a command is running; its exit resets the timer, retry next round
+            acquired = _commandLock;
+
+            if (_disposed || _mainCts.IsCancellationRequested) return;
+            if (!_dirty || !_editable) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            // Idle flush runs while nobody waits, so the xlsx formula-cache sweep
+            // may take a generous budget — provided it yields the moment a client
+            // connects and starts waiting on _commandLock (an aborted sweep falls
+            // back to fullCalcOnLoad exactly like budget exhaustion, so this only
+            // trades sweep completeness for command latency, never correctness).
+            var xlsx = _handler as ExcelHandler;
+            if (xlsx != null)
+            {
+                xlsx.SweepBudgetOverride = TimeSpan.FromSeconds(60);
+                xlsx.SweepYieldRequested = () => Volatile.Read(ref _pendingClients) > 0;
+            }
+            try { _handler.Save(); }
+            finally
+            {
+                if (xlsx != null) { xlsx.SweepBudgetOverride = null; xlsx.SweepYieldRequested = null; }
+            }
+            sw.Stop();
+            RecordSaveDuration(sw.Elapsed);
+            // A sweep interrupted by a command leaves formula caches partially
+            // refreshed on disk. Keeping _dirty=true makes the next idle window
+            // save again — that re-runs the sweep (the handler's Modified gate
+            // stays open for the whole session), so the file converges to fully
+            // swept once an idle window survives uninterrupted. Budget-exhausted
+            // sweeps do NOT retry (fullCalcOnLoad already covers them).
+            if (xlsx?.LastSweepTruncatedByYield == true)
+            {
+                LogStderr($"Autosaved {Path.GetFileName(_filePath)} (formula sweep yielded to a command; will re-sweep next idle window).");
+            }
+            else
+            {
+                SetDirty(false);
+                LogStderr($"Autosaved {Path.GetFileName(_filePath)} (idle flush, resident still running).");
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { /* shutdown disposed _mainCts/_commandLock under us */ }
+        catch (Exception ex)
+        {
+            LogStderr($"Autosave error: {ex.Message}");
+        }
+        finally
+        {
+            if (acquired != null) { try { acquired.Release(); } catch { } }
+        }
+    }
+
+>>>>>>> upstream/main
     private async Task RunPingResponderAsync(CancellationToken token)
     {
         var pingPipeName = _pipeName + "-ping";
@@ -456,9 +712,15 @@ public class ResidentServer : IDisposable
                         $"save failed during shutdown — data may be lost: {_filePath}");
                 else if (_shutdownFileVanishedAfterDispose)
                     response = MakeResponse(0, "Closing resident.",
+<<<<<<< HEAD
                         $"WARNING: backing file is missing at the original path: {_filePath}. " +
                         "If you renamed/moved it, your changes were saved to the new location. " +
                         "If you deleted it, your changes are lost.");
+=======
+                        $"WARNING: the backing file was missing at its original path during save: {_filePath}. " +
+                        "It was deleted or moved externally; your changes were rebuilt at that path. " +
+                        "If you renamed/moved it, a separate copy also exists at the new location.");
+>>>>>>> upstream/main
                 else
                     response = MakeResponse(0, "Closing resident.", "");
                 // ShutdownAsync cancelled the ping token; write on a
@@ -479,8 +741,19 @@ public class ResidentServer : IDisposable
         }
     }
 
+<<<<<<< HEAD
     private async Task HandleClientWithLockAsync(NamedPipeServerStream server, CancellationToken token)
     {
+=======
+    // Number of accepted business clients not yet finished. Autosave's formula
+    // sweep polls this (via the handler's SweepYieldRequested hook) so a command
+    // arriving mid-sweep interrupts it instead of waiting out the sweep budget.
+    private int _pendingClients;
+
+    private async Task HandleClientWithLockAsync(NamedPipeServerStream server, CancellationToken token)
+    {
+        Interlocked.Increment(ref _pendingClients);
+>>>>>>> upstream/main
         try
         {
             await _commandLock.WaitAsync(token);
@@ -502,6 +775,10 @@ public class ResidentServer : IDisposable
         }
         finally
         {
+<<<<<<< HEAD
+=======
+            Interlocked.Decrement(ref _pendingClients);
+>>>>>>> upstream/main
             await server.DisposeAsync();
         }
     }
@@ -576,6 +853,24 @@ public class ResidentServer : IDisposable
             try
             {
                 ExecuteCommand(request);
+<<<<<<< HEAD
+=======
+                // each mode: flush before the response is written so the
+                // command's success implies the change is on disk — the
+                // deterministic barrier for callers whose next step is an
+                // external reader. A Save failure here throws and surfaces as
+                // this command's error (exit != 0), never a silent stale disk.
+                // Inside a batch the per-item DeferSave still applies; this
+                // single flush at command granularity keeps batch O(n).
+                if (FlushMode == ResidentFlushMode.Each && _dirty && _editable)
+                {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    _handler.Save();
+                    sw.Stop();
+                    SetDirty(false);
+                    RecordSaveDuration(sw.Elapsed);
+                }
+>>>>>>> upstream/main
             }
             finally
             {
@@ -608,6 +903,14 @@ public class ResidentServer : IDisposable
             var isValidate = request.Command.Equals("validate", StringComparison.OrdinalIgnoreCase);
             var validateFailure = isValidate && _lastValidateErrorCount > 0;
             if (isValidate) _lastValidateErrorCount = 0;
+<<<<<<< HEAD
+=======
+            // raw-set / add-part applied but introduced validator errors:
+            // "applied with caveats" → exit 2, alongside UNSUPPORTED. Read and
+            // clear per request so a caveat never leaks into the next command.
+            var rawCaveats = _lastRawMutationHadValidationCaveats;
+            _lastRawMutationHadValidationCaveats = false;
+>>>>>>> upstream/main
 
             if (request.Json)
             {
@@ -648,19 +951,46 @@ public class ResidentServer : IDisposable
                 //   - envelope success:false                        -> 1
                 //   - stderr contains UNSUPPORTED (unsupported_property) -> 2
                 //   - otherwise                                      -> 0
+<<<<<<< HEAD
                 int jsonExitCode = 0;
                 if (stderr.Contains("UNSUPPORTED"))
                     jsonExitCode = 2;
                 else if (!EnvelopeSuccess(envelope) || batchFailure || validateFailure || stderr.Contains("VALIDATION:"))
+=======
+                // Batch/validate verdict failures OUTRANK applied-with-caveats
+                // markers, mirroring the non-resident batch path — an
+                // atomically rolled-back batch whose only green item carried a
+                // LaTeX warning must not report exit 2, which would claim
+                // something was applied when nothing was. Single-command
+                // marker precedence (all-unsupported set → 2) is unchanged.
+                int jsonExitCode = 0;
+                if (batchFailure || validateFailure)
+                    jsonExitCode = 1;
+                else if (rawCaveats || stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker))
+                    jsonExitCode = 2;
+                else if (!EnvelopeSuccess(envelope))
+>>>>>>> upstream/main
                     jsonExitCode = 1;
                 return MakeResponse(jsonExitCode, envelope, "");
             }
 
+<<<<<<< HEAD
             // BUG-DUMP12-01: surface stderr "VALIDATION:" token (emitted by
             // ExecuteRawSet / ExecuteAddPart when the SDK validator gains new
             // errors) as exit 1 so callers can detect rejected raw mutations.
             int exitCode = stderr.Contains("UNSUPPORTED") ? 2
                 : ((batchFailure || validateFailure || stderr.Contains("VALIDATION:")) ? 1 : 0);
+=======
+            // Text mode: batch/validate verdict failures (1) outrank the
+            // applied-with-caveats markers (2): UNSUPPORTED, unrecognized
+            // LaTeX, and a raw-set / add-part that introduced validator
+            // errors (rawCaveats — the mutation is applied, see
+            // ReportRawMutationOutcome; exit 1 here made callers retry and
+            // duplicate content, issue #374).
+            int exitCode = (batchFailure || validateFailure) ? 1
+                : ((rawCaveats || stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker)) ? 2
+                : 0);
+>>>>>>> upstream/main
             return MakeResponse(exitCode, stdout, stderr);
         }
         catch (Exception ex)
@@ -774,12 +1104,37 @@ public class ResidentServer : IDisposable
         return lines.Select(line =>
         {
             var warning = new CliWarning { Message = line.Trim() };
+<<<<<<< HEAD
             if (line.Contains("UNSUPPORTED")) warning.Code = "unsupported_property";
+=======
+            if (line.Contains(UnrecognizedLatexMarker))
+            {
+                warning.Code = "unrecognized_latex_command";
+                // Strip any "WARNING:" prefix so the envelope message matches the
+                // one-shot CLI's form ("unrecognized_latex_command: \foo").
+                var idx = line.IndexOf(UnrecognizedLatexMarker, StringComparison.Ordinal);
+                warning.Message = line.Substring(idx).Trim();
+            }
+            else if (line.Contains("UNSUPPORTED")) warning.Code = "unsupported_property";
+>>>>>>> upstream/main
             else if (line.Contains("VALIDATION")) warning.Code = "validation_error";
             // CONSISTENCY(dump-warning-code): mirror the
             // unsupported_element code emitted by CommandBuilder.Dump.cs so
             // resident-routed and direct dump callers see the same envelope.
             else if (line.StartsWith("warning: skipped ", StringComparison.Ordinal)) warning.Code = "unsupported_element";
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(numfmt-warning): mirror the invalid_number_format
+            // code the one-shot --json path emits via WarningContext (see
+            // ExcelStyleManager.GetOrCreateNumFmt), so resident-routed and
+            // direct callers see the same envelope. Strip the "Warning: "
+            // prefix to match the one-shot message form.
+            else if (line.StartsWith("Warning: number format ", StringComparison.Ordinal))
+            {
+                warning.Code = "invalid_number_format";
+                warning.Message = line.Substring("Warning: ".Length).Trim();
+            }
+>>>>>>> upstream/main
             else warning.Code = "warning";
             return warning;
         }).ToList();
@@ -804,15 +1159,31 @@ public class ResidentServer : IDisposable
             _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, editable: true);
             _editable = true;
         }
+<<<<<<< HEAD
         // Resident keeps the document in memory and only flushes to disk on
         // save/close, so per-mutation Document.Save() (an O(n) re-serialize
         // each) is pure waste — and over a long editing session it compounds to
         // O(n²). Defer it for the resident's whole life. save/close go through
         // _doc.Save() directly, bypassing the flag, so they still flush. This is
+=======
+        // Resident keeps the document in memory and flushes to disk only on
+        // save/close/idle-autosave, so per-mutation Document.Save() (an O(n)
+        // re-serialize each) is pure waste — and over a long editing session it
+        // compounds to O(n²). Defer it for the resident's whole life. save/close
+        // and the idle-autosave go through _handler.Save() directly, bypassing
+        // the flag, so they still flush. This is
+>>>>>>> upstream/main
         // the shared prelude of every mutation command, so it also re-applies
         // after a handler reopen (screenshot / page-count / refresh reset
         // _handler). The non-resident batch path sets DeferSave on its own.
         if (_handler is OfficeCli.Handlers.WordHandler wh) wh.DeferSave = true;
+<<<<<<< HEAD
+=======
+        // Mark the in-memory DOM as having unflushed changes. Cleared by the
+        // next save/close/idle-autosave. Set here (the shared mutation prelude)
+        // so single commands and batch alike are tracked.
+        SetDirty(true);
+>>>>>>> upstream/main
     }
 
     private void ExecuteCommand(ResidentRequest request)
@@ -894,7 +1265,14 @@ public class ResidentServer : IDisposable
                 ExecuteSave();
                 break;
             case "batch":
+<<<<<<< HEAD
                 PromoteToEditable();
+=======
+                // Promotion happens INSIDE ExecuteBatch: the atomic flush
+                // barrier must read the pre-batch _dirty state, and
+                // PromoteToEditable latches _dirty=true — promoting here would
+                // make every batch look dirty and pay a full serialize.
+>>>>>>> upstream/main
                 ExecuteBatch(request);
                 break;
             case "dump":
@@ -918,6 +1296,19 @@ public class ResidentServer : IDisposable
     // (and batch failure rows are written to stdout).
     private bool _lastBatchHadFailure;
 
+<<<<<<< HEAD
+=======
+    // Batch verbs that never mutate the DOM. ExecuteBatch notifies any live
+    // watch session after applying the items — parity with the per-verb
+    // NotifyWatch* calls in ExecuteCommand (issue #169). A batch made up
+    // entirely of these read-only verbs skips the full-refresh to avoid a
+    // needless re-render + SSE push, skips the editable promotion, and skips
+    // the atomic machinery. Fail-open contract and the canonical verb list
+    // live in CommandBuilder.ReadOnlyBatchVerbs (shared with the non-resident
+    // atomic-copy decision).
+    private static HashSet<string> ReadOnlyBatchVerbs => CommandBuilder.ReadOnlyBatchVerbs;
+
+>>>>>>> upstream/main
     private void ExecuteBatch(ResidentRequest request)
     {
         _lastBatchHadFailure = false;
@@ -936,6 +1327,12 @@ public class ResidentServer : IDisposable
 
         var items = System.Text.Json.JsonSerializer.Deserialize<List<BatchItem>>(
             batchJson, BatchJsonContext.Default.ListBatchItem) ?? new();
+<<<<<<< HEAD
+=======
+        // NEWLINE-SEMANTICS-V2: strip meta items; rewrite legacy (\n = soft
+        // break) docx dumps to the v2 encoding before execution.
+        OfficeCli.Core.BatchCompat.PrepareForReplay(items, _filePath);
+>>>>>>> upstream/main
 
         // BUG-R40-B11: parity with the non-resident path —
         // CommandBuilder.Batch.cs already rejects null entries, but
@@ -950,7 +1347,12 @@ public class ResidentServer : IDisposable
 
         // Document-protection gate, evaluated against the resident's in-memory
         // DOM (not the on-disk file, which may lag uncommitted protection
+<<<<<<< HEAD
         // changes — the resident flushes only on save/close). Mirrors the
+=======
+        // changes — the resident flushes only on save/close/idle-autosave).
+        // Mirrors the
+>>>>>>> upstream/main
         // non-resident batch path; honors --force. Throw so the command's
         // exception handler maps it to a non-zero exit with the message.
         if (!force && _handler is OfficeCli.Handlers.WordHandler)
@@ -960,12 +1362,51 @@ public class ResidentServer : IDisposable
                 throw new CliException(protBlock) { Code = "document_protected" };
         }
 
+<<<<<<< HEAD
         var results = new List<BatchResult>();
+=======
+        var bestEffort = request.GetArg("bestEffort", "false")
+            .Equals("true", StringComparison.OrdinalIgnoreCase);
+        var hasMutating = items.Any(it => !ReadOnlyBatchVerbs.Contains(it.Command ?? ""));
+        var atomic = !bestEffort && hasMutating;
+
+        // Atomic flush barrier: make the on-disk file identical to the
+        // pre-batch in-memory tree, so a failed batch can roll back by simply
+        // discarding the poisoned DOM and reloading. Reads the TRUE pre-batch
+        // _dirty state (PromoteToEditable below latches it), so a batch on an
+        // already-flushed session pays nothing — the serialize below only
+        // happens when a flush was owed anyway, just earlier than the idle
+        // debounce would have run it. Ordered before promotion: mutations
+        // cannot exist while !_editable, so the not-yet-promoted case needs no
+        // barrier.
+        if (atomic && _editable && _dirty)
+        {
+            // FLUSH=off promises "disk writes only on explicit save/close/
+            // shutdown" — the barrier's implicit Save would break that
+            // contract, and skipping it would make a rollback reload lose
+            // the unflushed pre-batch edits. Fail closed with the two ways
+            // out instead of silently picking either.
+            if (FlushMode == ResidentFlushMode.Off)
+                throw new CliException(
+                    "atomic batch needs the pre-batch state on disk as its rollback point, " +
+                    "but OFFICECLI_RESIDENT_FLUSH=off is holding unflushed changes in memory. " +
+                    "Run 'save' first, or use 'batch --best-effort'.")
+                { Code = "flush_policy_conflict", Suggestion = "officecli save <file> before the batch, or batch --best-effort" };
+            var swBarrier = System.Diagnostics.Stopwatch.StartNew();
+            _handler.Save();
+            swBarrier.Stop();
+            SetDirty(false);
+            RecordSaveDuration(swBarrier.Elapsed);
+        }
+        if (hasMutating) PromoteToEditable();
+
+>>>>>>> upstream/main
         // Defer per-mutation Document.Save() across the whole batch so N resident
         // mutations serialize once (at the next save/close) instead of N times —
         // the per-op Save was an O(N²) re-serialize of the growing part. Mirrors
         // the non-resident batch path. get/query inside the batch still read the
         // live in-memory DOM, so they observe every just-added element; the
+<<<<<<< HEAD
         // resident only flushes to disk on `save`/`close`, which go through
         // _doc.Save() directly (bypassing the deferred SaveDoc()).
         var deferHandler = _handler as OfficeCli.Handlers.WordHandler;
@@ -999,12 +1440,77 @@ public class ResidentServer : IDisposable
                 if (stopOnError) break;
             }
         }
+=======
+        // resident flushes to disk only on `save`/`close`/idle-autosave, which
+        // go through _handler.Save() directly (bypassing the deferred SaveDoc()).
+        //
+        // Unlike the dispose-based CLI/MCP surfaces (which leave DeferSave on and
+        // let Dispose finalize), the resident handler is long-lived: it must
+        // restore the previous DeferSave and run ReconcileGlobalIds (below)
+        // explicitly. The replay loop itself is shared via ApplyBatchItems;
+        // skipResidentOnlyCommands drops in-batch open/close that would conflict
+        // with the already-open file.
+        var deferHandler = _handler as OfficeCli.Handlers.WordHandler;
+        var prevDefer = deferHandler?.DeferSave ?? false;
+        if (deferHandler != null) deferHandler.DeferSave = true;
+        // Staged docProps whole-part payloads live outside the flush barrier
+        // (they land on disk only at a non-discard Dispose), so a rollback
+        // must restore this pre-batch snapshot into the replacement handler —
+        // otherwise confirmed pre-batch raw-set edits vanish with the
+        // poisoned DOM. Taken before the batch so batch-staged entries roll
+        // back too.
+        var preBatchWholeParts = atomic ? deferHandler?.SnapshotPendingWholeParts() : null;
+        List<BatchResult> results;
+        // BUG-BT2: collect per-item unrecognized-LaTeX tokens across the whole
+        // batch so the resident surfaces the same unrecognized_latex_command
+        // warning + exit 2 the one-shot path does (the handler resets
+        // LastUnrecognizedLatex per item, so a post-loop read would only see
+        // the last item's tokens).
+        var batchUnrecognizedLatex = new List<string>();
+        try
+        {
+            results = CommandBuilder.ApplyBatchItems(_handler, items, stopOnError, json,
+                skipResidentOnlyCommands: true, unrecognizedLatex: batchUnrecognizedLatex);
+>>>>>>> upstream/main
         }
         finally
         {
             if (deferHandler != null) deferHandler.DeferSave = prevDefer;
         }
 
+<<<<<<< HEAD
+=======
+        // Atomic rollback: any failed item discards the WHOLE batch. The
+        // barrier above guaranteed disk == pre-batch state, and nothing
+        // flushed mid-batch (DeferSave + _commandLock keeps the autosave
+        // watchdog out), so rolling back is: drop the poisoned in-memory DOM
+        // without serializing it (DiscardOnDispose) and reload the pre-batch
+        // file. The reload pays one parse — only on the failure path.
+        var anyFailed = results.Any(r => !r.Success);
+        var rolledBack = false;
+        if (atomic && anyFailed)
+        {
+            switch (_handler)
+            {
+                case OfficeCli.Handlers.WordHandler w: w.DiscardOnDispose = true; break;
+                case OfficeCli.Handlers.ExcelHandler x: x.DiscardOnDispose = true; break;
+                case OfficeCli.Handlers.PowerPointHandler p: p.DiscardOnDispose = true; break;
+            }
+            try { _handler.Dispose(); } catch { /* discard path */ }
+            _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, editable: true);
+            // Re-establish the resident's long-lived handler invariants
+            // (mirrors PromoteToEditable's post-open state): _editable stays
+            // latched, deferral re-applies, and memory now equals disk.
+            if (_handler is OfficeCli.Handlers.WordHandler wh2)
+            {
+                wh2.DeferSave = true;
+                wh2.AdoptPendingWholeParts(preBatchWholeParts);
+            }
+            SetDirty(false);
+            rolledBack = true;
+        }
+
+>>>>>>> upstream/main
         // BUG-R7B(BUG2): reconcile document-wide ids (wp:docPr, paraId, sdt)
         // after the deferred batch. Each item ran under DeferSave so the
         // per-raw-set id passes were skipped; a raw-set of a header/footer part
@@ -1012,6 +1518,7 @@ public class ResidentServer : IDisposable
         // save/close. Run the same document-scoped passes here so a `validate`
         // (or watch render) issued before the eventual save sees the same clean
         // state save/close would write. Mirrors the non-resident path, where
+<<<<<<< HEAD
         // Dispose-time FinalizeDeferredIds already does this.
         deferHandler?.ReconcileGlobalIds();
 
@@ -1022,6 +1529,40 @@ public class ResidentServer : IDisposable
         // path.
         _lastBatchHadFailure = results.Any(r => !r.Success);
         CommandBuilder.PrintBatchResults(results, json, items.Count);
+=======
+        // Dispose-time FinalizeDeferredIds already does this. Skipped after a
+        // rollback — the batch's changes no longer exist and deferHandler
+        // points at the disposed pre-rollback handler.
+        if (!rolledBack) deferHandler?.ReconcileGlobalIds();
+
+        // Judgment contract: batch is classified as a judgment command (root
+        // the project conventions "Judgment: any batch step failed -> outer false"). The
+        // verdict flips to failure as soon as ANY step is rejected. Keeps
+        // envelope.success / exit code in lockstep with the non-resident
+        // path.
+        _lastBatchHadFailure = anyFailed;
+        CommandBuilder.PrintBatchResults(results, json, items.Count, atomicRolledBack: rolledBack);
+        // BUG-BT2: emit the collected unrecognized-LaTeX markers so the
+        // dispatcher maps them to exit 2 and the envelope warning code, exactly
+        // as the single-shot resident add/set path (EmitUnrecognizedLatex) does.
+        foreach (var tok in batchUnrecognizedLatex)
+            Console.Error.WriteLine($"  WARNING: {UnrecognizedLatexMarker} {tok}");
+
+        // Notify any live watch session so the preview reflects the batch.
+        // Single add/set/move/remove/etc. each call a NotifyWatch* helper in
+        // ExecuteCommand; batch applied its items directly above and must do
+        // the same, otherwise the watched DOM stays stale until the watch is
+        // manually restarted (issue #169). A batch can span many
+        // slides/sheets/pages with mixed verbs, so a targeted per-slide patch
+        // isn't derivable — a full refresh mirrors swap / refresh / raw-set /
+        // add-part. Skip only provably read-only batches to avoid a needless
+        // re-render; unknown verbs fail open to notify. An atomic rollback
+        // also skips: the document is byte-identical to what the preview
+        // already shows, so pushing a frame would be a lie about a change
+        // that never landed.
+        if (hasMutating && !rolledBack)
+            NotifyWatchFullRefresh();
+>>>>>>> upstream/main
     }
 
     // ==================== Watch notification helpers ====================
@@ -1046,13 +1587,21 @@ public class ResidentServer : IDisposable
                 var idx = excel.GetSheetIndex(sheetName);
                 if (idx >= 0) scrollTo = $".sheet-content[data-sheet=\"{idx}\"]";
             }
+<<<<<<< HEAD
             WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = excel.ViewAsHtml(), ScrollTo = scrollTo });
+=======
+            WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = CommandBuilder.RenderViaRegistry(excel, "xlsx", new OfficeCli.Core.Rendering.RenderOptions()), ScrollTo = scrollTo });
+>>>>>>> upstream/main
             return;
         }
         if (_handler is OfficeCli.Handlers.WordHandler word)
         {
             var scrollTo = WatchMessage.ExtractWordScrollTarget(changedPath);
+<<<<<<< HEAD
             WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = word.ViewAsHtml(), ScrollTo = scrollTo });
+=======
+            WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = CommandBuilder.RenderViaRegistry(word, "docx", new OfficeCli.Core.Rendering.RenderOptions()), ScrollTo = scrollTo });
+>>>>>>> upstream/main
             return;
         }
         if (_handler is not OfficeCli.Handlers.PowerPointHandler ppt) return;
@@ -1075,7 +1624,11 @@ public class ResidentServer : IDisposable
 
         if (_handler is OfficeCli.Handlers.WordHandler word)
         {
+<<<<<<< HEAD
             var html = word.ViewAsHtml();
+=======
+            var html = CommandBuilder.RenderViaRegistry(word, "docx", new OfficeCli.Core.Rendering.RenderOptions())!;
+>>>>>>> upstream/main
             var pageCount = System.Text.RegularExpressions.Regex.Matches(html, @"data-page=""\d+""").Count;
             var scrollTo = pageCount > 0 ? $".page[data-page=\"{pageCount}\"]" : null;
             WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = html, ScrollTo = scrollTo });
@@ -1083,7 +1636,11 @@ public class ResidentServer : IDisposable
         }
         if (_handler is OfficeCli.Handlers.ExcelHandler excel)
         {
+<<<<<<< HEAD
             WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = excel.ViewAsHtml() });
+=======
+            WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = CommandBuilder.RenderViaRegistry(excel, "xlsx", new OfficeCli.Core.Rendering.RenderOptions()) });
+>>>>>>> upstream/main
             return;
         }
         if (_handler is not OfficeCli.Handlers.PowerPointHandler ppt) return;
@@ -1093,16 +1650,27 @@ public class ResidentServer : IDisposable
             var html = ppt.RenderSlideHtml(newCount);
             if (html != null)
             {
+<<<<<<< HEAD
                 WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "add", Slide = newCount, Html = html, FullHtml = ppt.ViewAsHtml() });
+=======
+                WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "add", Slide = newCount, Html = html, FullHtml = CommandBuilder.RenderViaRegistry(ppt, "pptx", new OfficeCli.Core.Rendering.RenderOptions()) });
+>>>>>>> upstream/main
                 return;
             }
         }
         else if (newCount < oldSlideCount)
         {
+<<<<<<< HEAD
             WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "remove", Slide = oldSlideCount, FullHtml = ppt.ViewAsHtml() });
             return;
         }
         WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = ppt.ViewAsHtml() });
+=======
+            WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "remove", Slide = oldSlideCount, FullHtml = CommandBuilder.RenderViaRegistry(ppt, "pptx", new OfficeCli.Core.Rendering.RenderOptions()) });
+            return;
+        }
+        WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = CommandBuilder.RenderViaRegistry(ppt, "pptx", new OfficeCli.Core.Rendering.RenderOptions()) });
+>>>>>>> upstream/main
     }
 
     private void NotifyWatchFullRefresh()
@@ -1111,11 +1679,19 @@ public class ResidentServer : IDisposable
 
         string? fullHtml = null;
         if (_handler is OfficeCli.Handlers.PowerPointHandler ppt)
+<<<<<<< HEAD
             fullHtml = ppt.ViewAsHtml();
         else if (_handler is OfficeCli.Handlers.ExcelHandler excel)
             fullHtml = excel.ViewAsHtml();
         else if (_handler is OfficeCli.Handlers.WordHandler word)
             fullHtml = word.ViewAsHtml();
+=======
+            fullHtml = CommandBuilder.RenderViaRegistry(ppt, "pptx", new OfficeCli.Core.Rendering.RenderOptions());
+        else if (_handler is OfficeCli.Handlers.ExcelHandler excel)
+            fullHtml = CommandBuilder.RenderViaRegistry(excel, "xlsx", new OfficeCli.Core.Rendering.RenderOptions());
+        else if (_handler is OfficeCli.Handlers.WordHandler word)
+            fullHtml = CommandBuilder.RenderViaRegistry(word, "docx", new OfficeCli.Core.Rendering.RenderOptions());
+>>>>>>> upstream/main
         if (fullHtml != null)
             WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = fullHtml });
     }
@@ -1142,12 +1718,23 @@ public class ResidentServer : IDisposable
             {
                 // BUG-R36-B7: honor --page on pptx html with strict bounds.
                 var (pStart, pEnd) = ResolvePptHtmlPage(pageFilter, start, end, pptHandler);
+<<<<<<< HEAD
                 html = pptHandler.ViewAsHtml(pStart, pEnd);
             }
             else if (_handler is OfficeCli.Handlers.ExcelHandler excelHandler)
                 html = excelHandler.ViewAsHtml();
             else if (_handler is OfficeCli.Handlers.WordHandler wordHandler)
                 html = wordHandler.ViewAsHtml(pageFilter);
+=======
+                html = CommandBuilder.RenderViaRegistry(_handler, "pptx",
+                    new OfficeCli.Core.Rendering.RenderOptions { StartPage = pStart, EndPage = pEnd });
+            }
+            else if (_handler is OfficeCli.Handlers.ExcelHandler)
+                html = CommandBuilder.RenderViaRegistry(_handler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions());
+            else if (_handler is OfficeCli.Handlers.WordHandler)
+                html = CommandBuilder.RenderViaRegistry(_handler, "docx",
+                    new OfficeCli.Core.Rendering.RenderOptions { PageFilter = pageFilter });
+>>>>>>> upstream/main
             else if (_handler is OfficeCli.Core.Plugins.FormatHandlerProxy proxy)
                 html = proxy.ViewAsHtml(int.TryParse(pageFilter, out var pp) ? pp : (int?)null);
 
@@ -1155,6 +1742,7 @@ public class ResidentServer : IDisposable
             {
                 // CONSISTENCY(view-html-stdout): mirror CommandBuilder.View.cs — default
                 // mode writes HTML to stdout so `officecli view file html > out.html`
+<<<<<<< HEAD
                 // captures actual content. Only --browser writes a temp file and opens it.
                 var browser = req.GetArgOrNull("browser");
                 var wantBrowser = browser != null && (browser == "true" || browser == "1");
@@ -1173,6 +1761,32 @@ public class ResidentServer : IDisposable
                         System.Diagnostics.Process.Start(psi);
                     }
                     catch { /* silently ignore if browser can't be opened */ }
+=======
+                // captures actual content. --out writes to the requested path; --browser
+                // writes a temp file (or --out, if given) and opens it.
+                var browser = req.GetArgOrNull("browser");
+                var wantBrowser = browser != null && (browser == "true" || browser == "1");
+                var outArg = req.GetArgOrNull("out");
+                if (outArg != null || wantBrowser)
+                {
+                    // SECURITY: when falling back to a temp file, include a random token so
+                    // the preview path is not predictable. Without it, a predictable path
+                    // enables a symlink pre-placement attack that causes File.WriteAllText
+                    // to clobber an arbitrary victim file. See CommandBuilder.View.cs for
+                    // the same fix.
+                    var htmlPath = outArg ?? Path.Combine(Path.GetTempPath(), $"officecli_preview_{Path.GetFileNameWithoutExtension(_filePath)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.html");
+                    File.WriteAllText(htmlPath, html);
+                    Console.WriteLine(Path.GetFullPath(htmlPath));
+                    if (wantBrowser)
+                    {
+                        try
+                        {
+                            var psi = new System.Diagnostics.ProcessStartInfo(htmlPath) { UseShellExecute = true };
+                            System.Diagnostics.Process.Start(psi);
+                        }
+                        catch { /* silently ignore if browser can't be opened */ }
+                    }
+>>>>>>> upstream/main
                 }
                 else
                 {
@@ -1191,6 +1805,16 @@ public class ResidentServer : IDisposable
             string? html = null;
             byte[]? directPng = null;
             var gridCols = req.GetIntArg("grid") ?? 0;
+<<<<<<< HEAD
+=======
+            var renderMode = (req.GetArgOrNull("render") ?? "auto").ToLowerInvariant();
+            // --range clips a data-path region out of the HTML preview — mirrors
+            // CommandBuilder.View.cs: native/direct-PNG backends are bypassed.
+            var rangeArg = req.GetArgOrNull("range");
+            if (rangeArg != null) renderMode = "html";
+            var sw = req.GetIntArg("screenshot-width") ?? 1600;
+            var sh = req.GetIntArg("screenshot-height") ?? 1200;
+>>>>>>> upstream/main
             // CONSISTENCY(screenshot-default-first-page): mirror CommandBuilder.View.cs —
             // screenshot mode defaults to a single bounded visual unit (pptx → slide 1,
             // docx → page 1, xlsx → active sheet via CSS). Without this, multi-page docs
@@ -1199,6 +1823,7 @@ public class ResidentServer : IDisposable
             if (_handler is OfficeCli.Handlers.PowerPointHandler pptShotHandler)
             {
                 var effectiveFilter = pageFilter;
+<<<<<<< HEAD
                 if (string.IsNullOrEmpty(effectiveFilter) && start is null && end is null && gridCols == 0)
                     effectiveFilter = "1";
                 var (pStart, pEnd) = ResolvePptHtmlPage(effectiveFilter, start, end, pptShotHandler);
@@ -1216,21 +1841,175 @@ public class ResidentServer : IDisposable
                     try { directPng = OfficeCli.Core.WordPdfBackend.Render(_filePath, effectiveFilter); } catch { directPng = null; }
                     _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
                     wordShotHandler = (OfficeCli.Handlers.WordHandler)_handler;
+=======
+                if (rangeArg != null && string.IsNullOrEmpty(effectiveFilter)
+                    && System.Text.RegularExpressions.Regex.Match(rangeArg, @"^/slide\[(\d+)\]") is { Success: true } slideM)
+                    effectiveFilter = slideM.Groups[1].Value;
+                if (string.IsNullOrEmpty(effectiveFilter) && start is null && end is null && gridCols == 0)
+                    effectiveFilter = "1";
+                var (pStart, pEnd) = ResolvePptHtmlPage(effectiveFilter, start, end, pptShotHandler);
+
+                // Native-first (mirrors docx --render auto/native/html): export the
+                // slide(s) to PNG with the OS-native engine on Windows; grid is HTML-only.
+                // Default export size is the slide's 96-DPI native pixels; a custom
+                // --screenshot-width overrides it (aspect-matched height).
+                var (nativeW, nativeH) = pptShotHandler.GetSlideNativePixels();
+                int exportW = nativeW, exportH = nativeH;
+                if (!(sw == 1600 && sh == 1200))
+                {
+                    exportW = sw;
+                    exportH = sh == 1200 ? Math.Max(1, (int)Math.Round(sw * (double)nativeH / nativeW)) : sh;
+                }
+                // -1 = auto: pick columns from slide count + aspect (mirrors CLI).
+                // Resolved BEFORE the native block's dispose so GetSlideCount is safe,
+                // and used by both the native and HTML paths.
+                int pptGridCols = gridCols < 0
+                    ? OfficeCli.Core.HtmlScreenshot.AutoGridColumns((pEnd ?? pptShotHandler.GetSlideCount()) - (pStart ?? 1) + 1, nativeW, nativeH)
+                    : gridCols;
+                if (renderMode != "html" && OperatingSystem.IsWindows())
+                {
+                    // A read-only handler holds only read access with FileShare.ReadWrite,
+                    // so the app can open the file for read concurrently — no dispose
+                    // needed. An editable handler holds a write handle that blocks the
+                    // app, so release it first (Dispose flushes pending edits) and reopen.
+                    // Grid cell size + slide count are resolved BEFORE any dispose so the
+                    // count read doesn't touch a disposed handler.
+                    var ps = pStart ?? 1;
+                    int gGap = 12, gPad = 12, gCellW = 0, gCellH = 0, gEnd = 0;
+                    if (pptGridCols > 0)
+                    {
+                        gCellW = Math.Max(1, (int)Math.Round((sw - 2 * gPad - (pptGridCols - 1) * gGap) / (double)pptGridCols));
+                        gCellH = Math.Max(1, (int)Math.Round(gCellW * (double)nativeH / nativeW));
+                        gEnd = pEnd ?? pptShotHandler.GetSlideCount();
+                    }
+                    if (_editable) _handler.Dispose();
+                    try
+                    {
+                        directPng = pptGridCols > 0
+                            ? OfficeCli.Core.PowerPointPngBackend.RenderGrid(_filePath, ps, gEnd, gCellW, gCellH, pptGridCols, gGap, gPad)
+                            : OfficeCli.Core.PowerPointPngBackend.Render(_filePath, ps, pEnd ?? ps, exportW, exportH);
+                    }
+                    catch { directPng = null; }
+                    if (_editable)
+                    {
+                        _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
+                        pptShotHandler = (OfficeCli.Handlers.PowerPointHandler)_handler;
+                    }
+                }
+                if (renderMode == "native" && directPng == null)
+                {
+                    Console.Error.WriteLine("--render native requires Windows with Microsoft PowerPoint installed.");
+                    return;
+                }
+                if (directPng == null)
+                {
+                    html = CommandBuilder.RenderViaRegistry(pptShotHandler, "pptx", new OfficeCli.Core.Rendering.RenderOptions
+                    { StartPage = pStart, EndPage = pEnd, GridColumns = pptGridCols, ViewportPx = sw })!;
+                    // Single slide: size the viewport to the slide's 96-DPI native
+                    // pixels so the PNG is the slide, padding-free.
+                    if (pStart == pEnd && gridCols == 0)
+                    {
+                        if (sw == 1600 && sh == 1200) { sw = nativeW; sh = nativeH; }
+                        else if (sh == 1200) sh = Math.Max(1, (int)Math.Round(sw * (double)nativeH / nativeW));
+                    }
+                }
+            }
+            else if (_handler is OfficeCli.Handlers.ExcelHandler excelShotHandler)
+                html = CommandBuilder.RenderViaRegistry(excelShotHandler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions())!;
+            else if (_handler is OfficeCli.Handlers.WordHandler wordShotGrid && gridCols != 0)
+            {
+                // Contact-sheet grid — mirrors CommandBuilder.View.cs's docx grid
+                // branch (native-first on Windows, HTML fallback; incl. -1 = auto).
+                const int gGap = 12, gPad = 12, gMaxDim = 1920, gScrollbar = 17;
+                var (gNpW, gNpH) = wordShotGrid.GetPageNativePixels();
+                int gPageCount = 1;
+                var gTmp = Path.Combine(Path.GetTempPath(), $"officecli_gridcount_{Path.GetFileNameWithoutExtension(_filePath)}_{Guid.NewGuid():N}.html");
+                try
+                {
+                    File.WriteAllText(gTmp, CommandBuilder.RenderViaRegistry(wordShotGrid, "docx", new OfficeCli.Core.Rendering.RenderOptions())!);
+                    gPageCount = OfficeCli.Core.HtmlScreenshot.GetPageCountFromDom(gTmp) ?? 1;
+                }
+                catch { /* fall back to 1 row */ }
+                finally { try { File.Delete(gTmp); } catch { /* ignore */ } }
+
+                int gCols = gridCols < 0 ? OfficeCli.Core.HtmlScreenshot.AutoGridColumns(gPageCount, gNpW, gNpH) : gridCols;
+                int gRows = Math.Max(1, (gPageCount + gCols - 1) / gCols);
+                double gVpW = sw;
+                double gCellW = Math.Max(1.0, (gVpW - gScrollbar - gPad * 2.0 - (gCols - 1) * gGap) / gCols);
+                double gCellH = gCellW * gNpH / gNpW;
+                double gVpH = gPad * 2 + gRows * gCellH + (gRows - 1) * gGap;
+                double gOver = Math.Max(gVpW, gVpH) / gMaxDim;
+                if (gOver > 1.0) { gVpW /= gOver; gCellW /= gOver; gCellH /= gOver; gVpH /= gOver; }
+
+                // Native-first on Windows: release an editable write lock (blocks
+                // Word) before rendering, then reopen — same dance as the single-page
+                // branch below.
+                if (renderMode != "html" && OperatingSystem.IsWindows())
+                {
+                    if (_editable) _handler.Dispose();
+                    try { directPng = OfficeCli.Core.WordPdfBackend.RenderGrid(_filePath, $"1-{gPageCount}", (int)Math.Round(gCellW), (int)Math.Round(gCellH), gCols, gGap, gPad); }
+                    catch { directPng = null; }
+                    if (_editable)
+                    {
+                        _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
+                        wordShotGrid = (OfficeCli.Handlers.WordHandler)_handler;
+                    }
+>>>>>>> upstream/main
                 }
                 if (renderMode == "native" && directPng == null)
                 {
                     Console.Error.WriteLine("--render native requires Windows with Microsoft Word installed.");
                     return;
                 }
+<<<<<<< HEAD
                 if (directPng == null) html = wordShotHandler.ViewAsHtml(effectiveFilter);
+=======
+                if (directPng == null)
+                {
+                    html = CommandBuilder.RenderViaRegistry(wordShotGrid, "docx", new OfficeCli.Core.Rendering.RenderOptions
+                    { GridColumns = gCols, GridCellWidthPx = (int)Math.Round(gCellW) })!;
+                    sw = Math.Max(1, (int)Math.Round(gVpW));
+                    sh = Math.Max(1, (int)Math.Ceiling(gVpH));
+                }
+            }
+            else if (_handler is OfficeCli.Handlers.WordHandler wordShotHandler)
+            {
+                var effectiveFilter = rangeArg != null
+                    ? pageFilter
+                    : (string.IsNullOrEmpty(pageFilter) ? "1" : pageFilter);
+                if (renderMode != "html" && OperatingSystem.IsWindows())
+                {
+                    // See the pptx branch: only an editable handler must be released
+                    // (its write handle blocks Word); a read-only handler coexists.
+                    if (_editable) _handler.Dispose();
+                    // effectiveFilter is only null under --range, which forces
+                    // renderMode=html — this native branch is then unreachable.
+                    try { directPng = OfficeCli.Core.WordPdfBackend.Render(_filePath, effectiveFilter!); } catch { directPng = null; }
+                    if (_editable)
+                    {
+                        _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
+                        wordShotHandler = (OfficeCli.Handlers.WordHandler)_handler;
+                    }
+                }
+                if (renderMode == "native" && directPng == null)
+                {
+                    Console.Error.WriteLine("--render native requires Windows with Microsoft Word installed.");
+                    return;
+                }
+                if (directPng == null) html = CommandBuilder.RenderViaRegistry(wordShotHandler, "docx",
+                    new OfficeCli.Core.Rendering.RenderOptions { PageFilter = effectiveFilter })!;
+>>>>>>> upstream/main
             }
             if (html == null && directPng == null)
             {
                 Console.Error.WriteLine("Screenshot mode is only supported for .pptx, .xlsx, and .docx files.");
                 return;
             }
+<<<<<<< HEAD
             var sw = req.GetIntArg("screenshot-width") ?? 1600;
             var sh = req.GetIntArg("screenshot-height") ?? 1200;
+=======
+>>>>>>> upstream/main
             var pngPath = req.GetArgOrNull("out") ?? Path.Combine(Path.GetTempPath(), $"officecli_screenshot_{Path.GetFileNameWithoutExtension(_filePath)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.png");
             if (directPng != null)
             {
@@ -1240,7 +2019,14 @@ public class ResidentServer : IDisposable
             {
                 var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_preview_{Path.GetFileNameWithoutExtension(_filePath)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.html");
                 File.WriteAllText(tmpHtml, html!);
+<<<<<<< HEAD
                 var rs = OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, sw, sh);
+=======
+                var rs = rangeArg != null
+                    ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
+                        OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(rangeArg))
+                    : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, sw, sh);
+>>>>>>> upstream/main
                 try { File.Delete(tmpHtml); } catch { /* ignore */ }
                 if (!rs.Ok)
                 {
@@ -1288,7 +2074,13 @@ public class ResidentServer : IDisposable
                 {
                     slideNum = start.Value;
                 }
+<<<<<<< HEAD
                 var svg = pptSvgHandler.ViewAsSvg(slideNum);
+=======
+                var svg = CommandBuilder.RenderViaRegistry(pptSvgHandler, "pptx",
+                    new OfficeCli.Core.Rendering.RenderOptions
+                    { Output = OfficeCli.Core.Rendering.RenderOutputKind.Svg, StartPage = slideNum })!;
+>>>>>>> upstream/main
                 Console.Write(svg);
             }
             else if (_handler is OfficeCli.Core.Plugins.FormatHandlerProxy svgProxy)
@@ -1325,7 +2117,11 @@ public class ResidentServer : IDisposable
                 var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_pc_{Path.GetFileNameWithoutExtension(_filePath)}_{Guid.NewGuid():N}.html");
                 try
                 {
+<<<<<<< HEAD
                     File.WriteAllText(tmpHtml, whForCount.ViewAsHtml(null));
+=======
+                    File.WriteAllText(tmpHtml, CommandBuilder.RenderViaRegistry(whForCount, "docx", new OfficeCli.Core.Rendering.RenderOptions())!);
+>>>>>>> upstream/main
                     pageCountValue = OfficeCli.Core.HtmlScreenshot.GetPageCountFromDom(tmpHtml);
                 }
                 finally { try { File.Delete(tmpHtml); } catch { } }
@@ -1349,7 +2145,11 @@ public class ResidentServer : IDisposable
             else if (modeKey is "outline" or "o")
                 Console.WriteLine(_handler.ViewAsOutlineJson().ToJsonString(OutputFormatter.PublicJsonOptions));
             else if (modeKey is "text" or "t")
+<<<<<<< HEAD
                 Console.WriteLine(_handler.ViewAsTextJson(start, end, maxLines, cols).ToJsonString(OutputFormatter.PublicJsonOptions));
+=======
+                Console.WriteLine(_handler.ViewAsTextJson(start, end, maxLines, cols, req.GetArgOrNull("range")).ToJsonString(OutputFormatter.PublicJsonOptions));
+>>>>>>> upstream/main
             else if (modeKey is "annotated" or "a")
                 Console.WriteLine(OutputFormatter.FormatView(mode, _handler.ViewAsAnnotated(start, end, maxLines, cols), format));
             else if (modeKey is "issues" or "i")
@@ -1388,7 +2188,11 @@ public class ResidentServer : IDisposable
             switch (modeKey)
             {
                 case "text" or "t":
+<<<<<<< HEAD
                     output = _handler.ViewAsText(start, end, maxLines, cols); break;
+=======
+                    output = _handler.ViewAsText(start, end, maxLines, cols, req.GetArgOrNull("range")); break;
+>>>>>>> upstream/main
                 case "annotated" or "a":
                     output = _handler.ViewAsAnnotated(start, end, maxLines, cols); break;
                 case "outline" or "o":
@@ -1509,11 +2313,32 @@ public class ResidentServer : IDisposable
                     Console.Error.WriteLine($"warning: skipped {w.Element} on {w.SlidePath}: {w.Reason}");
             }
         }
+<<<<<<< HEAD
         else
         {
             throw new CliException("dump currently supports .docx and .pptx only")
                 { Code = "unsupported_format" };
         }
+=======
+        else if (_handler is OfficeCli.Handlers.ExcelHandler xl)
+        {
+            var (xItems, xWarnings) = OfficeCli.Handlers.ExcelBatchEmitter.EmitExcel(xl, path);
+            items = xItems;
+            // CONSISTENCY(dump-text-clean-output): see docx branch above.
+            if (warnToStderr)
+            {
+                foreach (var w in xWarnings)
+                    Console.Error.WriteLine($"warning: skipped {w.Element} at {w.Path}: {w.Reason}");
+            }
+        }
+        else
+        {
+            throw new CliException("dump currently supports .docx, .pptx and .xlsx only")
+                { Code = "unsupported_format" };
+        }
+        // NEWLINE-SEMANTICS-V2: same version stamp as the non-resident dump.
+        items.Insert(0, OfficeCli.Core.BatchCompat.MetaItem());
+>>>>>>> upstream/main
         var output = System.Text.Json.JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
 
         if (outPath == "-") outPath = null;
@@ -1555,7 +2380,16 @@ public class ResidentServer : IDisposable
 
     private void ExecuteQuery(ResidentRequest req, OutputFormat format)
     {
+<<<<<<< HEAD
         var selector = req.GetArg("selector", "");
+=======
+        // `path` aliases `selector` (batch items routed here carry whichever
+        // field the caller wrote); an empty selector would silently match
+        // every node — mirror CommandBuilder's batch-query guard.
+        var selector = req.GetArgOrNull("selector") ?? req.GetArgOrNull("path") ?? "";
+        if (string.IsNullOrEmpty(selector))
+            throw new ArgumentException("'query' requires a selector. Example: {\"command\": \"query\", \"selector\": \"row[Score>80]\"}");
+>>>>>>> upstream/main
         // CONSISTENCY(cell-selector-alias): mirror the direct-mode normalization +
         // boolean engine in CommandBuilder.GetQuery.cs — without alias normalization,
         // resident-mode Excel cell queries with short aliases (bold, size, ...)
@@ -1568,6 +2402,17 @@ public class ResidentServer : IDisposable
         var textFilter = req.GetArgOrNull("find");
         if (!string.IsNullOrEmpty(textFilter))
             results = results.Where(n => n.Text != null && AttributeFilter.MatchesTextFilter(n.Text, textFilter)).ToList();
+<<<<<<< HEAD
+=======
+        // --compact: same line renderer as direct mode (CommandBuilder owns the
+        // format contract); short-circuits before JSON hydration.
+        if (req.GetArgOrNull("compact") == "true")
+        {
+            foreach (var w2 in warnings) Console.Error.WriteLine(w2.Message);
+            Console.WriteLine(CommandBuilder.FormatNodesCompact(_handler, results, req.GetArgOrNull("fields")));
+            return;
+        }
+>>>>>>> upstream/main
         // CONSISTENCY(query-json-children): hydrate Children from Get(path, depth=1)
         // for JSON output so consumers see the same shape as `get --json`. Mirrors
         // the post-processing in CommandBuilder.GetQuery.cs.
@@ -1587,7 +2432,11 @@ public class ResidentServer : IDisposable
                 }
             }
         }
+<<<<<<< HEAD
         foreach (var w in warnings) Console.Error.WriteLine(w);
+=======
+        foreach (var w in warnings) Console.Error.WriteLine(w.Message);
+>>>>>>> upstream/main
         Console.WriteLine(OutputFormatter.FormatNodes(results, format));
     }
 
@@ -1602,6 +2451,7 @@ public class ResidentServer : IDisposable
         // The handler selector branch throws on an empty match, so no silent no-op.
         // Agent-safety: reject a bare unscoped selector (mirrors CommandBuilder).
         OfficeCli.Core.MutationSelectorGuard.EnsureScoped(path, "set");
+<<<<<<< HEAD
         var unsupported = _handler.Set(path, properties);
         // CONSISTENCY(unsupported-key-extract): mirrored in CommandBuilder.Set.cs.
         // Handler entries may be "key (reason)" or "key=value (reason)" (e.g.
@@ -1617,6 +2467,19 @@ public class ResidentServer : IDisposable
             })
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var applied = properties.Where(kv => !unsupportedKeys.Contains(kv.Key)).ToList();
+=======
+        // Shared core: apply + prop-autocorrect + categorise — one copy across
+        // CLI / batch / MCP / resident (CommandBuilder.ApplySetWithCorrection).
+        // This also gives the resident the distance-1 typo auto-correction it
+        // previously lacked, so `set colot=color` behaves the same whether or
+        // not a resident is alive. The resident's own envelope (find-count,
+        // selector-count, watch, overflow, --json wrapping) stays below.
+        // CONSISTENCY(applied-echo): mirrors CommandBuilder.Set.cs — pre/post
+        // Format snapshots feed the " (applied: ...)" normalization echo.
+        var beforeSnap = CommandBuilder.TryGetFormatSnapshot(_handler, path);
+        var (applied, unsupported, autoCorrected) =
+            CommandBuilder.ApplySetWithCorrection(_handler, path, properties);
+>>>>>>> upstream/main
 
         // CONSISTENCY(find-match-count): mirrored in CommandBuilder.Set.cs.
         // The resident path is hit whenever a resident process is open
@@ -1647,13 +2510,33 @@ public class ResidentServer : IDisposable
                 _ => null
             };
 
+<<<<<<< HEAD
         var message = applied.Count > 0
             ? $"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+=======
+        // R4-bt-1: report the post-move resolvable path for equation mode
+        // switches (oMathPara ⇄ oMath), consistent with the non-resident path.
+        var reportPath = (_handler as WordHandler)?.LastSetNewPath ?? path;
+        var appliedSuffix = CommandBuilder.BuildAppliedSuffix(applied,
+            beforeSnap, CommandBuilder.TryGetFormatSnapshot(_handler, reportPath));
+        var message = applied.Count > 0
+            ? $"Updated {reportPath}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+              + appliedSuffix
+>>>>>>> upstream/main
               + (findMatchCount.HasValue ? $" ({findMatchCount.Value} matched)" : "")
               + (selectorCount > 1 ? $" ({selectorCount} elements matched)" : "")
             : (unsupported.Count > 0 ? $"No properties applied to {path}" : $"Updated {path}");
 
         var warnings = new List<OfficeCli.Core.CliWarning>();
+<<<<<<< HEAD
+=======
+        foreach (var ac in autoCorrected)
+            warnings.Add(new OfficeCli.Core.CliWarning
+            {
+                Message = $"Auto-corrected '{ac.Original}' to '{ac.Corrected}'",
+                Code = "auto_corrected",
+            });
+>>>>>>> upstream/main
         if (findMatchCount is 0)
         {
             warnings.Add(new OfficeCli.Core.CliWarning
@@ -1689,6 +2572,11 @@ public class ResidentServer : IDisposable
         else
         {
             if (applied.Count > 0 || unsupported.Count > 0) Console.WriteLine(message);
+<<<<<<< HEAD
+=======
+            foreach (var ac in autoCorrected)
+                Console.Error.WriteLine($"WARNING: Auto-corrected '{ac.Original}' to '{ac.Corrected}'");
+>>>>>>> upstream/main
             if (findMatchCount is 0)
                 Console.Error.WriteLine($"WARNING: find pattern matched 0 occurrences at {path}");
             if (overflow != null)
@@ -1700,6 +2588,13 @@ public class ResidentServer : IDisposable
             }
         }
 
+<<<<<<< HEAD
+=======
+        // Unrecognized LaTeX from an equation Set (formula=). Same emission as
+        // ExecuteAdd — distinctive stderr line drives exit 2 + envelope code.
+        EmitUnrecognizedLatex(_handler);
+
+>>>>>>> upstream/main
         if (unsupported.Count > 0)
         {
             // /styles/<id> on Word: targeted curated hints, no raw-set push.
@@ -1721,11 +2616,55 @@ public class ResidentServer : IDisposable
     // alternative props (e.g. "fill (valid slide props: background, ...)"), the
     // generic "use raw-set instead" prefix misdirects the user away from the
     // real fix. Drop the prefix in that case and let the handler hint stand.
+<<<<<<< HEAD
     private static string FormatUnsupportedLine(List<string> unsupported)
     {
         bool hasNamedAlternative = unsupported.Any(u => u.Contains("(valid ", StringComparison.Ordinal));
         var prefix = hasNamedAlternative ? "UNSUPPORTED props" : "UNSUPPORTED props (use raw-set instead)";
         return $"{prefix}: {string.Join(", ", unsupported)}";
+=======
+    // Stderr marker for unrecognized LaTeX commands/environments. Doubles as
+    // the user-facing warning text (same string the one-shot CLI emits) AND
+    // the token the dispatcher keys off (alongside UNSUPPORTED) to set exit 2
+    // and that BuildWarnings maps to the unrecognized_latex_command envelope
+    // code — keeping the resident path's UX identical to CommandBuilder.Add/Set.
+    internal const string UnrecognizedLatexMarker = "unrecognized_latex_command:";
+
+    private static void EmitUnrecognizedLatex(IDocumentHandler handler)
+    {
+        var tokens = handler switch
+        {
+            WordHandler wlx => wlx.LastUnrecognizedLatex,
+            PowerPointHandler plx => plx.LastUnrecognizedLatex,
+            _ => null,
+        };
+        if (tokens is not { Count: > 0 }) return;
+        foreach (var tok in tokens)
+            Console.Error.WriteLine($"  WARNING: {UnrecognizedLatexMarker} {tok}");
+    }
+
+    private static string FormatUnsupportedLine(List<string> unsupported, string? scope = null)
+    {
+        bool hasNamedAlternative = unsupported.Any(u => u.Contains("(valid ", StringComparison.Ordinal));
+        // Attach per-key "did you mean" suggestions (mirrors the non-resident
+        // CommandBuilder.FormatUnsupported path) so guidance like the 1-based
+        // cell-key hint for a 0-based r0c0 reaches resident-mode users too.
+        var parts = unsupported.Select(u =>
+        {
+            if (u.Contains('(')) return u; // handler already embedded a hint (valid props / no such column / …)
+            var s = CommandBuilder.SuggestPropertyScoped(u, scope);
+            return s != null ? $"{u} (did you mean: {s}?)" : u;
+        });
+        var body = $"UNSUPPORTED props: {string.Join(", ", parts)}";
+        // When the handler already named the valid alternative, that specific
+        // hint beats generic guidance. Otherwise point at help (prop discovery)
+        // first and raw-set (escape hatch) second — mirrors the non-resident
+        // CommandBuilder.FormatUnsupported message so both paths steer the user
+        // to discover the real prop instead of reaching for raw XML.
+        return hasNamedAlternative
+            ? body
+            : $"{body}. Run 'officecli help <format> <element>' to see valid props, or raw-set for raw XML.";
+>>>>>>> upstream/main
     }
 
     private void ExecuteAdd(ResidentRequest req)
@@ -1763,6 +2702,15 @@ public class ResidentServer : IDisposable
                     Console.Error.WriteLine($"  WARNING: {w}");
             }
 
+<<<<<<< HEAD
+=======
+            // Unrecognized LaTeX commands/environments from an equation parse.
+            // Emit a distinctive stderr line so the dispatcher maps it to
+            // exit 2 and the envelope to the unrecognized_latex_command code,
+            // mirroring the one-shot CLI path (CommandBuilder.Add).
+            EmitUnrecognizedLatex(_handler);
+
+>>>>>>> upstream/main
             if (allUnsupported.Count > 0)
             {
                 if (_handler is WordHandler)
@@ -1773,7 +2721,18 @@ public class ResidentServer : IDisposable
                 }
                 else
                 {
+<<<<<<< HEAD
                     Console.Error.WriteLine(FormatUnsupportedLine(allUnsupported));
+=======
+                    string? scope = _handler switch
+                    {
+                        ExcelHandler => "excel",
+                        WordHandler => "word",
+                        PowerPointHandler => "pptx",
+                        _ => null,
+                    };
+                    Console.Error.WriteLine(FormatUnsupportedLine(allUnsupported, scope));
+>>>>>>> upstream/main
                 }
             }
         }
@@ -1884,6 +2843,7 @@ public class ResidentServer : IDisposable
 
         var errorsBefore = _handler.Validate().Select(e => e.Description).ToHashSet();
         _handler.RawSet(partPath, xpath, action, xml);
+<<<<<<< HEAD
 
         var errorsAfter = _handler.Validate();
         var newErrors = errorsAfter.Where(e => !errorsBefore.Contains(e.Description)).ToList();
@@ -1901,6 +2861,9 @@ public class ResidentServer : IDisposable
                 if (err.Part != null) Console.Error.WriteLine($"    Part: {err.Part}");
             }
         }
+=======
+        ReportRawMutationOutcome(req, $"raw-set applied: {action} at {xpath}", errorsBefore);
+>>>>>>> upstream/main
     }
 
     private void ExecuteAddPart(ResidentRequest req)
@@ -1909,6 +2872,7 @@ public class ResidentServer : IDisposable
         var type = req.GetArg("type", "");
         var errorsBefore = _handler.Validate().Select(e => e.Description).ToHashSet();
         var (relId, partPath) = _handler.AddPart(parent, type);
+<<<<<<< HEAD
         Console.WriteLine($"Created {type} part: relId={relId} path={partPath}");
 
         var errorsAfter = _handler.Validate();
@@ -1926,6 +2890,40 @@ public class ResidentServer : IDisposable
                 if (err.Part != null) Console.Error.WriteLine($"    Part: {err.Part}");
             }
         }
+=======
+        ReportRawMutationOutcome(req, $"Created {type} part: relId={relId} path={partPath}", errorsBefore);
+    }
+
+    // Shared tail of raw-set / add-part. Mirrors CommandBuilder.Raw.cs so the
+    // resident and one-shot paths emit the same envelope for the same outcome:
+    // the mutation is APPLIED even when the SDK validator gains new errors
+    // (the validator is advisory — it flags element order Word itself opens
+    // fine — and raw-set is the escape hatch, so it never rolls back). The
+    // caveat rides as validation_error warnings on a success:true envelope
+    // and the request exits 2 ("applied with caveats", the unsupported_property
+    // code). Issue #374: this path used to leave stdout empty and print the
+    // report to stderr, which the dispatcher turned into success:false / exit 1
+    // — a retry signal — so callers re-issued the write and duplicated content.
+    private void ReportRawMutationOutcome(ResidentRequest req, string message, HashSet<string> errorsBefore)
+    {
+        var warnings = CommandBuilder.ReportNewErrorsAsWarnings(_handler, errorsBefore);
+        if (warnings is { Count: > 0 }) _lastRawMutationHadValidationCaveats = true;
+        if (req.Json)
+        {
+            // Full envelope here; nothing on stderr, or the dispatcher's
+            // BuildWarnings would merge a second copy of every line.
+            Console.WriteLine(OutputFormatter.WrapEnvelopeText(message, warnings));
+            return;
+        }
+        Console.WriteLine(message);
+        if (warnings is not { Count: > 0 }) return;
+        // Text mode keeps the report on stderr (BUG-DUMP12-01: stdout would
+        // corrupt batch --json output); exit 2 comes from the flag, not from
+        // the dispatcher grepping this text.
+        Console.Error.WriteLine($"VALIDATION: {warnings.Count} new error(s) introduced:");
+        foreach (var w in warnings)
+            Console.Error.WriteLine($"  {w.Message}");
+>>>>>>> upstream/main
     }
 
     // R7-bt-3 / R7-bt-4: validate exit code & stream destination.
@@ -1937,6 +2935,14 @@ public class ResidentServer : IDisposable
     // mirrors the standard convention for diagnostic / lint tools.
     private int _lastValidateErrorCount;
 
+<<<<<<< HEAD
+=======
+    // Set by ReportRawMutationOutcome when raw-set / add-part applied but the
+    // SDK validator gained new errors; ProcessRequest reads+clears it and maps
+    // the request to exit 2 (applied with caveats), never 1.
+    private bool _lastRawMutationHadValidationCaveats;
+
+>>>>>>> upstream/main
     private void ExecuteValidate()
     {
         var errors = _handler.Validate();
@@ -1968,7 +2974,26 @@ public class ResidentServer : IDisposable
             Console.WriteLine($"No pending changes for {Path.GetFileName(_filePath)}");
             return;
         }
+<<<<<<< HEAD
         _handler.Save();
+=======
+        // Clean-skip: disk already matches the in-memory tree (a prior
+        // save/autosave/each-mode flush cleared _dirty and every mutation
+        // re-latches it via PromoteToEditable). Skipping the O(n) re-serialize
+        // makes a defensive `save` before external reads effectively free.
+        // Same message and exit code as the editable no-op above so callers
+        // scripting on `save` see an unchanged success contract.
+        if (!_dirty)
+        {
+            Console.WriteLine($"No pending changes for {Path.GetFileName(_filePath)}");
+            return;
+        }
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        _handler.Save();
+        sw.Stop();
+        SetDirty(false);
+        RecordSaveDuration(sw.Elapsed);
+>>>>>>> upstream/main
         Console.WriteLine($"Saved {Path.GetFileName(_filePath)}");
     }
 
@@ -2087,6 +3112,10 @@ public class ResidentServer : IDisposable
         try { _mainCts.Dispose(); } catch { }
         try { _pingCts.Dispose(); } catch { }
         try { _idleCts.Dispose(); } catch { }
+<<<<<<< HEAD
+=======
+        try { _autosaveCts.Dispose(); } catch { }
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -2152,6 +3181,16 @@ public class ResidentServer : IDisposable
         //    disk and closes the file handle). The ping pipe is still
         //    live right now, so any TryResident caller will correctly
         //    conclude "resident still owns the file".
+<<<<<<< HEAD
+=======
+        // Capture whether the backing file was already gone BEFORE the flush.
+        // The atomic writer now recreates a missing target (File.Move fallback,
+        // so a delete/rename mid-session no longer loses the edits), which means
+        // the post-dispose File.Exists check below can no longer see the
+        // vanish — the file is back. Sample it here instead so the close still
+        // reports that the file had been removed and was rebuilt.
+        bool backingMissingBeforeFlush = !File.Exists(_filePath);
+>>>>>>> upstream/main
         bool disposeFailed = false;
         try { _handler.Dispose(); }
         catch (Exception ex)
@@ -2159,6 +3198,13 @@ public class ResidentServer : IDisposable
             disposeFailed = true;
             LogStderr($"Warning: handler dispose error: {ex.Message}");
         }
+<<<<<<< HEAD
+=======
+        // The final flush landed (or nothing was pending): the dirty marker
+        // has served its purpose. Left in place only when the flush itself
+        // failed — then the edits really may be gone.
+        if (!disposeFailed) SetDirty(false);
+>>>>>>> upstream/main
 
         // BUG-BT-R26-2 / BUG-R43: detect data loss. The original probe used
         // File.Exists(_filePath) post-Dispose — but on macOS, renaming the
@@ -2174,6 +3220,7 @@ public class ResidentServer : IDisposable
             _shutdownFileMissing = true;
             LogStderr($"ERROR: save failed during shutdown — data may be lost: {_filePath}");
         }
+<<<<<<< HEAD
         // BUG-INTERVIEW-EDIT-R10-B: even when Dispose succeeds, an unlinked
         // backing file (rm/Trash, no rename target) means the bytes the SDK
         // just wrote went to a now-orphaned inode and disappear when the FD
@@ -2192,6 +3239,23 @@ public class ResidentServer : IDisposable
                 $"WARNING: backing file is missing at the original path: {_filePath}. " +
                 "If you renamed/moved it, your changes were saved to the new location. " +
                 "If you deleted it, your changes are lost.");
+=======
+        // BUG-INTERVIEW-EDIT-R10-B: the backing file was removed from its
+        // original path during the session (rm/Trash, or an external
+        // rename/mv). The atomic writer's move-fallback has now recreated it
+        // at that path with the in-memory edits, so the bytes are NOT lost —
+        // but the removal is still worth surfacing: the user deleted or moved
+        // the file and we brought it back, which is surprising if unannounced,
+        // and in the rename case a stale copy also exists at the new path.
+        // stderr only — no _shutdownFileMissing flag, so the exit code stays 0.
+        else if (backingMissingBeforeFlush)
+        {
+            _shutdownFileVanishedAfterDispose = true;
+            LogStderr(
+                $"WARNING: the backing file was missing at its original path during save: {_filePath}. " +
+                "It was deleted or moved externally; your changes were rebuilt at that path. " +
+                "If you renamed/moved it, a separate copy also exists at the new location.");
+>>>>>>> upstream/main
         }
 
         // 5. NOW cancel ping + idle. Clients observing the ping pipe from

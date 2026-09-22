@@ -206,8 +206,13 @@ officecli validate tables-rows-cols.pptx
 
 ```bash
 # List tables on each slide
+<<<<<<< HEAD
 officecli query tables-rows-cols.pptx '/slide[1]' table
 officecli query tables-rows-cols.pptx '/slide[4]' table
+=======
+officecli query tables-rows-cols.pptx '/slide[1]/table'
+officecli query tables-rows-cols.pptx '/slide[4]/table'
+>>>>>>> upstream/main
 
 # Compare the two table styles after grow on slide 1
 officecli get tables-rows-cols.pptx '/slide[1]/table[1]'

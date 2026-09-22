@@ -145,8 +145,13 @@ officecli validate tables-styled.pptx
 
 ```bash
 # List all tables across slides
+<<<<<<< HEAD
 officecli query tables-styled.pptx '/slide[1]' table
 officecli query tables-styled.pptx '/slide[10]' table
+=======
+officecli query tables-styled.pptx '/slide[1]/table'
+officecli query tables-styled.pptx '/slide[10]/table'
+>>>>>>> upstream/main
 
 # Get style properties on a specific table
 officecli get tables-styled.pptx '/slide[1]/table[1]'

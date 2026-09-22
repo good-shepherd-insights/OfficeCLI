@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -30,6 +34,7 @@ public partial class ExcelHandler
 
         // Normalize path-style selectors: "/Sheet1/cell[...]" → "Sheet1!cell[...]"
         if (selector.StartsWith('/'))
+<<<<<<< HEAD
         {
             var slashIdx = selector.IndexOf('/', 1);
             if (slashIdx > 0)
@@ -48,9 +53,35 @@ public partial class ExcelHandler
         // Only treat '!' as sheet separator if NOT part of '!=' operator
         var exclMatch = Regex.Match(selector, @"^(.+?)!(?!=)");
         if (exclMatch.Success)
+=======
+>>>>>>> upstream/main
         {
-            sheet = exclMatch.Groups[1].Value;
-            selector = selector[(exclMatch.Length)..];
+            var slashIdx = selector.IndexOf('/', 1);
+            if (slashIdx > 0)
+            {
+                sheet = selector[1..slashIdx];
+                selector = selector[(slashIdx + 1)..];
+            }
+            else
+            {
+                // Just "/cell" — strip leading slash
+                selector = selector[1..];
+            }
+        }
+
+        // Check for sheet prefix: Sheet1!cell[...]
+        // Only a TOP-LEVEL '!' (outside brackets/quotes, not part of '!=')
+        // separates the sheet — a '!' inside a predicate value
+        // (row[F="x!"], row[Msg~=hello!]) is literal text, and the old
+        // ^(.+?)!(?!=) regex swallowed everything up to it as a "sheet".
+        var bangIdx = Core.SelectorCommaSplit.TopLevelIndexOf(selector, '!');
+        if (bangIdx > 0 && (bangIdx + 1 >= selector.Length || selector[bangIdx + 1] != '='))
+        {
+            // Excel-quoted names ('My Data (2024)'!row[...]) arrive quoted —
+            // the scanner already treats the quoted span as opaque, so the
+            // top-level '!' is the real separator; strip the quotes here.
+            sheet = UnquoteSheetName(selector[..bangIdx]);
+            selector = selector[(bangIdx + 1)..];
         }
 
         // Parse element and attributes: cell[attr=value]
@@ -100,18 +131,25 @@ public partial class ExcelHandler
         var containsMatch = Regex.Match(selector, @":contains\(['""]?(.+?)['""]?\)");
         if (containsMatch.Success) valueContains = containsMatch.Groups[1].Value;
 
-        // Shorthand: "cell:text" → treat as :contains(text)
+        // Shorthand: "cell:text" → treat as :contains(text). Exclude the
+        // recognised pseudo-classes (incl. `not`) so `:not(:has(formula))` is
+        // not mistaken for a literal substring filter "not(:has(formula))".
         if (valueContains == null)
         {
-            var shorthandMatch = Regex.Match(selector, @"^(?:\w+)?:(?!contains|empty|has)(.+)$");
+            var shorthandMatch = Regex.Match(selector, @"^(?:\w+)?:(?!contains|empty|has|not)(.+)$");
             if (shorthandMatch.Success) valueContains = shorthandMatch.Groups[1].Value;
         }
 
-        // :empty pseudo-selector
-        if (selector.Contains(":empty")) isEmpty = true;
+        // :empty pseudo-selector (and its negation). Check the negated form
+        // first — `:not(:empty)` also contains the `:empty` substring.
+        if (selector.Contains(":not(:empty)")) isEmpty = false;
+        else if (selector.Contains(":empty")) isEmpty = true;
 
-        // :has(formula) pseudo-selector
-        if (selector.Contains(":has(formula)")) hasFormula = true;
+        // :has(formula) pseudo-selector (and its negation). `:not(:has(formula))`
+        // contains `:has(formula)`, so the negated form must be checked first —
+        // otherwise it inverts to "has a formula" and returns the wrong set.
+        if (selector.Contains(":not(:has(formula))")) hasFormula = false;
+        else if (selector.Contains(":has(formula)")) hasFormula = true;
 
         return new CellSelector(sheet, column, valueEquals, valueNotEquals, valueContains, hasFormula, isEmpty, typeEquals, typeNotEquals, formatEquals, formatNotEquals);
     }
@@ -128,11 +166,18 @@ public partial class ExcelHandler
         }
 
         var value = GetCellDisplayValue(cell);
+        // Stored value for a formatted cell (0.5, not "50%"; date serial, not the
+        // formatted date). Equality matches EITHER form so `value=50%` (display)
+        // and `value=0.5` (stored) both hit the same percentage cell.
+        var rawValue = GetCellRawComparisonValue(cell);
+        bool ValueMatches(string target) =>
+            value.Equals(target, StringComparison.OrdinalIgnoreCase)
+            || rawValue.Equals(target, StringComparison.OrdinalIgnoreCase);
 
         // Value filters
-        if (selector.ValueEquals != null && !value.Equals(selector.ValueEquals, StringComparison.OrdinalIgnoreCase))
+        if (selector.ValueEquals != null && !ValueMatches(selector.ValueEquals))
             return false;
-        if (selector.ValueNotEquals != null && value.Equals(selector.ValueNotEquals, StringComparison.OrdinalIgnoreCase))
+        if (selector.ValueNotEquals != null && ValueMatches(selector.ValueNotEquals))
             return false;
         if (selector.ValueContains != null && !value.Contains(selector.ValueContains, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -320,5 +365,66 @@ public partial class ExcelHandler
         if (index < 1 || index > allCharts.Count)
             throw new ArgumentException($"Chart index {index} out of range (1..{allCharts.Count})");
         return allCharts[index - 1];
+    }
+
+    /// <summary>Charts addressable by a raw <c>chart[N]</c> path: the anchored
+    /// charts (drawing order, both legacy and cx — matching query/get), followed
+    /// by any chart parts NOT yet referenced by a graphicFrame. The trailing
+    /// unanchored parts restore the <c>add-part → raw-set chart[N]</c> workflow,
+    /// where the chart XML is authored before its drawing anchor exists.</summary>
+    private static List<ExcelChartInfo> ChartsForRaw(DrawingsPart drawingsPart)
+    {
+        var list = GetExcelCharts(drawingsPart);
+        var seen = new HashSet<OpenXmlPart>();
+        foreach (var c in list)
+            seen.Add(c.IsExtended ? (OpenXmlPart)c.ExtendedPart! : c.StandardPart!);
+        foreach (var cp in drawingsPart.ChartParts)
+            if (seen.Add(cp)) list.Add(new ExcelChartInfo { StandardPart = cp });
+        foreach (var ep in drawingsPart.ExtendedChartParts)
+            if (seen.Add(ep)) list.Add(new ExcelChartInfo { ExtendedPart = ep });
+        return list;
+    }
+
+    /// <summary>Raw-XML resolver for a sheet-scoped chart path (/Sheet/chart[N]).
+    /// Resolves anchored (drawing-order) and unanchored (add-part) charts, both
+    /// legacy and extended (cx).</summary>
+    private static string GetChartSpaceOuterXml(DrawingsPart? drawingsPart, int index)
+    {
+        if (drawingsPart == null)
+            throw new ArgumentException("Sheet has no drawings/charts");
+        return ChartSpaceOuterXmlAt(ChartsForRaw(drawingsPart), index);
+    }
+
+    /// <summary>Return the ChartSpace OuterXml of the 1-based chart in <paramref name="charts"/>,
+    /// picking the legacy or extended root as appropriate.</summary>
+    private static string ChartSpaceOuterXmlAt(List<ExcelChartInfo> charts, int index)
+    {
+        if (index < 1 || index > charts.Count)
+            throw new ArgumentException($"Chart index {index} out of range (1..{charts.Count})");
+        var info = charts[index - 1];
+        return info.IsExtended
+            ? info.ExtendedPart!.ChartSpace!.OuterXml
+            : info.StandardPart!.ChartSpace!.OuterXml;
+    }
+
+    /// <summary>Live ChartSpace root for raw-set writes on a sheet-scoped chart
+    /// path. Resolves both legacy and extended (cx) charts (see GetExcelCharts).</summary>
+    private static DocumentFormat.OpenXml.OpenXmlPartRootElement GetChartSpaceElement(DrawingsPart? drawingsPart, int index)
+    {
+        if (drawingsPart == null)
+            throw new ArgumentException("Sheet has no drawings/charts");
+        return ChartSpaceElementAt(ChartsForRaw(drawingsPart), index);
+    }
+
+    /// <summary>Live ChartSpace root of the 1-based chart in <paramref name="charts"/>,
+    /// legacy or extended.</summary>
+    private static DocumentFormat.OpenXml.OpenXmlPartRootElement ChartSpaceElementAt(List<ExcelChartInfo> charts, int index)
+    {
+        if (index < 1 || index > charts.Count)
+            throw new ArgumentException($"Chart index {index} out of range (1..{charts.Count})");
+        var info = charts[index - 1];
+        return info.IsExtended
+            ? info.ExtendedPart!.ChartSpace!
+            : info.StandardPart!.ChartSpace!;
     }
 }

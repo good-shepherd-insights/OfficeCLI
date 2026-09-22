@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -7,15 +11,25 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
+using OfficeCli.Core;
 
 namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
     public string? Remove(string path, Dictionary<string, string>? properties = null)
+<<<<<<< HEAD
     {
         // Phase 4: trackChange.* is Word-only. Silently ignored here.
         Modified = true;
+=======
+        => MarkModified(() => RemoveCore(path, properties));
+
+    private string? RemoveCore(string path, Dictionary<string, string>? properties)
+    {
+        // Phase 4: trackChange.* is Word-only. Silently ignored here.
+>>>>>>> upstream/main
         // CONSISTENCY(container-remove-guard): reject removal of the
         // workbook root up front. Sheet-level removal has its own guard
         // (can't remove last sheet) further down and is a legitimate op;
@@ -43,7 +57,12 @@ public partial class ExcelHandler
             // every selector shape.
             var (targets, _) = Core.AttributeFilter.FilterSelector(path, Query, ResolveCellAttributeAlias);
             if (targets.Count == 0)
+<<<<<<< HEAD
                 throw new ArgumentException($"No elements matched selector: {path}");
+=======
+                // Empty selector result is not_found, not a crash — see Set.cs.
+                throw new Core.CliException($"No elements matched selector: {path}") { Code = "not_found" };
+>>>>>>> upstream/main
 
             var ordered = targets.OrderByDescending(t => ExtractRowIndexForRemoval(t.Path)).ToList();
             string? lastWarning = null;
@@ -218,6 +237,32 @@ public partial class ExcelHandler
                         $"Remove or repoint the pivot table first.");
             }
 
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(remove-sheet-refs): a pivot table hosted on the
+            // sheet about to disappear may itself be named by a slicer cache
+            // living on another sheet (SlicerCachePivotTables). Removing the
+            // sheet orphans the pivot and leaves the slicer cache pointing at
+            // a gone pivot — schema-valid but real Excel refuses (0x800A03EC).
+            // Mirror the pivottable[N] guard: refuse and steer the user to
+            // remove the slicer first. Note the mirror case (removing the
+            // sheet that hosts the *slicer*, pivot elsewhere) is untouched and
+            // remains a safe delete.
+            {
+                var relIdForSlicerCheck = sheet.Id?.Value;
+                var wsForSlicerCheck = relIdForSlicerCheck != null
+                    ? workbookPart.GetPartById(relIdForSlicerCheck) as WorksheetPart
+                    : null;
+                if (wsForSlicerCheck != null)
+                    foreach (var pp in wsForSlicerCheck.PivotTableParts)
+                        ThrowIfPivotReferencedBySlicer(
+                            pp.PivotTableDefinition?.Name?.Value,
+                            (pivotName, cacheName) =>
+                                $"Cannot remove sheet '{sheetName}': it hosts pivot table '{pivotName}' " +
+                                $"which is referenced by slicer cache '{cacheName}'. Remove the slicer first.");
+            }
+
+>>>>>>> upstream/main
             // R10-2: capture pivot cache definitions referenced by this
             // sheet's pivot table parts BEFORE deleting the worksheet part,
             // so we can prune any caches that become orphaned by the
@@ -227,6 +272,15 @@ public partial class ExcelHandler
             // references to unreachable parts). Mirrors the cleanup done
             // by the pivottable[N] branch below — both routes share the
             // same orphan prune helper.
+<<<<<<< HEAD
+=======
+            // localSheetId on <definedName> is a 0-based position into
+            // <sheets>; capture the removed sheet's position before it is
+            // detached so scoped names can be renumbered below.
+            var removedSheetIndex = (uint)sheets.Elements<Sheet>()
+                .TakeWhile(s => !ReferenceEquals(s, sheet)).Count();
+
+>>>>>>> upstream/main
             var relId = sheet.Id?.Value;
             var sheetWsPart = relId != null
                 ? workbookPart.GetPartById(relId) as WorksheetPart
@@ -314,6 +368,21 @@ public partial class ExcelHandler
                     .Where(dn => dn.Text?.Contains(sheetName + "!", StringComparison.OrdinalIgnoreCase) == true)
                     .ToList();
                 foreach (var dn in toRemove) dn.Remove();
+
+                // Renumber sheet-scoped names: localSheetId is a 0-based
+                // position into <sheets>, so removing a sheet shifts every
+                // later sheet down by one. Names scoped to the removed sheet
+                // itself lose their scope with it (the text-based drop above
+                // only catches bodies that mention the removed sheet's name).
+                // Excel refuses to open a workbook whose definedName carries
+                // an out-of-range localSheetId (0x800A03EC).
+                foreach (var dn in definedNames.Elements<DefinedName>().ToList())
+                {
+                    var lid = dn.LocalSheetId?.Value;
+                    if (lid == null) continue;
+                    if (lid == removedSheetIndex) dn.Remove();
+                    else if (lid > removedSheetIndex) dn.LocalSheetId = lid.Value - 1;
+                }
                 if (!definedNames.HasChildren) definedNames.Remove();
             }
 
@@ -470,9 +539,7 @@ public partial class ExcelHandler
                 ?? throw new ArgumentException("Sheet has no drawings/pictures");
             var wsDrawing = drawingsPart.WorksheetDrawing
                 ?? throw new ArgumentException("Sheet has no drawings/pictures");
-            var picAnchors = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-                .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-                .ToList();
+            var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
             if (picIdx < 1 || picIdx > picAnchors.Count)
                 throw new ArgumentException($"Picture index {picIdx} out of range (1..{picAnchors.Count})");
             // Remove associated image part to avoid storage bloat
@@ -586,6 +653,7 @@ public partial class ExcelHandler
             var comments = cmtList?.Elements<Comment>().ToList() ?? new();
             if (cmtIdx < 1 || cmtIdx > comments.Count)
                 throw new ArgumentException($"Comment index {cmtIdx} out of range (1..{comments.Count})");
+            var removedCommentRef = comments[cmtIdx - 1].Reference?.Value;
             comments[cmtIdx - 1].Remove();
             if (cmtList != null && !cmtList.HasChildren)
             {
@@ -643,6 +711,12 @@ public partial class ExcelHandler
             else
             {
                 commentsPart.Comments.Save();
+                // Partial delete: remove the single orphaned VML Note shape for
+                // the removed comment's cell. Without this the <v:shape> lingers
+                // and Excel renders a ghost comment box (Bug family: partial
+                // comment remove leaves orphan VML shape).
+                if (!string.IsNullOrEmpty(removedCommentRef))
+                    RemoveCommentVmlShapeByRef(worksheet, removedCommentRef);
             }
             SaveWorksheet(worksheet);
             return null;
@@ -693,6 +767,20 @@ public partial class ExcelHandler
                 throw new ArgumentException($"PivotTable index {ptIdx} out of range (1..{pivotParts.Count})");
             var pivotPart = pivotParts[ptIdx - 1];
 
+<<<<<<< HEAD
+=======
+            // Referencing-slicer guard — a slicer cache names its pivot table
+            // via SlicerCachePivotTables; deleting the pivot underneath it
+            // leaves a dangling reference that passes schema validation but
+            // real Excel refuses (0x800A03EC). Mirrors the sheet-remove
+            // pivot-source protection.
+            ThrowIfPivotReferencedBySlicer(
+                pivotPart.PivotTableDefinition?.Name?.Value,
+                (pivotName, cacheName) =>
+                    $"Cannot remove pivottable '{pivotName}': it is referenced by slicer cache " +
+                    $"'{cacheName}'. Remove the slicer first.");
+
+>>>>>>> upstream/main
             // Capture the cache-definition part (if any) so we can clean up
             // workbook-level PivotCache registration after removing the pivot.
             var cachePart = pivotPart.PivotTableCacheDefinitionPart;
@@ -727,6 +815,77 @@ public partial class ExcelHandler
             return null;
         }
 
+<<<<<<< HEAD
+=======
+        // slicer[N] — remove pivot-backed slicer and all six cross-referenced
+        // parts/registrations created by AddSlicer (SlicersPart entry,
+        // SlicerCachePart, workbook + worksheet extLst registrations, the
+        // Slicer_ defined-name sentinel, and the drawing anchor). Mirrors the
+        // pivottable[N] multi-part cleanup discipline above.
+        var slicerRemoveMatch = Regex.Match(cellRef, @"^slicer\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (slicerRemoveMatch.Success)
+        {
+            var slIdx = int.Parse(slicerRemoveMatch.Groups[1].Value);
+            var slicersPart = worksheet.GetPartsOfType<SlicersPart>().FirstOrDefault();
+            var slicersContainer = slicersPart?.Slicers;
+            var slicerList = slicersContainer?.Elements<X14.Slicer>().ToList()
+                ?? new List<X14.Slicer>();
+            if (slIdx < 1 || slIdx > slicerList.Count)
+                throw new ArgumentException($"Slicer index {slIdx} out of range (1..{slicerList.Count})");
+            var slicerElement = slicerList[slIdx - 1];
+            var slicerDisplayName = slicerElement.Name?.Value;
+            var slicerCacheName = slicerElement.Cache?.Value;
+
+            var slicerWbPart = _doc.WorkbookPart!;
+
+            // 1. Remove the Slicer element; delete the SlicersPart and its
+            //    worksheet extLst registration if it was the last slicer.
+            slicerElement.Remove();
+            slicersContainer!.Save(slicersPart!);
+            if (!slicersContainer.Elements<X14.Slicer>().Any())
+            {
+                var slicersRelId = worksheet.GetIdOfPart(slicersPart!);
+                worksheet.DeletePart(slicersPart!);
+                RemoveSlicerListFromWorksheet(worksheet, slicersRelId);
+            }
+
+            // 2. Remove the backing SlicerCachePart + workbook extLst entry.
+            if (!string.IsNullOrEmpty(slicerCacheName))
+            {
+                foreach (var scp in slicerWbPart.GetPartsOfType<SlicerCachePart>().ToList())
+                {
+                    if (scp.SlicerCacheDefinition?.Name?.Value != slicerCacheName) continue;
+                    var cacheRelId = slicerWbPart.GetIdOfPart(scp);
+                    slicerWbPart.DeletePart(scp);
+                    RemoveSlicerCacheFromWorkbook(slicerWbPart, cacheRelId);
+                    break;
+                }
+            }
+
+            // 3. Remove the Slicer_ defined-name sentinel (reverse of
+            //    RegisterSlicerDefinedName).
+            if (!string.IsNullOrEmpty(slicerDisplayName))
+            {
+                var slicerDefinedNames = slicerWbPart.Workbook!.GetFirstChild<DefinedNames>();
+                if (slicerDefinedNames != null)
+                {
+                    slicerDefinedNames.Elements<DefinedName>()
+                        .FirstOrDefault(d => string.Equals(d.Name?.Value, slicerDisplayName, StringComparison.Ordinal))
+                        ?.Remove();
+                    if (!slicerDefinedNames.HasChildren) slicerDefinedNames.Remove();
+                }
+            }
+
+            // 4. Remove the drawing anchor bound to this slicer cache name.
+            if (!string.IsNullOrEmpty(slicerCacheName))
+                RemoveSlicerDrawingAnchor(worksheet, slicerCacheName);
+
+            SaveWorksheet(worksheet);
+            slicerWbPart.Workbook!.Save();
+            return null;
+        }
+
+>>>>>>> upstream/main
         // ole[N] — remove embedded OLE object (cleanup embedded payload +
         // icon image part). Same part-cleanup discipline as picture/chart
         // removal to avoid orphaned binaries bloating the package.
@@ -739,6 +898,12 @@ public partial class ExcelHandler
             if (oleIdx < 1 || oleIdx > oleElements.Count)
                 throw new ArgumentException($"OLE object index {oleIdx} out of range (1..{oleElements.Count})");
             var oleToRemove = oleElements[oleIdx - 1];
+<<<<<<< HEAD
+=======
+            // Capture the shapeId before removal so we can prune the matching
+            // legacy VML shape (see below).
+            var oleShapeId = oleToRemove.ShapeId?.Value;
+>>>>>>> upstream/main
             // Delete backing embedded payload + icon image part by rel id.
             if (oleToRemove.Id?.Value is string oleRelId && !string.IsNullOrEmpty(oleRelId))
             {
@@ -755,6 +920,42 @@ public partial class ExcelHandler
             oleToRemove.Remove();
             if (oleParent is OleObjects oleColl && !oleColl.HasChildren)
                 oleColl.Remove();
+<<<<<<< HEAD
+=======
+
+            // Prune the companion legacy VML shape. Without this, add/remove
+            // cycles leave ghost <v:shape> elements accumulating in the VML
+            // part (and a dangling <legacyDrawing> when the VML empties out),
+            // mirroring the comment-remove cleanup discipline above.
+            var oleVmlPart = worksheet.VmlDrawingParts.FirstOrDefault();
+            if (oleVmlPart != null && oleShapeId.HasValue)
+            {
+                bool anyShapesLeft = true;
+                try
+                {
+                    System.Xml.Linq.XDocument vmlDoc;
+                    using (var stream = oleVmlPart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read))
+                        vmlDoc = System.Xml.Linq.XDocument.Load(stream);
+                    var vNs = (System.Xml.Linq.XNamespace)"urn:schemas-microsoft-com:vml";
+                    var target = vmlDoc.Descendants(vNs + "shape")
+                        .FirstOrDefault(s => (string?)s.Attribute("id") == $"_x0000_s{oleShapeId.Value}");
+                    target?.Remove();
+                    anyShapesLeft = vmlDoc.Descendants(vNs + "shape").Any();
+                    if (anyShapesLeft)
+                    {
+                        using var wstream = oleVmlPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write);
+                        vmlDoc.Save(wstream);
+                    }
+                }
+                catch { anyShapesLeft = true; }
+
+                if (!anyShapesLeft)
+                {
+                    worksheet.DeletePart(oleVmlPart);
+                    GetSheet(worksheet).Elements<LegacyDrawing>().FirstOrDefault()?.Remove();
+                }
+            }
+>>>>>>> upstream/main
             SaveWorksheet(worksheet);
             return null;
         }
@@ -794,7 +995,7 @@ public partial class ExcelHandler
             if (runIdx < 1 || runIdx > runs.Count)
                 throw new ArgumentException($"Run index {runIdx} out of range (1-{runs.Count})");
 
-            runs[runIdx - 1].Remove();
+            runs[PathIndex.ToArrayIndex(runIdx)].Remove();
 
             // Convert back to plain text if appropriate
             var remainingRuns = ssi.Elements<Run>().ToList();
@@ -823,6 +1024,15 @@ public partial class ExcelHandler
             return null;
         }
 
+        // Element-looking paths that reach the cell fallthrough (e.g.
+        // chart[1]/series[2] — series has no remove operation) used to die
+        // with a nonsensical "Cell chart[1]/series[2] not found". Name the
+        // real limitation instead.
+        if (cellRef.Contains("/series[", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                "remove is not supported for chart series (operations: add/set/get). " +
+                "Rebuild the chart without the series, or repoint its values via set.");
+
         // Single cell
         var cell = FindCell(sheetData, cellRef)
             ?? throw new ArgumentException($"Cell {cellRef} not found");
@@ -832,6 +1042,29 @@ public partial class ExcelHandler
         return null;
     }
 
+<<<<<<< HEAD
+=======
+    // Referencing-slicer guard — a slicer cache names its pivot table via
+    // SlicerCachePivotTables; deleting that pivot (directly, or by removing
+    // the sheet that hosts it) leaves a dangling reference that passes schema
+    // validation but real Excel refuses to open (0x800A03EC). Shared by the
+    // pivottable[N] branch and the whole-sheet removal path.
+    private void ThrowIfPivotReferencedBySlicer(string? pivotName, Func<string, string, string> message)
+    {
+        if (string.IsNullOrEmpty(pivotName) || _doc.WorkbookPart == null) return;
+        foreach (var scPart in _doc.WorkbookPart.GetPartsOfType<SlicerCachePart>())
+        {
+            var refsPivot = scPart.SlicerCacheDefinition?
+                .GetFirstChild<X14.SlicerCachePivotTables>()?
+                .Elements<X14.SlicerCachePivotTable>()
+                .Any(pt => string.Equals(pt.Name?.Value, pivotName, StringComparison.OrdinalIgnoreCase)) == true;
+            if (refsPivot)
+                throw new ArgumentException(
+                    message(pivotName, scPart.SlicerCacheDefinition?.Name?.Value ?? "?"));
+        }
+    }
+
+>>>>>>> upstream/main
     // Trailing /row[N] index of a path, or 0 when the path is not a row. Used to
     // order selector-Remove deletions descending so a row shift-delete never
     // invalidates the indices of not-yet-deleted matches.
@@ -1034,7 +1267,16 @@ public partial class ExcelHandler
             refMapper: r => ShiftRowInRefDown(r, insertRow),
             formulaTextMapper: f => Core.FormulaRefShifter.Shift(
                 f, sheetName, sheetName, Core.FormulaShiftDirection.RowsDown, insertRow),
+<<<<<<< HEAD
             rowMarkerShift: m => m >= insertRow - 1 ? m + 1 : m);
+=======
+            // Drawing anchor markers need the same ceiling as refs: a shape whose
+            // TO marker already sits on the grid edge (R152 clamps it there) would
+            // otherwise be pushed to 1048577 and make Excel reject the file.
+            rowMarkerShift: m => m >= insertRow - 1 ? Math.Min(m + 1, ExcelMaxRow) : m,
+            crossSheetFormulaMapper: (other, f) => Core.FormulaRefShifter.Shift(
+                f, other, sheetName, Core.FormulaShiftDirection.RowsDown, insertRow));
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -1082,8 +1324,27 @@ public partial class ExcelHandler
             refMapper: r => ShiftColInRefRight(r, insertColIdx),
             formulaTextMapper: f => Core.FormulaRefShifter.Shift(
                 f, sheetName, sheetName, Core.FormulaShiftDirection.ColumnsRight, insertColIdx),
+<<<<<<< HEAD
             colMarkerShift: m => m >= insertColIdx - 1 ? m + 1 : m);
+=======
+            colMarkerShift: m => m >= insertColIdx - 1 ? Math.Min(m + 1, ExcelMaxCol) : m,
+            crossSheetFormulaMapper: (other, f) => Core.FormulaRefShifter.Shift(
+                f, other, sheetName, Core.FormulaShiftDirection.ColumnsRight, insertColIdx));
+
+        // A column inserted inside a table's span widened its ref above; sync
+        // the tableColumns list so count matches the ref width (else 0x800A03EC).
+        SyncTableColumnsAfterColInsert(worksheet, insertColIdx);
+>>>>>>> upstream/main
     }
+
+    // Excel's grid ceiling. Every insert-direction shift clamps to it: a range
+    // that already reaches the last row/column keeps that endpoint instead of
+    // being pushed one past the grid. An out-of-grid ref still passes schema
+    // validation, but real Excel refuses to open the workbook (0x800A03EC), and
+    // the shift path is the only way to produce one — the input validators
+    // (ValidateRangeRef and friends) reject 1048577 / XFE on the way in.
+    private const int ExcelMaxRow = 1048576;
+    private const int ExcelMaxCol = 16384; // XFD
 
     private static string? ShiftRowInRefDown(string? refStr, int insertRow)
     {
@@ -1095,7 +1356,7 @@ public partial class ExcelHandler
             try
             {
                 var (col, row) = ParseCellReference(part);
-                shifted.Add(row >= insertRow ? $"{col}{row + 1}" : part);
+                shifted.Add(row >= insertRow ? $"{col}{Math.Min(row + 1, ExcelMaxRow)}" : part);
             }
             catch { shifted.Add(part); }
         }
@@ -1117,7 +1378,9 @@ public partial class ExcelHandler
             {
                 var (col, row) = ParseCellReference(part);
                 var colIdx = ColumnNameToIndex(col);
-                shifted.Add(colIdx >= insertColIdx ? $"{IndexToColumnName(colIdx + 1)}{row}" : part);
+                shifted.Add(colIdx >= insertColIdx
+                    ? $"{IndexToColumnName(Math.Min(colIdx + 1, ExcelMaxCol))}{row}"
+                    : part);
             }
             catch { shifted.Add(part); }
         }
@@ -1163,7 +1426,13 @@ public partial class ExcelHandler
             refMapper: r => ShiftRowInRef(r, deletedRow),
             formulaTextMapper: f => Core.FormulaRefShifter.Shift(
                 f, sheetName, sheetName, Core.FormulaShiftDirection.RowsUp, deletedRow),
+<<<<<<< HEAD
             rowMarkerShift: m => m > deletedRow - 1 ? m - 1 : m);
+=======
+            rowMarkerShift: m => m > deletedRow - 1 ? m - 1 : m,
+            crossSheetFormulaMapper: (other, f) => Core.FormulaRefShifter.Shift(
+                f, other, sheetName, Core.FormulaShiftDirection.RowsUp, deletedRow));
+>>>>>>> upstream/main
     }
 
     // ==================== Column shift ====================
@@ -1207,13 +1476,201 @@ public partial class ExcelHandler
             if (!columns.HasChildren) columns.Remove();
         }
 
+<<<<<<< HEAD
+=======
+        // 2b. table (ListObject) column sync. Deleting a worksheet column that
+        // falls inside a table's range shrinks the table ref (handled by the
+        // walker below) but ALSO drops one table column — the <tableColumns
+        // count=".."> and its <tableColumn> children must follow, or Excel
+        // refuses to open (0x800A03EC) even though schema validation passes.
+        // Mirrors Excel: deleting a sheet column narrows the table; deleting
+        // the table's only column removes the table entirely. Done here (not in
+        // the shared walker) because it is column-axis-specific and needs the
+        // pre-shift ref to locate the column position.
+        SyncTableColumnsAfterColDelete(worksheet, deletedColIdx);
+
+>>>>>>> upstream/main
         // 3. All sheet-level range-bearing structures + formulas + namedRanges.
         ApplySheetRangeMutations(
             worksheet, sheetName,
             refMapper: r => ShiftColInRef(r, deletedColIdx),
             formulaTextMapper: f => Core.FormulaRefShifter.Shift(
                 f, sheetName, sheetName, Core.FormulaShiftDirection.ColumnsLeft, deletedColIdx),
+<<<<<<< HEAD
             colMarkerShift: m => m > deletedColIdx - 1 ? m - 1 : m);
+=======
+            colMarkerShift: m => m > deletedColIdx - 1 ? m - 1 : m,
+            crossSheetFormulaMapper: (other, f) => Core.FormulaRefShifter.Shift(
+                f, other, sheetName, Core.FormulaShiftDirection.ColumnsLeft, deletedColIdx));
+    }
+
+    /// <summary>
+    /// After a worksheet column delete, keep every table (ListObject) on the
+    /// sheet structurally consistent: if the deleted column falls inside a
+    /// table's range, remove the corresponding &lt;tableColumn&gt; child and
+    /// decrement the count. If it was the table's only column, remove the whole
+    /// table (part + TableParts entry), matching Excel's "delete the last
+    /// column, the table disappears" behavior.
+    /// </summary>
+    private void SyncTableColumnsAfterColDelete(WorksheetPart worksheet, int deletedColIdx)
+    {
+        var tableParts = worksheet.TableDefinitionParts.ToList();
+        for (int i = 0; i < tableParts.Count; i++)
+        {
+            var tablePart = tableParts[i];
+            var tbl = tablePart.Table;
+            var refStr = tbl?.Reference?.Value;
+            if (tbl == null || string.IsNullOrEmpty(refStr)) continue;
+
+            var rangeParts = refStr.Split(':');
+            int startColIdx, endColIdx;
+            try
+            {
+                startColIdx = ColumnNameToIndex(ParseCellReference(rangeParts[0]).Column);
+                endColIdx = rangeParts.Length > 1
+                    ? ColumnNameToIndex(ParseCellReference(rangeParts[1]).Column)
+                    : startColIdx;
+            }
+            catch { continue; }
+
+            // Deleted column outside the table span → nothing to sync (the
+            // walker still shifts the ref if the table sits to the right).
+            if (deletedColIdx < startColIdx || deletedColIdx > endColIdx) continue;
+
+            // Last remaining column removed → the table disappears entirely.
+            if (startColIdx == endColIdx)
+            {
+                var tblIndex = i + 1; // 1-based position among TableParts
+                worksheet.DeletePart(tablePart);
+                var tblParts = worksheet.Worksheet?.GetFirstChild<TableParts>();
+                if (tblParts != null)
+                {
+                    var entries = tblParts.Elements<TablePart>().ToList();
+                    if (tblIndex <= entries.Count) entries[tblIndex - 1].Remove();
+                    tblParts.Count = (uint)tblParts.Elements<TablePart>().Count();
+                    if (tblParts.Count == 0) tblParts.Remove();
+                }
+                continue;
+            }
+
+            // Drop the table column at the deleted position (0-based within the
+            // table). The walker shrinks tbl.Reference; here we only sync the
+            // column list + count.
+            var tableColumns = tbl.TableColumns;
+            if (tableColumns == null) continue;
+            var cols = tableColumns.Elements<TableColumn>().ToList();
+            var pos = deletedColIdx - startColIdx;
+            if (pos >= 0 && pos < cols.Count)
+            {
+                cols[pos].Remove();
+                tableColumns.Count = (uint)tableColumns.Elements<TableColumn>().Count();
+                // Renumber ids and (for header-less tables) rename Column1..N —
+                // a gap or out-of-order auto name makes Excel refuse (0x800A03EC).
+                NormalizeTableColumns(tbl, tableColumns);
+                tbl.Save();
+            }
+        }
+    }
+
+    /// <summary>Reassign tableColumn @id sequentially 1..N. Excel refuses a
+    /// table whose column ids have gaps or don't start at 1.</summary>
+    private static void RenumberTableColumnIds(TableColumns tableColumns)
+    {
+        uint id = 1;
+        foreach (var tc in tableColumns.Elements<TableColumn>())
+            tc.Id = id++;
+    }
+
+    /// <summary>
+    /// After a column insert/delete resync, fix up the tableColumn ids (always)
+    /// and, for a HEADER-LESS table (headerRowCount=0, auto-named columns),
+    /// rename them Column1..N in order. A header-less table with out-of-order
+    /// or gapped auto names (e.g. Column1, Column3) makes Excel refuse the file
+    /// (0x800A03EC). Header tables are left alone — their column names must
+    /// track the header-row cells (handled elsewhere).
+    /// </summary>
+    private static void NormalizeTableColumns(Table tbl, TableColumns tableColumns)
+    {
+        RenumberTableColumnIds(tableColumns);
+        bool headerLess = tbl.HeaderRowCount != null && tbl.HeaderRowCount.Value == 0;
+        if (!headerLess) return;
+        int n = 1;
+        foreach (var tc in tableColumns.Elements<TableColumn>())
+            tc.Name = $"Column{n++}";
+    }
+
+    /// <summary>
+    /// Mirror of SyncTableColumnsAfterColDelete for column INSERTION. When a
+    /// column is inserted inside a table's span, ShiftColumnsRight widens the
+    /// table ref but left tableColumns unchanged — count no longer matched the
+    /// ref width, which real Excel refuses (0x800A03EC). Insert a matching
+    /// tableColumn at the right position and renumber ids.
+    /// </summary>
+    internal void SyncTableColumnsAfterColInsert(WorksheetPart worksheet, int insertColIdx)
+    {
+        foreach (var tablePart in worksheet.TableDefinitionParts.ToList())
+        {
+            var tbl = tablePart.Table;
+            var refStr = tbl?.Reference?.Value;
+            if (tbl == null || string.IsNullOrEmpty(refStr)) continue;
+
+            var rangeParts = refStr.Split(':');
+            int startColIdx, endColIdx;
+            try
+            {
+                startColIdx = ColumnNameToIndex(ParseCellReference(rangeParts[0]).Column);
+                endColIdx = rangeParts.Length > 1
+                    ? ColumnNameToIndex(ParseCellReference(rangeParts[1]).Column)
+                    : startColIdx;
+            }
+            catch { continue; }
+
+            var tableColumns = tbl.TableColumns;
+            if (tableColumns == null) continue;
+            var cols = tableColumns.Elements<TableColumn>().ToList();
+            int width = endColIdx - startColIdx + 1;
+            // Only tables whose ref actually WIDENED (insert landed inside the
+            // span) need a new column; a table shifted wholesale to the right
+            // keeps width == count.
+            if (width <= cols.Count) continue;
+
+            int pos = insertColIdx - startColIdx;
+            if (pos < 0) pos = 0;
+            if (pos > cols.Count) pos = cols.Count;
+
+            var used = new HashSet<string>(
+                cols.Select(tc => tc.Name?.Value ?? "").Where(n => n.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+            var baseName = $"Column{cols.Count + 1}";
+            var colName = baseName;
+            int dedupeIdx = 2;
+            while (!used.Add(colName)) colName = $"{baseName}{dedupeIdx++}";
+
+            var newCol = new TableColumn { Name = colName };
+            if (pos == 0) tableColumns.PrependChild(newCol);
+            else if (pos >= cols.Count) tableColumns.AppendChild(newCol);
+            else cols[pos - 1].InsertAfterSelf(newCol);
+
+            tableColumns.Count = (uint)tableColumns.Elements<TableColumn>().Count();
+            NormalizeTableColumns(tbl, tableColumns);
+
+            // Header tables: Excel requires the header-row cell text to match
+            // the tableColumn name; an inserted column leaves its header cell
+            // empty, which Excel refuses (0x800A03EC). Write the name into it.
+            if ((tbl.HeaderRowCount?.Value ?? 1) != 0)
+            {
+                var (_, headerRow) = ParseCellReference(rangeParts[0]);
+                var headerCellRef = $"{IndexToColumnName(insertColIdx)}{headerRow}";
+                var hdrWs = GetSheet(worksheet);
+                var hdrSheetData = hdrWs.GetFirstChild<SheetData>()
+                    ?? hdrWs.AppendChild(new SheetData());
+                var hdrCell = FindOrCreateCell(hdrSheetData, headerCellRef);
+                hdrCell.CellValue = new CellValue(newCol.Name?.Value ?? colName);
+                hdrCell.DataType = CellValues.String;
+            }
+            tbl.Save();
+        }
+>>>>>>> upstream/main
     }
 
     // ==================== Shift helpers ====================

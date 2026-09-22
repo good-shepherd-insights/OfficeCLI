@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -67,7 +71,19 @@ internal static class GenericXmlQuery
         var idx = parentCounters[counterKey];
         parentCounters[counterKey] = idx + 1;
 
-        var currentPath = $"{parentPath}/{elLocalName}[{idx + 1}]";
+        // Stable-id segment for Word paragraphs (issue #259): every other
+        // path emitter (Get echo, Add result, BuildParaPathSegment) prefers
+        // p[@paraId=X] because positional indexes drift as soon as the
+        // document is edited. Match that canonical form here so generic-
+        // fallback query results compare and round-trip against Get output.
+        // Sibling counters still advance positionally for all other elements;
+        // pptx a:p is Drawing.Paragraph and xlsx has no w:p, so this only
+        // ever fires for Word content.
+        var segment = element is DocumentFormat.OpenXml.Wordprocessing.Paragraph wp
+                      && !string.IsNullOrEmpty(wp.ParagraphId?.Value)
+            ? $"{elLocalName}[@paraId={wp.ParagraphId.Value}]"
+            : $"{elLocalName}[{idx + 1}]";
+        var currentPath = $"{parentPath}/{segment}";
 
         // Check if this element matches
         if (MatchesElement(element, targetLocalName, targetNsUri, attributes, containsText))
@@ -240,7 +256,13 @@ internal static class GenericXmlQuery
                 var name = PathAliases.Resolve(part[..bracketIdx]);
                 var indexStr = part[(bracketIdx + 1)..^1];
                 if (!int.TryParse(indexStr, out var idx))
-                    throw new ArgumentException($"Invalid path index '{indexStr}' in segment '{part}'. Expected a numeric index.");
+                    // A predicate in the index slot (row[Score>0], row[not(V)])
+                    // means the caller reached the single-node path navigator
+                    // with a FILTER. get is one-node-by-path by contract;
+                    // point at the verbs that run the selector engine.
+                    throw new ArgumentException(AttributeFilter.IsContentFilterPath($"[{indexStr}]")
+                        ? $"'{part}' is a predicate, but this verb navigates by position and expects a numeric index (e.g. {part[..part.IndexOf('[')]}[2]). Predicates work on 'query' (read) and 'set'/'remove' (mutate matched elements)."
+                        : $"Invalid path index '{indexStr}' in segment '{part}'. Expected a numeric index.");
                 if (idx < 1)
                     throw new ArgumentException($"Invalid path index '{idx}' in segment '{part}'. Index must be >= 1.");
                 segments.Add((name, idx));
@@ -574,8 +596,35 @@ internal static class GenericXmlQuery
                 SetGenericAttribute(newChild, key, value);
             }
 
-            // Insert: use schema-aware AddChild for correct element ordering,
-            // fall back to manual index-based insertion if specified
+            // Insert. Explicit index → manual positional insertion.
+            //
+            // No index: the placement depends on the child's schema cardinality
+            // and whether a same-name sibling already exists.
+            //
+            // OpenXmlCompositeElement.AddChild places by particle slot and
+            // REPLACES a same-name child. That is correct for a SINGLETON
+            // (maxOccurs == 1, e.g. <w:tblInd> in tblPr) — re-adding it should
+            // overwrite — but WRONG for a REPEATABLE member (e.g. a second
+            // <w:tblStylePr> in a table style, or <w:lvl>/<w:abstractNum>),
+            // which it silently collapses onto the first. The collapse is the
+            // latent bug the dump→batch recursive decomposition exposes; a batch
+            // replay of repeated same-name adds would drop them identically.
+            //
+            // So, with no index:
+            //   • No same-name sibling yet → AddChild: positions the element in
+            //     its correct CT_ slot and cannot collapse (nothing to merge
+            //     onto). Preserves AddChild's ordering for particles the
+            //     reflection-based SchemaOrder comparator can't order (e.g.
+            //     DrawingML/Chart, where the first <c:dPt> must precede
+            //     <c:cat>/<c:val>).
+            //   • Same-name sibling exists AND the child is a singleton
+            //     (maxOccurs == 1) → AddChild again: it overwrites the existing
+            //     one (the intended replace).
+            //   • Same-name sibling exists AND the child is repeatable (or its
+            //     cardinality can't be resolved) → insert right AFTER the last
+            //     same-name sibling. Repeatable members are contiguous in a CT_
+            //     sequence, so this keeps the group together and in its correct
+            //     slot, and never collapses.
             if (index.HasValue)
             {
                 var children = parent.ChildElements.ToList();
@@ -584,15 +633,38 @@ internal static class GenericXmlQuery
                 else
                     parent.AppendChild(newChild);
             }
-            else if (parent is OpenXmlCompositeElement composite)
-            {
-                // AddChild uses Metadata.Particle.Set() to find correct schema position
-                if (!composite.AddChild(newChild, throwOnError: false))
-                    parent.AppendChild(newChild); // fallback if schema doesn't define this child
-            }
             else
             {
-                parent.AppendChild(newChild);
+                var sameName = parent.ChildElements.Where(e =>
+                    e.LocalName == newChild.LocalName
+                    && e.NamespaceUri == newChild.NamespaceUri).ToList();
+                bool isSingleton = sameName.Count > 0
+                    && SchemaOrder.GetMaxOccurs(parent, newChild) == 1;
+                if (sameName.Count > 0 && !isSingleton)
+                {
+                    // Repeatable (or unknown cardinality) with an existing
+                    // sibling → append a distinct sibling; never collapse.
+                    sameName[^1].InsertAfterSelf(newChild);
+                }
+                else if (parent is OpenXmlCompositeElement composite)
+                {
+                    // Singleton re-add → drop the existing one first (true
+                    // replace; AddChild alone refuses an already-filled
+                    // single-occurrence slot and falls through to append).
+                    if (isSingleton)
+                        foreach (var ex in sameName) ex.Remove();
+                    // First occurrence or post-removal: AddChild positions in the
+                    // correct CT_ slot.
+                    if (!composite.AddChild(newChild, throwOnError: false))
+                    {
+                        parent.AppendChild(newChild); // schema doesn't define this child
+                        SchemaOrder.Place(parent, newChild);
+                    }
+                }
+                else
+                {
+                    parent.AppendChild(newChild);
+                }
             }
 
             return newChild;

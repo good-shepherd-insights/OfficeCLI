@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -101,11 +105,26 @@ internal static partial class ChartHelper
         // producing a chart where the real bars are compressed to a thin sliver on the left.
         if (refValue > 1.0 && IsPercentStackedChart(plotArea))
         {
+<<<<<<< HEAD
             Console.Error.WriteLine(
                 $"Warning: referenceLine value {refValue.ToString("G", System.Globalization.CultureInfo.InvariantCulture)} "
                 + "on a percent-stacked chart. The value axis is 0-1 (0%-100%); "
                 + $"did you mean {(refValue / 100.0).ToString("G", System.Globalization.CultureInfo.InvariantCulture)}? "
                 + "Excel will auto-scale the axis to fit, compressing the real bars.");
+=======
+            var refMsg =
+                $"referenceLine value {refValue.ToString("G", System.Globalization.CultureInfo.InvariantCulture)} "
+                + "on a percent-stacked chart. The value axis is 0-1 (0%-100%); "
+                + $"did you mean {(refValue / 100.0).ToString("G", System.Globalization.CultureInfo.InvariantCulture)}? "
+                + "Excel will auto-scale the axis to fit, compressing the real bars.";
+            // CONSISTENCY(numfmt-warning): JSON mode → envelope warnings[];
+            // plain mode keeps the stderr line.
+            if (WarningContext.IsActive)
+                WarningContext.Add(refMsg, "referenceline_out_of_scale",
+                    $"Use {(refValue / 100.0).ToString("G", System.Globalization.CultureInfo.InvariantCulture)} for a 0-1 percent axis");
+            else
+                Console.Error.WriteLine($"Warning: {refMsg}");
+>>>>>>> upstream/main
         }
 
         // Find max data point count from existing series (after removing old ref lines)
@@ -497,6 +516,21 @@ internal static partial class ChartHelper
 
         var typeList = comboTypes.Split(',').Select(t => t.Trim().ToLowerInvariant()).ToArray();
 
+        // Validate every token BEFORE any mutation: unknown tokens used to fall
+        // through to the default LineChart arm, silently coercing garbage
+        // (combotypes=asdf,qwer) into line,line — the only mini-language prop
+        // that accepted typos. Also keeps the rebuild atomic on bad input.
+        foreach (var t in typeList)
+        {
+            var baseToken = t.EndsWith("percentstacked", StringComparison.Ordinal) ? t[..^14]
+                : t.EndsWith("stacked", StringComparison.Ordinal) ? t[..^7]
+                : t;
+            if (baseToken is not ("bar" or "column" or "col" or "line" or "area" or "scatter"))
+                throw new ArgumentException(
+                    $"Invalid comboTypes token '{t}'. Expected bar/column/line/area/scatter, " +
+                    "optionally with a stacked/percentstacked suffix (e.g. 'column,line' or 'columnstacked,line').");
+        }
+
         // Read all existing series data
         var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
             .Where(e => e.LocalName == "ser").ToList();
@@ -543,29 +577,51 @@ internal static partial class ChartHelper
         var groups = seriesInfo.GroupBy(s => s.targetType).ToList();
         foreach (var group in groups)
         {
+            // Grouping-qualified tokens (columnstacked / areapercentstacked …)
+            // — parse the suffix so a stacked combo group doesn't rebuild as
+            // clustered/standard (and doesn't fall through to the default
+            // LineChart branch).
+            var groupToken = group.Key;
+            string comboGrpSuffix = "";
+            if (groupToken.EndsWith("percentstacked", StringComparison.Ordinal))
+            { comboGrpSuffix = "percentstacked"; groupToken = groupToken[..^14]; }
+            else if (groupToken.EndsWith("stacked", StringComparison.Ordinal))
+            { comboGrpSuffix = "stacked"; groupToken = groupToken[..^7]; }
+            var comboBarGrp = comboGrpSuffix switch
+            {
+                "percentstacked" => C.BarGroupingValues.PercentStacked,
+                "stacked" => C.BarGroupingValues.Stacked,
+                _ => C.BarGroupingValues.Clustered,
+            };
+            var comboStdGrp = comboGrpSuffix switch
+            {
+                "percentstacked" => C.GroupingValues.PercentStacked,
+                "stacked" => C.GroupingValues.Stacked,
+                _ => C.GroupingValues.Standard,
+            };
             OpenXmlCompositeElement chartTypeEl;
-            switch (group.Key)
+            switch (groupToken)
             {
                 case "bar":
                     chartTypeEl = new C.BarChart(
                         new C.BarDirection { Val = C.BarDirectionValues.Bar },
-                        new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
+                        new C.BarGrouping { Val = comboBarGrp },
                         new C.VaryColors { Val = false });
                     break;
                 case "column" or "col":
                     chartTypeEl = new C.BarChart(
                         new C.BarDirection { Val = C.BarDirectionValues.Column },
-                        new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
+                        new C.BarGrouping { Val = comboBarGrp },
                         new C.VaryColors { Val = false });
                     break;
                 case "line":
                     chartTypeEl = new C.LineChart(
-                        new C.Grouping { Val = C.GroupingValues.Standard },
+                        new C.Grouping { Val = comboStdGrp },
                         new C.VaryColors { Val = false });
                     break;
                 case "area":
                     chartTypeEl = new C.AreaChart(
-                        new C.Grouping { Val = C.GroupingValues.Standard },
+                        new C.Grouping { Val = comboStdGrp },
                         new C.VaryColors { Val = false });
                     break;
                 case "scatter":
@@ -575,7 +631,7 @@ internal static partial class ChartHelper
                     break;
                 default:
                     chartTypeEl = new C.LineChart(
-                        new C.Grouping { Val = C.GroupingValues.Standard },
+                        new C.Grouping { Val = comboStdGrp },
                         new C.VaryColors { Val = false });
                     break;
             }
@@ -586,9 +642,19 @@ internal static partial class ChartHelper
                 // chartTypeEl may be LineChart/AreaChart/ScatterChart which require
                 // LineChartSeries / AreaChartSeries / ScatterChartSeries respectively.
                 // Schema validation rejects mismatched series. Convert to the right type.
+<<<<<<< HEAD
                 chartTypeEl.AppendChild(ConvertSeriesToType(original, group.Key));
+=======
+                chartTypeEl.AppendChild(ConvertSeriesToType(original, groupToken));
+>>>>>>> upstream/main
             }
 
+            // Bar/column groups get the same explicit gapWidth the builder
+            // stamps (150, the spec default). Omitting it renders identically
+            // today but made a combotypes-rebuilt chart differ from a
+            // directly-built one, breaking first-round dump idempotency.
+            if (chartTypeEl is C.BarChart)
+                chartTypeEl.AppendChild(new C.GapWidth { Val = 150 });
             chartTypeEl.AppendChild(new C.AxisId { Val = catAxisId });
             chartTypeEl.AppendChild(new C.AxisId { Val = valAxisId });
 
@@ -644,7 +710,40 @@ internal static partial class ChartHelper
         if (idx != null) target.AppendChild(idx.CloneNode(true));
         if (order != null) target.AppendChild(order.CloneNode(true));
         if (tx != null) target.AppendChild(tx.CloneNode(true));
+<<<<<<< HEAD
         if (spPr != null) target.AppendChild(spPr.CloneNode(true));
+=======
+        if (spPr != null)
+        {
+            var spPrClone = (OpenXmlCompositeElement)spPr.CloneNode(true);
+            // Line-based series carry their color on the stroke
+            // (<a:ln><a:solidFill>); a bare <a:solidFill> cloned from an
+            // area/bar source is stroke-inert (real Office ignores it and
+            // renders the theme color), AND the dump reads it as the series
+            // color and replays it as an <a:ln> stroke — a first-round
+            // dump→replay drift. Rewrap the fill as the stroke here.
+            if (targetType is "line" or "scatter")
+            {
+                var bareFill = spPrClone.ChildElements
+                    .FirstOrDefault(e => e.LocalName == "solidFill");
+                var hasLn = spPrClone.ChildElements.Any(e => e.LocalName == "ln");
+                if (bareFill != null && !hasLn)
+                {
+                    bareFill.Remove();
+                    var outline = new Drawing.Outline { Width = 25400 }; // 2pt, same as ApplySeriesColor
+                    outline.AppendChild(bareFill);
+                    // CT_ShapeProperties order puts <a:ln> after the fill
+                    // group; the fill was just removed, so insert before any
+                    // effect/3d/ext tail else append.
+                    var lnBefore = spPrClone.ChildElements.FirstOrDefault(e =>
+                        e.LocalName is "effectLst" or "effectDag" or "scene3d" or "sp3d" or "extLst");
+                    if (lnBefore != null) spPrClone.InsertBefore(outline, lnBefore);
+                    else spPrClone.AppendChild(outline);
+                }
+            }
+            target.AppendChild(spPrClone);
+        }
+>>>>>>> upstream/main
 
         // invertIfNegative only valid on bar series; marker on line/scatter
         if (targetType is "bar" or "column" or "col")

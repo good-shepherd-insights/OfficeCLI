@@ -4,8 +4,12 @@ Comprehensive examples demonstrating OfficeCLI capabilities for Word, Excel, and
 
 ## 📂 Directory Structure
 
+Every example below ships all four files — `.{md,sh,py,<ext>}` — even where the
+tree abbreviates. Only `ppt/templates/styles/*/build*.sh` are `.sh`-only.
+
 ```
 examples/
+<<<<<<< HEAD
 ├── README.md                          # This file
 ├── word/                              # 📄 Word examples
 │   ├── formulas.sh / formulas.docx
@@ -53,10 +57,89 @@ examples/
 ```
 
 Each example follows the same trio: `<name>.md` (walkthrough), `<name>.sh`/`.py` (build script), `<name>.<ext>` (pre-generated output).
+=======
+├── README.md                              # This file
+├── word/                                  # 📄 Word examples — *.{md,sh,py,docx}
+│   ├── formulas.{md,sh,py,docx}             # LaTeX math/chemistry/physics formulas
+│   ├── tables.{md,sh,py,docx}               # styled tables
+│   ├── textbox.{md,sh,py,docx}              # formatted text boxes
+│   ├── charts.{md,sh,py,docx}               # inline charts (14 types incl. treemap/waterfall)
+│   ├── run-formatting.{md,sh,py,docx}       # run/character property surface
+│   ├── paragraph-formatting.{md,sh,py,docx} # paragraph property surface
+│   ├── document-formatting.{md,sh,py,docx}  # document-level property surface
+│   ├── sections.{md,sh,py,docx}             # section layout — multi-column, footnote/endnote props, per-section page setup
+│   ├── content-controls.{md,sh,py,docx}     # SDT content controls — text/dropdown/combobox/date/picture/group intake form
+│   ├── fields.{md,sh,py,docx}               # field codes (PAGE/DATE/REF/IF/HYPERLINK) + auto-populating table of contents
+│   ├── pictures.{md,sh,py,docx}             # inline/floating images — crop, alt, wrap, behind-text, absolute position
+│   ├── numbering.{md,sh,py,docx}            # list/numbering styles
+│   ├── diagram.{md,sh,py,docx}              # Mermaid diagrams — native editable shapes + full-fidelity PNG
+│   └── revisions.{md,sh,py,docx}            # tracked-change (revision) API
+├── excel/                                 # 📊 Excel examples — *.{md,sh,py,xlsx}
+│   ├── cell-formatting.{md,sh,py,xlsx}      # full cell property surface (fonts/fills/borders/numFmt/data)
+│   ├── conditional-formatting.{md,sh,py,xlsx}
+│   ├── data-validation.{md,sh,py,xlsx}        # dropdown lists, number/date/text/custom rules, input & error messages
+│   ├── sheet-settings.{md,sh,py,xlsx}         # freeze panes, print area/titles, headers/footers, display & protection
+│   ├── sparklines.{md,sh,py,xlsx}             # in-cell line/column/win-loss mini charts + point markers
+│   ├── workbook-settings.{md,sh,py,xlsx}
+│   ├── pivot-tables.{md,sh,py,xlsx}
+│   ├── slicers.{md,sh,py,xlsx}                # pivot-table slicers (field/caption/columnCount/rowHeight)
+│   ├── shapes.{md,sh,py,xlsx}                 # drawing shapes — geometry, flip, glow, gradient, reflection, outline
+│   ├── charts.{md,sh,py,xlsx}               # master chart showcase
+│   └── charts/                              # per-type chart scripts — charts-<type>.{md,sh,py,xlsx}
+│           (demo, basic, advanced, extended, area, bar, boxwhisker,
+│            bubble, column, combo, histogram, line, pie, radar,
+│            scatter, stock, waterfall)
+└── ppt/                                   # 🎨 PowerPoint examples — *.{md,sh,py,pptx}
+    ├── presentation.{md,sh,py,pptx}
+    ├── presentation-settings.{md,sh,py,pptx}
+    ├── diagram.{md,sh,py,pptx}              # Mermaid diagrams — native editable shapes + full-fidelity PNG
+    ├── animations.{md,sh,py,pptx}
+    ├── video.{md,sh,py,pptx}
+    ├── 3d-model.{md,sh,py,pptx}
+    ├── charts/                              # charts-<type>.{md,sh,py,pptx}
+    │       (column, bar, line, pie, doughnut, area, scatter,
+    │        bubble, radar, stock, combo, waterfall, 3d, advanced)
+    ├── tables/                              # tables-<topic>.{md,sh,py,pptx}
+    │       (basic, styled, merged, borders, rows-cols, financial, nested)
+    ├── transitions/                         # transitions-<topic>.{md,sh,py,pptx}
+    │       (basic, directional, shapes, bands, dynamic, modern, random, timing, morph)
+    ├── shapes/                              # shapes-<topic>.{md,sh,py,pptx}
+    │       (basic, connectors, effects, typography)
+    ├── textboxes/                           # textboxes-<topic>.{md,sh,py,pptx}
+    │       (basic, advanced)
+    ├── pictures/                            # pictures-basic.{md,sh,py,pptx}
+    ├── ole/                                 # ole-embed.{md,sh,py,pptx} — embedded Excel/Word OLE objects
+    └── templates/styles/*/build*.sh         # full-deck template generators (.sh only)
+```
+
+Each example ships the same **four-file set**:
+
+| File | Role |
+|------|------|
+| `<name>.md` | Walkthrough — what the example demonstrates and the key techniques |
+| `<name>.sh` | **CLI** build script — drives the `officecli` binary directly (`officecli create / add / set / close / validate`) |
+| `<name>.py` | **SDK** build script — drives the [`officecli` Python SDK](../sdk/python/) (`import officecli`; `with officecli.create(...) as doc: doc.batch([...])`) |
+| `<name>.<ext>` | Pre-generated output (`.docx` / `.xlsx` / `.pptx`) |
+
+The `.sh` and `.py` are **equivalent twins** — both regenerate the same output document, one via the command line and one via the Python SDK. Run whichever fits your workflow.
+
+> The full-deck template generators under `ppt/templates/styles/*/build*.sh` are
+> standalone deck builders, not four-file API examples, so they ship as `.sh` only.
+>>>>>>> upstream/main
 
 ---
 
 ## 🚀 Quick Start
+
+Every example runs **two equivalent ways** — pick one:
+
+```bash
+bash <name>.sh        # via the officecli CLI binary
+python3 <name>.py     # via the officecli Python SDK  (pip install officecli-sdk)
+```
+
+Both regenerate the same output document. The commands below show one form per
+example; swap `bash …​.sh` ⇄ `python3 …​.py` freely.
 
 ### By Document Type
 
@@ -76,8 +159,13 @@ bash revisions.sh            # Tracked-change (revision) API — ins/del/format/
 ```bash
 cd excel
 python cell-formatting.py    # Full cell property surface: fonts, fills, borders, number formats, formulas/links
+<<<<<<< HEAD
 bash charts.sh               # Master chart showcase
 bash charts/charts-demo.sh   # 14+ chart types
+=======
+bash charts.sh               # Master chart showcase (8 chart types in one workbook)
+bash charts/charts-basic.sh  # Per-type high-level examples (any charts/charts-<type>.sh)
+>>>>>>> upstream/main
 python charts/charts-line.py # Single-type example (any charts/charts-<type>.py)
 python pivot-tables.py       # Pivot tables
 ```
@@ -89,6 +177,10 @@ bash presentation.sh         # Morph transitions / full deck
 bash animations.sh           # Animation effects
 python video.py              # Video embedding
 bash 3d-model.sh             # 3D model embedding
+<<<<<<< HEAD
+=======
+bash diagram.sh              # Mermaid diagrams — render=native (editable shapes) + render=image (PNG)
+>>>>>>> upstream/main
 python charts/charts-column.py      # PowerPoint chart examples (any charts/charts-<type>.py)
 bash tables/tables-basic.sh         # Tables — minimal create + populate
 bash tables/tables-styled.sh        # 9 built-in styles + banding flags + rowHeight/name=
@@ -125,6 +217,10 @@ python pictures/pictures-basic.py            # picture src/crop/rotation/links (
 - Complex tables
 - Text boxes and styling
 - Numbering / list showcases
+<<<<<<< HEAD
+=======
+- Mermaid diagrams — `render=native` (editable flowchart / sequence shapes) and `render=image` (inline full-fidelity PNG of every mermaid type)
+>>>>>>> upstream/main
 
 ### 📊 [Excel Examples →](excel/)
 - Cell formatting — the full `cell` property surface across 5 sheets: fonts (name/size/bold/italic/color/underline/strike), fills (hex/named/rgb) + alignment (h/v/wrap/RTL), borders (shorthand/all/per-side/color), number formats (thousands/%/currency/date/scientific/accounting), and data (value/type/formula/link/locked/merge)
@@ -136,6 +232,10 @@ python pictures/pictures-basic.py            # picture src/crop/rotation/links (
 - Slide / shape construction
 - Morph transitions and animations
 - Video and 3D model embedding
+<<<<<<< HEAD
+=======
+- Mermaid diagrams — `render=native` (editable flowchart / sequence shapes + connectors) and `render=image` (full-fidelity PNG via mermaid.js, covering every mermaid type); `mermaid` / `text` / `dsl` / `src` source, placement box, `get` / `set` / `remove` the whole diagram as one group
+>>>>>>> upstream/main
 - Native chart examples (column, bar, line, pie, doughnut, area, scatter, bubble, radar, stock, combo, waterfall, 3D, advanced)
 - Tables — basic, built-in styles, merged cells, borders, row/column ops, real-world financial deck
 - Slide transitions — all 59 schema tokens covered across 9 trios: basic, directional, shape, band, dynamic 3D (p14), modern (p15 — Page Curl, Airplane, Origami, …), random, timing, and Morph

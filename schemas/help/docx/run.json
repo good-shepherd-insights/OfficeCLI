@@ -2,7 +2,13 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "run",
+<<<<<<< HEAD
   "elementAliases": ["r"],
+=======
+  "elementAliases": [
+    "r"
+  ],
+>>>>>>> upstream/main
   "parent": "paragraph",
   "operations": {
     "add": true,
@@ -18,7 +24,11 @@
       "/body/p[N]/r[N]"
     ]
   },
+<<<<<<< HEAD
   "note": "effective.* keys (effective.size, effective.bold, effective.color, ...) are read-only inheritance-resolved values: the run does not set the property directly, but resolves it by walking the run/paragraph style chain up to docDefaults. Each carries a paired effective.X.src pointer (e.g. \"/styles/Heading1\" or \"/docDefaults\") so callers can locate the writing layer. effective.* never appears when the run has the corresponding direct value — direct always wins.",
+=======
+  "note": "effective.* keys (effective.size, effective.bold, effective.color, ...) are read-only inheritance-resolved values: the run does not set the property directly, but resolves it by walking the run/paragraph style chain up to docDefaults. Each carries a paired effective.X.src pointer (e.g. \"/styles/Heading1\" or \"/docDefaults\") so callers can locate the writing layer. effective.* never appears when the run has the corresponding direct value — direct always wins. Run-level formatting can also be applied by character offset without addressing individual runs: `set <paragraph-or-body-path> --prop range=START:END --prop bold=true` (0-based, half-open; several disjoint spans as `range=0:5,12:15`) splits the run(s) covering each span and applies the format props to just that slice — the offset-based sibling of `find` (which locates the span by text). Offsets are relative to the concatenated run text of the path scope: a /body/p[N] path is that paragraph, /body spans every paragraph. Mind the two bases: the path `[N]` positions are 1-based (XPath-style, `/p[2]` = 2nd paragraph); range START:END are 0-based half-open (`range=0:1` = first character). `find` and `range` are mutually exclusive on one call; `range` is run-level formatting only (no text=/replace/revision — use find or an explicit run path for those).",
+>>>>>>> upstream/main
   "extends": [
     "_shared/run",
     "_shared/run.docx-pptx",
@@ -423,6 +433,34 @@
       "readback": "n/a (surfaces as superscript/subscript flag)",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "kern": {
+      "type": "int",
+      "description": "kerning activation threshold (<w:kern w:val=.../>): font sizes at or above this point size get automatic pair kerning. Value is an integer in half-points (28 = 14pt threshold); a 'pt' suffix is NOT accepted (unlike pptx kern). Valid range 0-3277 half-points (~164pt); an empty value clears it.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop kern=28"
+      ],
+      "readback": "integer half-points, e.g. \"28\"",
+      "enforcement": "report"
+    },
+    "position": {
+      "type": "length",
+      "description": "vertical baseline shift (<w:position w:val=.../>): positive raises text above the baseline, negative lowers it, 0 = baseline. Keeps the full glyph size (distinct from vertAlign=super|sub, which also shrinks the glyph). Accepts a 'pt' value (e.g. 6pt) or a bare integer in half-points; an empty value clears it.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop position=6pt",
+        "--prop position=-3pt"
+      ],
+      "readback": "unit-qualified pt, e.g. \"6pt\"",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "charSpacing": {
       "type": "length",
       "description": "character spacing (letter spacing) in points. Stored as twips × 20.",
@@ -442,20 +480,78 @@
       "readback": "unit-qualified pt, e.g. \"1pt\"",
       "enforcement": "report"
     },
+<<<<<<< HEAD
     "shading": {
       "type": "color",
       "description": "background shading color or '<pattern>;<fill>;<color>' triplet.",
       "aliases": [
+=======
+    "fill": {
+      "type": "color",
+      "description": "run background shading (w:shd @fill). A solid background reads back as this canonical key (matching table cells and paragraphs). Accepts a solid color — hex ('FF0000'), '#'-prefixed hex ('#FF0000'), named color ('red'), or rgb(...) notation. For a true pattern shading (pct*/stripe/cross) or a foreground pattern color, pass the legacy `shading`/`shd` triplet form 'PATTERN;FILL[;COLOR]' instead; those read back via the shading.* detail keys. Distinct from `highlight` (w:highlight marker) and the w14 text shadow.",
+      "aliases": [
+        "shading",
+>>>>>>> upstream/main
         "shd"
       ],
       "add": true,
       "set": true,
       "get": true,
       "examples": [
+<<<<<<< HEAD
         "--prop shading=FFFF00",
         "--prop shd=clear;FFFF00;auto"
       ],
       "readback": "fill #RRGGBB",
+=======
+        "--prop fill=FFFF00",
+        "--prop fill=#FF0000",
+        "--prop shd=\"pct25;FF0000;0000FF\""
+      ],
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "report"
+    },
+    "shading": {
+      "type": "color",
+      "description": "background shading color or '<pattern>;<fill>;<color>' triplet. Set-side alias for `fill`; a solid background reads back via the canonical `fill` key.",
+      "aliases": [
+        "shd"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop shading=FFFF00",
+        "--prop shd=clear;FFFF00;auto"
+      ],
+      "enforcement": "report"
+    },
+    "shading.val": {
+      "type": "string",
+      "description": "shading pattern value. Emitted on get only for a true pattern shading (pct*/stripe/cross); a solid background reads back as the canonical `fill` key. Add/Set use `fill`/`shading`/`shd`.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "shading pattern token (pattern shading only)",
+      "enforcement": "report"
+    },
+    "shading.fill": {
+      "type": "string",
+      "description": "shading fill color hex. Emitted on get only for a true pattern shading; a solid background reads back as the canonical `fill` key.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "#RRGGBB (pattern shading only)",
+      "enforcement": "report"
+    },
+    "shading.color": {
+      "type": "string",
+      "description": "shading foreground (pattern) color hex. Pattern shading only.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "#RRGGBB (pattern shading only)",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "textOutline": {
@@ -712,6 +808,72 @@
       "description": "individual rFonts @hAnsi slot readback. On Add/Set use the unified `font.latin` key (which writes both ascii + hAnsi).",
       "readback": "font family name",
       "enforcement": "report"
+<<<<<<< HEAD
+=======
+    },
+    "color": {
+      "type": "color",
+      "aliases": [
+        "font.color"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop color=#FF0000",
+        "--prop color=accent1"
+      ],
+      "readback": "#RRGGBB uppercase, or bare scheme name (accent1). Theme-linked colors (e.g. hyperlink runs) read back as '#RRGGBB;themeColor=NAME' — the compound form is accepted back by add/set and preserves the w:themeColor linkage on round-trip.",
+      "enforcement": "strict"
+    },
+    "em": {
+      "type": "string",
+      "description": "East-Asian emphasis mark on the run: none / dot / comma / circle / underDot (w:em).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "aliases": [
+        "emphasis",
+        "emphasisMark"
+      ],
+      "examples": [
+        "--prop em=dot"
+      ],
+      "enforcement": "report"
+    },
+    "bdr": {
+      "type": "string",
+      "description": "Run border: style;size;color, same grammar as paragraph pbdr (w:bdr).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop bdr=\"single;4;#FF0000\""
+      ],
+      "enforcement": "report"
+    },
+    "specVanish": {
+      "type": "boolean",
+      "description": "Always hide the run (special hidden, e.g. a hidden paragraph mark) — w:specVanish.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop specVanish=true"
+      ],
+      "enforcement": "report"
+    },
+    "snapToGrid": {
+      "type": "boolean",
+      "description": "Snap this run to the document grid (w:snapToGrid).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop snapToGrid=false"
+      ],
+      "enforcement": "report"
+>>>>>>> upstream/main
     }
   }
 }

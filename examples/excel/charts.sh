@@ -3,8 +3,14 @@
 # Contains 8 chart types: combo chart, 3D bar, scatter+trendline, 3D pie, bubble, stock OHLC, filled radar, multi-ring doughnut
 # 4 Sheets: monthly sales, analysis data, stock data, capability assessment
 
+<<<<<<< HEAD
 set -e
 
+=======
+# NOTE: intentionally NO `set -e`. Like the SDK twin's doc.batch, this script
+# tolerates forward-compat 'UNSUPPORTED props' warnings (officecli exit 2) and
+# keeps building so the full document is produced.
+>>>>>>> upstream/main
 XLSX="$(dirname "$0")/charts.xlsx"
 echo ""
 echo "=========================================="
@@ -145,6 +151,7 @@ done
 echo "  Done: Sheet4 data"
 
 ###############################################################################
+<<<<<<< HEAD
 # Chart 1: Combo chart (bar + line dual axis)
 ###############################################################################
 echo "  -> Chart 1: Combo chart (bar + line dual axis)"
@@ -515,6 +522,73 @@ echo "  -> Chart 5: Bubble chart"
 
 CHART5_REL=$(officecli add-part "$XLSX" /Analysis --type chart 2>&1 | grep -o 'relId=[^ ]*' | cut -d= -f2)
 
+=======
+# Charts 1-8 — HIGH-LEVEL API (`officecli add --type chart`).
+# Each chart is one `add` call: chartType + a cell dataRange (or inline data for
+# the pie/doughnut, whose source cells aren't contiguous) + styling props
+# (title, colors, legend, 3D view, trendline, secondary axis, radar fill, stock
+# up/down bars). Positioned with x/y/width/height in cell units.
+# Exception: Chart 5 (bubble) stays on raw-set — the high-level command can't yet
+# map a dataRange to a single x/y/size series (see its note below).
+###############################################################################
+
+# Chart 1: Combo — regional sales columns + YoY-growth line on a secondary axis.
+echo "  -> Chart 1: Combo chart (columns + secondary-axis line)"
+officecli add "$XLSX" /Sheet1 --type chart \
+  --prop chartType=combo \
+  --prop title="Monthly Sales and YoY Growth Trend" \
+  --prop dataRange=Sheet1!A1:F13 \
+  --prop combotypes=column,column,column,column,line \
+  --prop secondaryaxis=5 \
+  --prop colors=2E75B6,9DC3E6,BDD7EE,C55A11,FF0000 \
+  --prop legend=b --prop axisTitle="Sales (10K)" \
+  --prop x=7 --prop y=0 --prop width=11 --prop height=18
+
+# Chart 2: 3D clustered column — regional comparison.
+echo "  -> Chart 2: 3D bar chart"
+officecli add "$XLSX" /Sheet1 --type chart \
+  --prop chartType=column3d \
+  --prop title="3D Regional Sales Comparison" \
+  --prop dataRange=Sheet1!A1:D13 \
+  --prop view3d=15,20,30 \
+  --prop colors=4472C4,ED7D31,70AD47 \
+  --prop legend=b \
+  --prop x=7 --prop y=19 --prop width=11 --prop height=18
+
+# Chart 3: Scatter + linear trendline — ad spend vs sales.
+echo "  -> Chart 3: Scatter plot + trendline"
+officecli add "$XLSX" /Analysis --type chart \
+  --prop chartType=scatter \
+  --prop title="Ad Spend vs Sales Correlation" \
+  --prop dataRange=Analysis!A1:B16 \
+  --prop trendline=linear \
+  --prop colors=7030A0 \
+  --prop catTitle="Ad Spend (10K)" --prop axisTitle="Sales (10K)" \
+  --prop legend=b \
+  --prop x=5 --prop y=0 --prop width=11 --prop height=18
+
+# Chart 4: Exploded 3D pie — July regional share. Values live in one row
+# (B8:D8) with category labels in another (B1:D1), so they're passed inline.
+echo "  -> Chart 4: 3D pie chart (exploded)"
+officecli add "$XLSX" /Sheet1 --type chart \
+  --prop chartType=pie3d \
+  --prop title="July Regional Sales Share (3D)" \
+  --prop categories="East Sales,South Sales,North Sales" \
+  --prop series1="Jul:195,168,145" \
+  --prop explosion=10 --prop view3d=30,70,30 \
+  --prop dataLabels=percent \
+  --prop colors=1F4E79,C55A11,548235 \
+  --prop legend=b \
+  --prop x=19 --prop y=0 --prop width=9 --prop height=18
+
+# Chart 5: Bubble — ad spend (x) vs sales (y), bubble size = market share.
+# KEPT ON raw-set: the high-level `add --type chart --prop chartType=bubble`
+# reads a multi-column dataRange as several y-series sharing column A as x — it
+# cannot map three columns to a single x / y / size series (multi-point bubble).
+# Until that mapping exists, the faithful single-series bubble needs raw XML.
+echo "  -> Chart 5: Bubble chart (raw-set — see note)"
+CHART5_REL=$(officecli add-part "$XLSX" /Analysis --type chart 2>&1 | grep -o 'relId=[^ ]*' | cut -d= -f2)
+>>>>>>> upstream/main
 officecli raw-set "$XLSX" '/Analysis/chart[2]' --xpath "/c:chartSpace" --action replace --xml '
 <c:chartSpace>
   <c:chart>
@@ -535,7 +609,10 @@ officecli raw-set "$XLSX" '/Analysis/chart[2]' --xpath "/c:chartSpace" --action 
           <c:spPr>
             <a:solidFill><a:srgbClr val="7030A0"><a:alpha val="60000" /></a:srgbClr></a:solidFill>
             <a:ln w="19050"><a:solidFill><a:srgbClr val="7030A0" /></a:solidFill></a:ln>
+<<<<<<< HEAD
             <a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000"><a:srgbClr val="000000"><a:alpha val="25000" /></a:srgbClr></a:outerShdw></a:effectLst>
+=======
+>>>>>>> upstream/main
           </c:spPr>
           <c:xVal><c:numRef><c:f>Analysis!$A$2:$A$16</c:f></c:numRef></c:xVal>
           <c:yVal><c:numRef><c:f>Analysis!$B$2:$B$16</c:f></c:numRef></c:yVal>
@@ -559,7 +636,10 @@ officecli raw-set "$XLSX" '/Analysis/chart[2]' --xpath "/c:chartSpace" --action 
     <c:plotVisOnly val="1" />
   </c:chart>
 </c:chartSpace>'
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/main
 officecli raw-set "$XLSX" '/Analysis/drawing' --xpath "//xdr:wsDr" --action append --xml "
 <xdr:twoCellAnchor>
   <xdr:from><xdr:col>5</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>19</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
@@ -572,6 +652,7 @@ officecli raw-set "$XLSX" '/Analysis/drawing' --xpath "//xdr:wsDr" --action appe
   <xdr:clientData />
 </xdr:twoCellAnchor>"
 
+<<<<<<< HEAD
 echo "  Done: Chart 5 bubble chart"
 
 ###############################################################################
@@ -811,6 +892,42 @@ officecli raw-set "$XLSX" '/Sheet1/drawing' --xpath "//xdr:wsDr" --action append
 </xdr:twoCellAnchor>"
 
 echo "  Done: Chart 8 multi-ring doughnut chart"
+=======
+# Chart 6: Stock OHLC candlestick — hi-low lines + up/down bars (red up, green down).
+echo "  -> Chart 6: Stock OHLC chart"
+officecli add "$XLSX" /StockData --type chart \
+  --prop chartType=stock \
+  --prop title="Stock Candlestick Chart (OHLC)" \
+  --prop dataRange=StockData!A1:E21 \
+  --prop hilowlines=true \
+  --prop updownbars=100:FF0000:00B050 \
+  --prop legend=b \
+  --prop x=7 --prop y=0 --prop width=13 --prop height=22
+
+# Chart 7: Filled radar — product capability comparison.
+echo "  -> Chart 7: Filled radar chart"
+officecli add "$XLSX" /Assessment --type chart \
+  --prop chartType=radar --prop radarStyle=filled \
+  --prop title="Product Capability Radar Comparison" \
+  --prop dataRange=Assessment!A1:D9 \
+  --prop colors=4472C4,00B050,FFC000 \
+  --prop legend=b \
+  --prop x=5 --prop y=0 --prop width=11 --prop height=20
+
+# Chart 8: Multi-ring doughnut — Aug vs Dec regional share (two rings). The two
+# source rows aren't adjacent, so the ring values are passed inline.
+echo "  -> Chart 8: Multi-ring doughnut chart"
+officecli add "$XLSX" /Sheet1 --type chart \
+  --prop chartType=doughnut \
+  --prop title="Aug vs Dec Regional Sales Multi-Ring" \
+  --prop categories="East,South,North" \
+  --prop series1="Aug:210,175,152" \
+  --prop series2="Dec:198,158,142" \
+  --prop dataLabels=percent \
+  --prop colors=1F4E79,C55A11,548235 \
+  --prop legend=b \
+  --prop x=19 --prop y=19 --prop width=9 --prop height=18
+>>>>>>> upstream/main
 
 ###############################################################################
 # Validation
@@ -826,4 +943,8 @@ officecli view "$XLSX" outline
 echo ""
 ls -lh "$XLSX"
 echo ""
+<<<<<<< HEAD
 echo "All done! 8 chart types generated"
+=======
+echo "All done! 8 chart types generated"
+>>>>>>> upstream/main

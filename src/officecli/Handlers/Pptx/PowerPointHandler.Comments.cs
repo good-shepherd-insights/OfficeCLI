@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -77,7 +81,11 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
 
         var text = properties.GetValueOrDefault("text") ?? properties.GetValueOrDefault("comment") ?? "";
         XmlTextValidator.ValidateOrThrow(text, "text");
@@ -151,7 +159,11 @@ public partial class PowerPointHandler
         }
         commentsPart.CommentList.Save();
 
+<<<<<<< HEAD
         var addedIdx = commentsPart.CommentList.Elements<Comment>().ToList().IndexOf(comment) + 1;
+=======
+        var addedIdx = PathIndex.FromArrayIndex(commentsPart.CommentList.Elements<Comment>().ToList().IndexOf(comment));
+>>>>>>> upstream/main
         return $"/slide[{slideIdx}]/comment[{addedIdx}]";
     }
 
@@ -212,7 +224,11 @@ public partial class PowerPointHandler
         if (!int.TryParse(m.Groups[2].Value, out var commentIdx)) return null;
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count) return null;
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var commentsPart = slidePart.SlideCommentsPart;
         if (commentsPart?.CommentList == null) return null;
         var comments = commentsPart.CommentList.Elements<Comment>().ToList();

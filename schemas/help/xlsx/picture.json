@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "xlsx",
   "element": "picture",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["image", "img"],
+>>>>>>> upstream/main
   "parent": "sheet",
   "operations": {
     "add": true,
@@ -49,9 +53,17 @@
       "description": "Mark the picture as decorative (a16:decorative ext under cNvPr). Excludes it from screen-reader alt-text traversal.",
       "add": true,
       "set": false,
+<<<<<<< HEAD
       "examples": [
         "--prop decorative=true"
       ],
+=======
+      "get": true,
+      "examples": [
+        "--prop decorative=true"
+      ],
+      "readback": "true when the picture carries the a16:decorative flag",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "rotation": {
@@ -59,9 +71,17 @@
       "description": "Rotation in degrees (positive = clockwise). Stored OOXML-internal as 60000ths of a degree on Transform2D @rot.",
       "add": true,
       "set": true,
+<<<<<<< HEAD
       "examples": [
         "--prop rotation=45"
       ],
+=======
+      "get": true,
+      "examples": [
+        "--prop rotation=45"
+      ],
+      "readback": "rotation in degrees (rounded)",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "flip": {
@@ -69,10 +89,18 @@
       "description": "Compact flip token: 'h' / 'v' / 'both' / 'hv' / 'vh' / 'horizontal' / 'vertical'.",
       "add": true,
       "set": true,
+<<<<<<< HEAD
+=======
+      "get": true,
+>>>>>>> upstream/main
       "examples": [
         "--prop flip=h",
         "--prop flip=both"
       ],
+<<<<<<< HEAD
+=======
+      "readback": "h / v / both",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "flipH": {
@@ -110,10 +138,18 @@
       "description": "Picture opacity. Accepts percent (50, '50%') or fraction (0.5). 100 / 100% / 1.0 = fully opaque.",
       "add": true,
       "set": false,
+<<<<<<< HEAD
+=======
+      "get": true,
+>>>>>>> upstream/main
       "examples": [
         "--prop opacity=50",
         "--prop opacity=0.5"
       ],
+<<<<<<< HEAD
+=======
+      "readback": "integer percent (0..99); key omitted when fully opaque",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "hyperlink": {

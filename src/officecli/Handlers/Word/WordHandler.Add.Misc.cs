@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -107,12 +111,44 @@ public partial class WordHandler
         var commentId = (commentsPart.Comments.Elements<Comment>()
             .Select(c => int.TryParse(c.Id?.Value, out var id) ? id : 0)
             .DefaultIfEmpty(0).Max() + 1).ToString();
+        // BUG-DUMP-H103: honor an explicit source comment id when it is free.
+        // The dump emitter passes the source id on a definition-only comment whose
+        // <w:commentRangeStart/End/Reference> markers are carried verbatim by a
+        // raw-passed paragraph (a cross-paragraph TOC field span) — reusing that id
+        // lets the verbatim markers resolve to this definition. Falls back to the
+        // fresh max+1 when the id is absent or already taken (mirrors the bookmark
+        // R47-5 raw-set id-reuse). `id` is consumed here so it is not flagged
+        // unsupported below.
+        if ((properties.TryGetValue("id", out var provId)
+                || properties.TryGetValue("commentId", out provId))
+            && int.TryParse(provId, out var provIdN) && provIdN >= 0
+            && !commentsPart.Comments.Elements<Comment>().Any(c => c.Id?.Value == provId))
+            commentId = provId;
+        properties.Remove("id");
+        properties.Remove("commentId");
 
         // BUG-R6B(BUG1): empty text -> empty paragraph (no run); non-empty ->
         // a run carrying the text. Both are valid OOXML comment bodies.
+<<<<<<< HEAD
         var commentBody = string.IsNullOrEmpty(commentText)
             ? new Paragraph()
             : new Paragraph(new Run(new Text(commentText) { Space = SpaceProcessingModeValues.Preserve }));
+=======
+        // BUG-DUMP-NOTE-TAB: build the seed run via AppendTextWithBreaks so a tab /
+        // newline in the comment text becomes a structural <w:tab/> / <w:br/> rather
+        // than a literal U+0009/U+000A glyph (mirrors `add r` and AddFootnote).
+        Paragraph commentBody;
+        if (string.IsNullOrEmpty(commentText))
+            commentBody = new Paragraph();
+        else
+        {
+            var cmtRun = new Run();
+            AppendTextWithBreaks(cmtRun, commentText);
+            // BUG-DUMP-NOTE-DEL: honor track-change attribution on the comment seed
+            // run too (no-op when absent), mirroring the footnote/endnote seed.
+            commentBody = new Paragraph(ApplyNoteSeedRevision(cmtRun, properties));
+        }
+>>>>>>> upstream/main
         // BUG-DUMP-R40-2: a Word-authored comment body opens with the comment
         // reference mark run — <w:r><w:rPr><w:rStyle w:val="CommentReference"/>
         // </w:rPr><w:annotationRef/></w:r>. The dump emitter rides this run on
@@ -161,9 +197,76 @@ public partial class WordHandler
         // Apply paragraph-level / run-level format keys (direction, font, size, etc.)
         // Mirrors R2-2 footnote/header fix — the same vocabulary should work
         // on comment bodies as on footnote/endnote bodies.
+<<<<<<< HEAD
+=======
+        // Reply threading (w15:paraIdParent) + resolved-state (w15:done) live in
+        // word/commentsExtended.xml, keyed by the comment paragraphs' w14:paraId.
+        // Consume parentId/done here (translating the parent's w:id -> its paraId)
+        // and remove them so the unsupported-forwarding below doesn't flag them.
+        if ((properties.TryGetValue("parentId", out var parentIdRaw)
+             || properties.TryGetValue("parentid", out parentIdRaw))
+            && !string.IsNullOrEmpty(parentIdRaw))
+        {
+            var parentParaId = GetCommentFirstParaId(parentIdRaw)
+                ?? throw new ArgumentException(
+                    $"parentId={parentIdRaw}: no comment with that id to reply to.");
+            if (string.IsNullOrEmpty(commentBody.ParagraphId?.Value)) AssignParaId(commentBody);
+            // Word writes a commentEx for every comment; ensure the parent's
+            // thread-root entry exists, then link this reply to it.
+            UpsertCommentEx(parentParaId, null, null);
+            UpsertCommentEx(commentBody.ParagraphId!.Value!, parentParaId, false);
+        }
+        properties.Remove("parentId");
+        properties.Remove("parentid");
+        if ((properties.TryGetValue("done", out var addDoneRaw)
+             || properties.TryGetValue("resolved", out addDoneRaw)))
+        {
+            if (string.IsNullOrEmpty(commentBody.ParagraphId?.Value)) AssignParaId(commentBody);
+            UpsertCommentEx(commentBody.ParagraphId!.Value!, null, IsTruthy(addDoneRaw));
+        }
+        properties.Remove("done");
+        properties.Remove("resolved");
+
+>>>>>>> upstream/main
         var _commentUnsupported = new List<string>();
         ApplyCommentFormatKeys(commentEl, properties, _commentUnsupported);
         commentsPart.Comments.Save();
+
+        // Surface genuinely-unsupported props through the same channel every
+        // other `add` type uses (LastAddUnsupportedProps -> CLI "UNSUPPORTED
+        // props:" WARNING). AddComment used to discard _commentUnsupported, so
+        // an unknown key (a typo, or a not-yet-supported feature like
+        // `parentId` reply-threading / `done` resolution) was swallowed
+        // silently — inconsistent with `add paragraph`, where ApplyCommentFormatKeys
+        // sees the structural keys AddComment consumes itself (rangeOpen,
+        // pointRef, runStart, …) and would otherwise flag them as false
+        // positives; exclude that set, forward the rest.
+        foreach (var key in _commentUnsupported)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "text": case "author": case "initials": case "date":
+                case "annotationref": case "rstyle":
+                case "commentparaid": case "pointref":
+                case "range": case "rangeopen": case "rangeend":
+                case "runstart": case "runend":
+                    continue;
+                default:
+                    LastAddUnsupportedProps.Add(key);
+                    break;
+            }
+        }
+
+        // BUG-DUMP-H103: definition-only emit (`range=none`). The comment's range
+        // start/end + reference run already exist in the document body, carried
+        // verbatim by a raw-passed paragraph (a cross-paragraph TOC field span)
+        // with this same (source) comment id. Placing typed markers here would
+        // duplicate the start under a fresh id and orphan the verbatim markers, so
+        // we create the definition only and leave anchoring to the verbatim markers.
+        if ((properties.TryGetValue("range", out var rangeNoneRaw)
+                || properties.TryGetValue("Range", out rangeNoneRaw))
+            && string.Equals(rangeNoneRaw, "none", StringComparison.OrdinalIgnoreCase))
+            return $"/comments/comment[@id={commentId}]";
 
         var rangeStart = new CommentRangeStart { Id = commentId };
         var rangeEnd = new CommentRangeEnd { Id = commentId };
@@ -290,6 +393,70 @@ public partial class WordHandler
         return resultPath;
     }
 
+    // P2 (bookmarkEnd typed support): place a STANDALONE <w:bookmarkEnd w:id=N>
+    // at an arbitrary position. `add bookmark --prop end=true` only closes a
+    // start that the current batch opened by NAME; a code generator replaying a
+    // dump often has just the id-keyed end node (start added by a separate op,
+    // or the end sits across a structural boundary the name-match can't reach),
+    // and previously fell through to AddDefault (schema-invalid unnamespaced
+    // attrs). This is the id-explicit counterpart to AddBookmark's end=true
+    // branch. `id` is required (the bookmark id to close); `name` optionally
+    // resolves the id from an existing start. EnsureBookmarkIds pairs it to the
+    // matching start at flush and never deletes an unmatched end.
+    private string AddBookmarkEnd(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        // Cell redirect mirrors AddBookmark: a bookmarkEnd is inline content, so
+        // land it in the cell's first paragraph (cells only accept block-level
+        // children), keeping the returned path round-trippable.
+        if (parent is TableCell tc)
+        {
+            var firstPara = tc.Elements<Paragraph>().FirstOrDefault();
+            if (firstPara == null)
+            {
+                firstPara = new Paragraph();
+                AssignParaId(firstPara);
+                tc.AppendChild(firstPara);
+            }
+            var paraIdx = PathIndex.FromArrayIndex(tc.Elements<Paragraph>().ToList().IndexOf(firstPara));
+            parent = firstPara;
+            parentPath = $"{parentPath}/{BuildParaPathSegment(firstPara, paraIdx)}";
+            index = null;
+        }
+
+        var idVal = properties.GetValueOrDefault("id", "");
+        var name = properties.GetValueOrDefault("name", "");
+        if (string.IsNullOrEmpty(idVal) && !string.IsNullOrEmpty(name))
+        {
+            // Resolve the id from the last same-name start that has no end yet
+            // (LIFO close for nested same-name bookmarks), falling back to the
+            // last named start — mirrors AddBookmark's end=true selection.
+            var body = _doc.MainDocumentPart?.Document?.Body;
+            var namedStarts = body?.Descendants<BookmarkStart>()
+                .Where(bs => string.Equals(bs.Name?.Value, name, StringComparison.Ordinal) && bs.Id?.Value != null)
+                .ToList() ?? new List<BookmarkStart>();
+            var openStart = namedStarts
+                .Where(bs => !(body?.Descendants<BookmarkEnd>().Any(be => be.Id?.Value == bs.Id!.Value) ?? false))
+                .LastOrDefault() ?? namedStarts.LastOrDefault();
+            if (openStart == null)
+                throw new ArgumentException(
+                    $"bookmarkEnd by name '{name}' found no matching bookmarkStart. " +
+                    "Pass --prop id=N to place the end by explicit id, or add the start first.");
+            idVal = openStart.Id!.Value!;
+        }
+        if (string.IsNullOrEmpty(idVal))
+            throw new ArgumentException(
+                "bookmarkEnd requires --prop id=N (the bookmark id to close) or --prop name=NAME (to resolve the id from an existing start).");
+        if (!int.TryParse(idVal, out _))
+            throw new ArgumentException($"bookmarkEnd id must be an integer (got '{idVal}').");
+
+        var endOnly = new BookmarkEnd { Id = idVal };
+        if (parent is Paragraph endPara)
+            InsertIntoParagraph(endPara, new OpenXmlElement[] { endOnly }, index);
+        else
+            InsertAtIndexOrAppend(parent, endOnly, index);
+        return $"{parentPath}/bookmarkEnd[@id={idVal}]";
+    }
+
     private string AddBookmark(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
         var body = _doc.MainDocumentPart?.Document?.Body
@@ -309,7 +476,11 @@ public partial class WordHandler
                 AssignParaId(firstPara);
                 tc.AppendChild(firstPara);
             }
+<<<<<<< HEAD
             var paraIdx = tc.Elements<Paragraph>().ToList().IndexOf(firstPara) + 1;
+=======
+            var paraIdx = PathIndex.FromArrayIndex(tc.Elements<Paragraph>().ToList().IndexOf(firstPara));
+>>>>>>> upstream/main
             parent = firstPara;
             parentPath = $"{parentPath}/{BuildParaPathSegment(firstPara, paraIdx)}";
             // Drop --index — it referred to a position inside the cell, not
@@ -320,6 +491,14 @@ public partial class WordHandler
         var bkName = properties.GetValueOrDefault("name", "");
         if (string.IsNullOrEmpty(bkName))
             throw new ArgumentException("'name' property is required for bookmark");
+        // OOXML ST_Bookmark caps the name attribute at maxLength=40.
+        if (bkName.Length > 40)
+            throw new ArgumentException(
+                $"bookmark name exceeds OOXML maxLength=40 (got {bkName.Length} chars). Truncate the name.");
+        // XML 1.0 §2.2: reject illegal control chars, lone surrogates, and
+        // U+FFFE/FFFF noncharacters in the bookmark name. The shared helper
+        // raises an ArgumentException whose message contains the prop name.
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(bkName, "bookmark name");
 
         // BUG-DUMP-BMSPAN: `end=true` places ONLY a <w:bookmarkEnd> closing an
         // already-open <w:bookmarkStart> of the same name (the start was added
@@ -331,11 +510,33 @@ public partial class WordHandler
         // after the wrapped content in document order.
         if (IsTruthy(properties.GetValueOrDefault("end", "")))
         {
+<<<<<<< HEAD
             var openStart = body.Descendants<BookmarkStart>()
                 .Where(bs => string.Equals(bs.Name?.Value, bkName, StringComparison.Ordinal)
                     && bs.Id?.Value != null
                     && !body.Descendants<BookmarkEnd>().Any(be => be.Id?.Value == bs.Id!.Value))
                 .LastOrDefault();
+=======
+            var namedStarts = body.Descendants<BookmarkStart>()
+                .Where(bs => string.Equals(bs.Name?.Value, bkName, StringComparison.Ordinal)
+                    && bs.Id?.Value != null)
+                .ToList();
+            // Prefer an un-closed start (no BookmarkEnd shares its id yet) so
+            // nested same-name bookmarks close LIFO. BUG-DUMP-R47-7: fall back to
+            // the last named start when that strict filter finds nothing. With
+            // span-open id forwarding (BUG-DUMP-R47-5) a start can carry a SOURCE
+            // id that transiently collides with another bookmark's end, so the
+            // strict "no end with this id" probe wrongly judges the start closed
+            // and the end=true op threw — dropping the end and leaving the
+            // bookmark range unclosed (every TOC PAGEREF to it then rendered
+            // "Error! Bookmark not defined"). Creating the end with a colliding id
+            // is safe: EnsureBookmarkIds renumbers the matched start+end pair as a
+            // unit at flush, so no duplicate survives.
+            var openStart = namedStarts
+                .Where(bs => !body.Descendants<BookmarkEnd>().Any(be => be.Id?.Value == bs.Id!.Value))
+                .LastOrDefault()
+                ?? namedStarts.LastOrDefault();
+>>>>>>> upstream/main
             if (openStart == null)
                 throw new ArgumentException(
                     $"bookmark end for '{bkName}' has no matching open bookmarkStart " +
@@ -350,6 +551,7 @@ public partial class WordHandler
 
         bool spanOpen = IsTruthy(properties.GetValueOrDefault("open", ""));
 
+<<<<<<< HEAD
         if (bkName.Any(c => c == '/' || c == '[' || c == ']'))
             throw new ArgumentException(
                 $"Bookmark name '{bkName}' contains path-special characters " +
@@ -364,6 +566,30 @@ public partial class WordHandler
         // attribute selectors ambiguous. Preserve the source name and warn,
         // mirroring the duplicate-bookmark-name allow+warn handling below.
         if (bkName.Any(char.IsWhiteSpace) || bkName[0] == '@' || bkName[0] == '\'' || bkName.Contains('"'))
+=======
+        // BUG-R3 (dump emits a name its own batch rejects): OOXML's w:name
+        // permits characters the CLI path/selector grammar treats specially —
+        // whitespace, quote/@, AND '/', '[', ']'. Real documents carry such
+        // names: legal-doc and HTML-export generators auto-name TOC-anchor
+        // bookmarks after heading text, e.g. "Review/Analysis" or
+        // "Revenues/Receivables/Unearned_Revenues". A hard reject broke
+        // dump→batch round-trip — the dumped `add bookmark name="…"` failed on
+        // replay, dropping the bookmark and breaking every REF/TOC field (which
+        // reference it by name, not by CLI selector) and PAGEREF page numbers.
+        // Preserve the source name verbatim and warn instead, mirroring the
+        // duplicate-bookmark-name allow+warn handling below. The only cost is
+        // that such a bookmark can't be addressed by a CLI path selector later
+        // (REF/TOC resolution in Word is unaffected).
+        if (bkName.Any(c => c == '/' || c == '[' || c == ']'))
+        {
+            LastAddWarnings.Add(
+                $"bookmark name '{bkName}' contains path-special characters " +
+                "('/', '[', ']') — kept (OOXML allows it, and REF/TOC fields " +
+                "reference it by name), but it cannot be addressed via a CLI " +
+                "path selector.");
+        }
+        else if (bkName.Any(char.IsWhiteSpace) || bkName[0] == '@' || bkName[0] == '\'' || bkName.Contains('"'))
+>>>>>>> upstream/main
         {
             LastAddWarnings.Add(
                 $"bookmark name '{bkName}' contains whitespace or quote/@ chars — " +
@@ -379,7 +605,19 @@ public partial class WordHandler
         // requires; only the display name repeats. Warn instead of failing:
         // /bookmark[@name=X] then resolves to the first match, but the bookmark
         // is preserved. (Mirrors the duplicate form-field-name handling.)
+<<<<<<< HEAD
         var existingStarts = body.Descendants<BookmarkStart>().ToList();
+=======
+        // Scan every part that can hold a bookmark (body + headers + footers +
+        // footnotes + endnotes + comments), not just body — a body-only scan
+        // allocated a colliding max+1 when a bookmark already lived in a
+        // header/footer/note, and missed cross-part name duplicates. Mirrors
+        // EnsureBookmarkIds' scan scope so allocator and dedup agree.
+        var mainForBk = _doc.MainDocumentPart;
+        var existingStarts = mainForBk != null
+            ? EnumerateContentRoots(mainForBk).SelectMany(r => r.Descendants<BookmarkStart>()).ToList()
+            : body.Descendants<BookmarkStart>().ToList();
+>>>>>>> upstream/main
         if (existingStarts.Any(b => string.Equals(b.Name?.Value, bkName, StringComparison.Ordinal)))
         {
             LastAddWarnings.Add(
@@ -389,7 +627,24 @@ public partial class WordHandler
 
         var existingIds = existingStarts
             .Select(b => int.TryParse(b.Id?.Value, out var id) ? id : 0);
-        var bkId = (existingIds.Any() ? existingIds.Max() + 1 : 1).ToString();
+        // BUG-DUMP-R47-5: a content-WRAPPING (open=true) bookmark whose matching
+        // <w:bookmarkEnd> is preserved verbatim by a raw-set (e.g. the end lives
+        // inside a TOC <w:sdt> block raw-set as one unit, while the start is a
+        // body-direct marker emitted via `add bookmark open=true`) must reuse
+        // the SOURCE id so the add-side start and the raw-set-side end pair up.
+        // Allocating a fresh max+1 here left the start unpaired (its end kept the
+        // source id) — producing a duplicate/orphan w:id the validator rejects
+        // and a broken bookmark range. EnsureBookmarkIds dedupes any residual
+        // collision (renumbering the matched start+end pair as a unit), so honoring
+        // the source id is safe. Only fires for the open=true path; zero-length
+        // bookmarks still allocate fresh (start+end are created together here).
+        string bkId;
+        if (IsTruthy(properties.GetValueOrDefault("open", ""))
+            && properties.TryGetValue("id", out var providedBkId)
+            && !string.IsNullOrEmpty(providedBkId))
+            bkId = providedBkId;
+        else
+            bkId = (existingIds.Any() ? existingIds.Max() + 1 : 1).ToString();
 
         var bookmarkStart = new BookmarkStart { Id = bkId, Name = bkName };
         var bookmarkEnd = new BookmarkEnd { Id = bkId };
@@ -409,6 +664,7 @@ public partial class WordHandler
             && int.TryParse(colLastStr, out var colLastN))
             bookmarkStart.ColumnLast = colLastN;
 
+<<<<<<< HEAD
         // BUG-DUMP10-04: optional endPara offset (>0) defers BookmarkEnd
         // placement to a later paragraph in the same body so multi-
         // paragraph bookmark spans round-trip through dump→batch. Default
@@ -418,6 +674,31 @@ public partial class WordHandler
                 || properties.TryGetValue("endpara", out bkEndStr))
             && int.TryParse(bkEndStr, out var bkEndN) && bkEndN > 0)
         {
+=======
+        // BUG-DUMP-BMDISPLACED: re-stamp w:displacedByCustomXml ("next"/"prev")
+        // on a bookmark adjacent to a custom-XML / SDT boundary. Dropping it
+        // (e.g. a TOC heading bookmark before the TOC <w:sdt>) shifted the
+        // bookmark across the boundary so PAGEREF/TOC entries to it rendered
+        // "Error! Bookmark not defined." BookmarkStartToNode surfaces it.
+        if (properties.TryGetValue("displacedByCustomXml", out var dbcxStr)
+            && !string.IsNullOrEmpty(dbcxStr))
+        {
+            if (dbcxStr.Equals("next", StringComparison.OrdinalIgnoreCase))
+                bookmarkStart.DisplacedByCustomXml = DisplacedByCustomXmlValues.Next;
+            else if (dbcxStr.Equals("prev", StringComparison.OrdinalIgnoreCase))
+                bookmarkStart.DisplacedByCustomXml = DisplacedByCustomXmlValues.Previous;
+        }
+
+        // BUG-DUMP10-04: optional endPara offset (>0) defers BookmarkEnd
+        // placement to a later paragraph in the same body so multi-
+        // paragraph bookmark spans round-trip through dump→batch. Default
+        // (0 / unset) keeps the End next to the Start as before.
+        int crossParaEndOffset = 0;
+        if ((properties.TryGetValue("endPara", out var bkEndStr)
+                || properties.TryGetValue("endpara", out bkEndStr))
+            && int.TryParse(bkEndStr, out var bkEndN) && bkEndN > 0)
+        {
+>>>>>>> upstream/main
             crossParaEndOffset = bkEndN;
         }
 
@@ -531,8 +812,13 @@ public partial class WordHandler
         // value when the raw name would otherwise be rejected so the returned
         // path is round-trippable via `get`/`add --after`.
         // BUG-R3 (dump emits a name its own batch rejects): a name with an
+<<<<<<< HEAD
         // embedded double-quote (legal in OOXML w:name, e.g. LibreOffice's
         // "Fast_math"_optimization) cannot be expressed as an attribute
+=======
+        // embedded double-quote (legal in OOXML w:name, e.g. a
+        // "Fast_math"_optimization name from some editors) cannot be expressed as an attribute
+>>>>>>> upstream/main
         // selector value in EITHER the bare or double-quoted form. The
         // bookmark itself is already in the document at this point; only the
         // navigable RETURN path can't carry the name. Fall back to a positional
@@ -546,14 +832,22 @@ public partial class WordHandler
                 $"bookmark name '{bkName}' contains an embedded double-quote — kept " +
                 "(OOXML allows it), but it cannot be addressed by /bookmark[@name=...]; " +
                 "use a positional bookmarkStart[N] selector instead.");
+<<<<<<< HEAD
             var pos = container.Descendants<BookmarkStart>().ToList().IndexOf(bookmarkStart) + 1;
+=======
+            var pos = PathIndex.FromArrayIndex(container.Descendants<BookmarkStart>().ToList().IndexOf(bookmarkStart));
+>>>>>>> upstream/main
             return $"bookmarkStart[{(pos > 0 ? pos : 1)}]";
         }
 
         string resultPath;
         if (wrappingPara != null)
         {
+<<<<<<< HEAD
             var wrapIdx = parent.Elements<Paragraph>().ToList().IndexOf(wrappingPara) + 1;
+=======
+            var wrapIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(wrappingPara));
+>>>>>>> upstream/main
             resultPath = $"{parentPath}/{BuildParaPathSegment(wrappingPara, wrapIdx)}/{BookmarkSelector(wrappingPara)}";
         }
         else
@@ -714,6 +1008,65 @@ public partial class WordHandler
         run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
     }
 
+    /// <summary>
+    /// Percent-encode characters disallowed in RFC 3986 URIs so the rel
+    /// target conforms to OPC requirements. ASCII unreserved + reserved chars
+    /// and already-encoded `%xx` sequences pass through; everything else
+    /// (non-ASCII, ASCII space, control chars, and the gen-delim outliers
+    /// `<>"{}|\^`+backtick) is percent-encoded as UTF-8 bytes. Used for
+    /// hyperlink relationship targets on both Add and Set paths.
+    /// </summary>
+    private static string PercentEncodeUri(string uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return uri;
+        var sb = new System.Text.StringBuilder(uri.Length + 16);
+        var bytes = new byte[4]; // max UTF-8 sequence
+        for (int i = 0; i < uri.Length; i++)
+        {
+            char c = uri[i];
+            if (c < 0x80 && IsUriSafe(c))
+            {
+                sb.Append(c);
+                continue;
+            }
+            // Non-safe ASCII (space, controls, "<>`{}|\^"…) → single-byte %xx.
+            if (c < 0x80)
+            {
+                sb.Append('%').Append(((byte)c).ToString("X2"));
+                continue;
+            }
+            // Surrogate pair → 4-byte UTF-8 sequence.
+            int codePoint;
+            if (char.IsHighSurrogate(c) && i + 1 < uri.Length && char.IsLowSurrogate(uri[i + 1]))
+            {
+                codePoint = char.ConvertToUtf32(c, uri[i + 1]);
+                i++;
+            }
+            else
+            {
+                codePoint = c;
+            }
+            int byteCount = System.Text.Encoding.UTF8.GetBytes(char.ConvertFromUtf32(codePoint), bytes);
+            for (int j = 0; j < byteCount; j++)
+                sb.Append('%').Append(bytes[j].ToString("X2"));
+        }
+        return sb.ToString();
+    }
+
+    // RFC 3986: unreserved + reserved chars + '%' (for already-encoded
+    // sequences). Anything not on this list inside the ASCII range needs
+    // percent-encoding. Tightening here also encodes 0x7F (DEL) and the
+    // "exclude" set "<>`{}|\^"\""
+    private static bool IsUriSafe(char c) =>
+        (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+        c == '-' || c == '.' || c == '_' || c == '~' ||      // unreserved
+        c == ':' || c == '/' || c == '?' || c == '#' ||      // gen-delims
+        c == '[' || c == ']' || c == '@' ||
+        c == '!' || c == '$' || c == '&' || c == '\'' ||     // sub-delims
+        c == '(' || c == ')' || c == '*' || c == '+' ||
+        c == ',' || c == ';' || c == '=' ||
+        c == '%';                                            // already-encoded passthrough
+
     private string AddHyperlink(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
         // CONSISTENCY(docx-hyperlink-canonical-url): canonical key is `url`
@@ -759,12 +1112,50 @@ public partial class WordHandler
             Uri? hlUri;
             if (hlIsFragment)
             {
+<<<<<<< HEAD
                 hlUri = new Uri(hlUrl!, UriKind.Relative);
+=======
+                // Internal bookmark targets must travel as w:anchor on the
+                // <w:hyperlink> element, not as a Target="#name" relationship
+                // — real Word rejects the latter as a corrupt file. Promote
+                // `url=#bookmark` to the anchor= path and skip relationship
+                // creation entirely.
+                if (!hasAnchor)
+                {
+                    hlAnchor = hlUrl!.Substring(1);
+                    hasAnchor = true;
+                }
+                hlUri = null;
+>>>>>>> upstream/main
             }
             else if (Uri.TryCreate(hlUrl, UriKind.Absolute, out hlUri))
             {
                 // CONSISTENCY(hyperlink-scheme-allowlist): gate absolute URIs only.
                 Core.HyperlinkUriValidator.RequireSafeScheme(hlUrl!, "url");
+<<<<<<< HEAD
+=======
+                // BUG-DUMP-FILEURI-BACKSLASH: a Windows local-path target
+                // (file:///C:\Users\…\file.docx) is a valid Word hyperlink — Word
+                // writes the rel Target verbatim with backslashes. System.Uri's
+                // file-scheme parser, however, rejects a backslash DOS path
+                // ("A Dos path must be rooted, for example, 'c:\'") when re-parsed
+                // through `new Uri(...)`, which THREW and — because the throw
+                // aborted the `add hyperlink` op — dropped the hyperlink's anchor
+                // text from its paragraph (silent content loss). Normalize
+                // backslashes to forward slashes for file: URIs before
+                // percent-encoding (Word/OPC accept file:///C:/Users/…), so the
+                // target round-trips and the op succeeds.
+                var encoded = PercentEncodeUri(hlUrl!);
+                if (hlUri.IsFile && encoded.Contains('\\'))
+                    encoded = encoded.Replace('\\', '/');
+                // Defensive: never let a single malformed absolute URI throw and
+                // drop the run. If it still won't parse, fall back to the
+                // already-parsed hlUri from TryCreate above (a valid Uri), so the
+                // hyperlink survives rather than aborting the op.
+                if (!Uri.TryCreate(encoded, UriKind.Absolute, out var reparsed))
+                    reparsed = hlUri;
+                hlUri = reparsed;
+>>>>>>> upstream/main
             }
             else if (Uri.TryCreate(hlUrl, UriKind.Relative, out hlUri))
             {
@@ -780,6 +1171,7 @@ public partial class WordHandler
             {
                 throw new ArgumentException($"Invalid hyperlink URL '{hlUrl}'. Expected an absolute URI (e.g. 'https://example.com'), a relative target (e.g. 'file.docx'), or a fragment-only anchor (e.g. '#bookmark').");
             }
+<<<<<<< HEAD
             // Fragment = internal anchor; absolute and relative both round-trip
             // as External relationships.
             hlRelId = hostPart.AddHyperlinkRelationship(hlUri!, isExternal: !hlIsFragment).Id;
@@ -787,6 +1179,29 @@ public partial class WordHandler
 
         var hlRProps = new RunProperties();
         if (properties.TryGetValue("color", out var hlColor))
+=======
+            // Absolute and relative both round-trip as External relationships;
+            // fragments are handled inline above and skip relationship creation.
+            if (hlUri != null)
+                hlRelId = hostPart.AddHyperlinkRelationship(hlUri, isExternal: true).Id;
+        }
+
+        var hlRProps = new RunProperties();
+        // "inherit" sentinel (dump-emitted): the SOURCE hyperlink run carries
+        // no <w:color>/<w:u> at all — its appearance comes from styles, or it
+        // deliberately looks like plain text (TOC leader rows). Skip the
+        // interactive defaults entirely so the rebuilt run stays element-free.
+        bool hlColorInherit = properties.TryGetValue("color", out var hlColorProbe)
+            && string.Equals(hlColorProbe, "inherit", StringComparison.OrdinalIgnoreCase);
+        bool hlUnderlineInherit = (properties.TryGetValue("underline", out var hlUlProbe)
+                || properties.TryGetValue("font.underline", out hlUlProbe))
+            && string.Equals(hlUlProbe, "inherit", StringComparison.OrdinalIgnoreCase);
+        if (hlColorInherit)
+        {
+            // no color element
+        }
+        else if (properties.TryGetValue("color", out var hlColor))
+>>>>>>> upstream/main
         {
             // BUG-R4B(BUG4): accept theme/scheme color names (text1, accent1, …)
             // on hyperlink Add the same way the run color path does — the old
@@ -809,7 +1224,15 @@ public partial class WordHandler
         // common case so existing behavior is preserved when no underline is
         // given. Without this, a source hyperlink whose run is dotted/wave/etc.
         // round-trips to single (the dump captures it, AddHyperlink dropped it).
+<<<<<<< HEAD
         if (properties.TryGetValue("underline", out var hlUnderline)
+=======
+        if (hlUnderlineInherit)
+        {
+            // no underline element
+        }
+        else if (properties.TryGetValue("underline", out var hlUnderline)
+>>>>>>> upstream/main
             || properties.TryGetValue("font.underline", out hlUnderline))
         {
             var hlUlVal = NormalizeUnderlineValue(hlUnderline);
@@ -822,8 +1245,25 @@ public partial class WordHandler
         {
             hlRProps.Underline = new Underline { Val = UnderlineValues.Single };
         }
+<<<<<<< HEAD
         if (properties.TryGetValue("font", out var hlFont))
             hlRProps.RunFonts = new RunFonts { Ascii = hlFont, HighAnsi = hlFont };
+=======
+        // Explicit underline color (<w:u w:color="…">): dump emits it as
+        // underline.color next to underline; route through the shared run
+        // case so the attribute lands on the Underline element written above.
+        if (properties.TryGetValue("underline.color", out var hlUlColor))
+            ApplyRunFormatting(hlRProps, "underline.color", hlUlColor);
+        if (properties.TryGetValue("font", out var hlFont))
+            hlRProps.RunFonts = new RunFonts { Ascii = hlFont, HighAnsi = hlFont };
+        // Ascii-only slot (<w:rFonts w:ascii="…"/> with no hAnsi): dump emits
+        // font.ascii; the bare `font` case above would wrongly stamp hAnsi too.
+        if (properties.TryGetValue("font.ascii", out var hlFontAscii))
+        {
+            hlRProps.RunFonts ??= new RunFonts();
+            hlRProps.RunFonts.Ascii = hlFontAscii;
+        }
+>>>>>>> upstream/main
         // Dump emits font.latin alongside bare font for hyperlink runs; mirror
         // the bare-font behavior so batch replay doesn't silently drop it.
         if (properties.TryGetValue("font.latin", out var hlFontLatin))
@@ -842,6 +1282,79 @@ public partial class WordHandler
             hlRProps.RunFonts ??= new RunFonts();
             hlRProps.RunFonts.ComplexScript = hlFontCs;
         }
+<<<<<<< HEAD
+=======
+        // East-Asian font slot + character spacing: the dump emits these on
+        // TOC-row links (Calibri eastAsia + spacing -1); without the cases the
+        // wrapper run silently lost them while its sibling runs kept theirs.
+        if (properties.TryGetValue("font.ea", out var hlFontEa)
+            || properties.TryGetValue("font.eastasia", out hlFontEa))
+        {
+            hlRProps.RunFonts ??= new RunFonts();
+            hlRProps.RunFonts.EastAsia = hlFontEa;
+        }
+        if (properties.TryGetValue("charSpacing", out var hlCharSp)
+            || properties.TryGetValue("charspacing", out hlCharSp))
+        {
+            ApplyRunFormatting(hlRProps, "charSpacing", hlCharSp);
+        }
+        // Theme font slots (<w:rFonts w:asciiTheme="…" …/>), run shading and
+        // character scale (<w:w/>): dump emits all of these on hyperlink runs
+        // (minorEastAsia-themed Korean links, shaded URLs); route through the
+        // shared run cases so batch replay keeps the source typography instead
+        // of falling back to the document default (serif) font.
+        // BUG-DUMP-HLINK-RPR: a run inside a <w:hyperlink> carries the full run
+        // rPr vocabulary, but AddHyperlink only hand-rolled color/underline/font/
+        // size/bold/italic. Any other character property the source set on the
+        // link run — most consequentially <w:vanish/> (a hidden boilerplate /
+        // template-guidance link), plus the per-script bold.cs/italic.cs/size.cs,
+        // language, caps, strike, vertAlign, … — was silently dropped, so a
+        // vanished hyperlink rendered as visible text. Route every remaining
+        // character key the dump emits through the shared ApplyRunFormatting (the
+        // same applier the plain-run path uses); none of these collide with the
+        // color/underline/size/bold/italic/font slots handled specially above.
+        foreach (var hlPassKey in new[]
+                 {
+                     "font.asciiTheme", "font.hAnsiTheme", "font.eaTheme",
+                     "font.csTheme", "shading", "w",
+                     "vanish", "specVanish", "webHidden",
+                     "bold.cs", "italic.cs", "size.cs",
+                     // The latin/default language slot is dumped as lang.latin
+                     // (canonical), not bare `lang`; without it a hyperlink run's
+                     // <w:lang w:val="…"/> was reported UNSUPPORTED and dropped on
+                     // replay even though `add run` accepts it. lang.val is the
+                     // other latin-slot alias ApplyRunFormatting recognizes.
+                     "lang", "lang.latin", "lang.val", "lang.ea", "lang.cs",
+                     "caps", "smallCaps", "strike", "dstrike",
+                     "outline", "shadow", "emboss", "imprint",
+                     // BUG-DUMP-HLINK-SUPERSCRIPT: the dump emits vertAlign in its
+                     // canonical bool form `superscript`/`subscript` (not the raw
+                     // `vertAlign` key), so a superscript/subscript hyperlink run —
+                     // e.g. a footnote URL set superscript to render small — had
+                     // its <w:vertAlign> dropped, the link re-rendered at full size
+                     // and a long URL wrapped to an extra line, inflating the
+                     // footnote and shifting every later page break. Route both
+                     // through ApplyRunFormatting (handles superscript/subscript).
+                     "superscript", "subscript",
+                     "highlight", "vertAlign", "position", "kern",
+                     // BUG-DUMP-HLINK-SNAPGRID: snapToGrid on a hyperlink run —
+                     // on a docGrid doc, snapToGrid="0" keeps the link line off
+                     // the grid (sets its height). Missing from the pass-through
+                     // list, so it was dropped and the line re-snapped → reflow.
+                     // ApplyRunFormatting gained a snapToGrid case (BUG-15).
+                     "snapToGrid",
+                     // BUG-DUMP-RPR-CONTAINER: a hyperlink run can be RTL
+                     // (Arabic/Hebrew link text) and/or carry a CJK emphasis mark
+                     // (<w:em>); both were absent from this list and dropped on
+                     // round-trip. ApplyRunFormatting handles direction/rtl, and now
+                     // em (added alongside this fix).
+                     "direction", "rtl", "em", "emphasisMark",
+                 })
+        {
+            if (properties.TryGetValue(hlPassKey, out var hlPassVal))
+                ApplyRunFormatting(hlRProps, hlPassKey, hlPassVal);
+        }
+>>>>>>> upstream/main
         if (properties.TryGetValue("size", out var hlSize))
             hlRProps.FontSize = new FontSize { Val = ((int)Math.Round(ParseFontSize(hlSize) * 2, MidpointRounding.AwayFromZero)).ToString() };
         if (properties.TryGetValue("bold", out var hlBold) && IsTruthy(hlBold))
@@ -870,7 +1383,15 @@ public partial class WordHandler
 
         var hlRun = new Run(hlRProps);
         var hlText = properties.GetValueOrDefault("text", hlUrl ?? hlAnchor ?? "link");
-        hlRun.AppendChild(new Text(hlText) { Space = SpaceProcessingModeValues.Preserve });
+        // BUG-DUMP-H102: build the display text via AppendTextWithBreaks (same as
+        // AddRun) so a `\t` / `\n` in the hyperlink's text is rebuilt as a real
+        // <w:tab/> / <w:br/>, not a literal control char in <w:t>. A hyperlink
+        // whose leading content is a <w:tab/> (a TOC entry whose tab + page number
+        // sit inside the link) dumps as `add hyperlink text="\t…"`; the old literal
+        // `new Text` persisted the tab as a U+0009 character, which does NOT invoke
+        // the paragraph's right-tab-stop + dot leader — degrading the TOC layout.
+        // Empty text still yields an empty <w:t> (preserves the empty-wrapper case).
+        AppendTextWithBreaks(hlRun, hlText);
 
         var hyperlink = new Hyperlink(hlRun);
         if (hlRelId != null)
@@ -1109,7 +1630,19 @@ public partial class WordHandler
                 "ref" or "noteref" => $"\u00AB{refBookmarkName}\u00BB",
                 "styleref" => $"\u00AB{styleRefName}\u00BB",
                 "docproperty" => $"\u00AB{docPropertyName}\u00BB",
+<<<<<<< HEAD
                 "if" => properties.GetValueOrDefault("trueText", ""),
+=======
+                "if" => EvaluateIfFieldPlaceholder(properties),
+                // SEQ: Word caches the sequence number on insert. Count prior
+                // SEQ fields with the same identifier so the appended field
+                // seeds with its actual position (Figure 1, Figure 2, …).
+                // Previously the cached run stayed empty and get/view showed
+                // blank where the number belongs.
+                "seq" => FormatSeqCachedValue(
+                    CountExistingSeqFields(seqIdentifier),
+                    properties.GetValueOrDefault("switches", "")),
+>>>>>>> upstream/main
                 // DATE/TIME family: seed with DateTime.Now formatted via the
                 // user's `\@` format switch (if any), otherwise Word-like
                 // defaults. The "1" fallback for unrecognized fields is
@@ -1120,6 +1653,15 @@ public partial class WordHandler
                     => FormatDateForField(dateFmtVal, "M/d/yyyy"),
                 "time" => FormatDateForField(dateFmtVal, "h:mm tt"),
                 _ when isExpressionField => "",
+<<<<<<< HEAD
+=======
+                // NOTE(R54-bt-1, by design): a raw `instruction=SEQ …` field is
+                // verbatim authoring and stays UNEVALUATED until an explicit
+                // `set / recalcFields=seq` (or Word F9) — the SeqEval engine
+                // owns \r/\c/\s semantics a naive insert-time count would get
+                // wrong. Only the structured fieldType=seq convenience path
+                // seeds at insert.
+>>>>>>> upstream/main
                 // BUG-R8A(BUG3): keep the intentional "1" only for numeric page
                 // fields. The old `_ => "1"` arm leaked to every unrecognized raw
                 // `instruction=` field (SYMBOL/EQ/ADVANCE/TC/...), fabricating a
@@ -1155,13 +1697,35 @@ public partial class WordHandler
         var fieldCharBegin = new FieldChar { FieldCharType = FieldCharValues.Begin };
         if (fieldLocked) fieldCharBegin.FieldLock = true;
         var fieldRunBegin = new Run(fieldCharBegin);
+<<<<<<< HEAD
+=======
+        // Reject XML-illegal control chars in the field instruction before
+        // they reach the serializer (otherwise the close-time save crashes
+        // with "data may be lost").
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(fieldInstr, "instr");
+>>>>>>> upstream/main
         var fieldRunInstr = new Run(new FieldCode(fieldInstr) { Space = SpaceProcessingModeValues.Preserve });
         var fieldRunSep = fieldNoSeparator
             ? null
             : new Run(new FieldChar { FieldCharType = FieldCharValues.Separate });
+<<<<<<< HEAD
         var fieldRunResult = fieldNoSeparator
             ? null
             : new Run(new Text(fieldPlaceholder) { Space = SpaceProcessingModeValues.Preserve });
+=======
+        Run? fieldRunResult = null;
+        if (!fieldNoSeparator)
+        {
+            fieldRunResult = new Run();
+            // BUG-DUMP-FIELDTAB: a field's cached display text can carry tabs/line
+            // breaks (e.g. a numbered caption "4.1.\tImages" where the tab aligns
+            // the title past the list number). Tokenize \t→<w:tab/> and \n→<w:br/>
+            // instead of dumping the literal control char into one <w:t> — a raw
+            // U+0009 in <w:t> does not advance to the tab stop, so the number/title
+            // alignment was lost on every such field round-trip.
+            AppendTextWithBreaks(fieldRunResult, fieldPlaceholder);
+        }
+>>>>>>> upstream/main
         var fieldRunEnd = new Run(new FieldChar { FieldCharType = FieldCharValues.End });
 
         // Apply optional run formatting to all runs
@@ -1186,17 +1750,67 @@ public partial class WordHandler
         if (fieldVertAlign == null && properties.TryGetValue("subscript", out var fSub) && IsTruthy(fSub))
             fieldVertAlign = VerticalPositionValues.Subscript;
 
+<<<<<<< HEAD
         RunProperties? fieldRProps = null;
         if (properties.TryGetValue("font", out var fFont) || properties.TryGetValue("size", out _) ||
             properties.TryGetValue("bold", out _) || properties.TryGetValue("color", out _) ||
             fieldVertAlign != null)
+=======
+        // Per-slot font keys (literal and theme-bound) shared with the run
+        // path; a footer PAGE field bound to minorHAnsi keeps its theme face.
+        var fieldFontSlotKeys = new[]
+        {
+            "font.latin", "font.ascii", "font.hAnsi",
+            "font.asciiTheme", "font.hAnsiTheme", "font.eaTheme", "font.csTheme",
+            // BUG-DUMP-FIELDHINT: rFonts w:hint on a cached result run. Applied
+            // via ApplyRunFormatting (writes RunFonts.Hint in CT_RPr order).
+            "font.hint",
+        };
+        bool hasFieldFontSlot = fieldFontSlotKeys.Any(k => properties.ContainsKey(k));
+        // BUG-DUMP-RPR-CONTAINER: the fuller rPr vocabulary a field result run can
+        // carry (caps/kern/em/highlight/rtl/…) — applied via ApplyRunFormatting below.
+        bool hasFieldExtraRpr = WordBatchEmitter.FieldResultExtraRPrKeys.Any(k => properties.ContainsKey(k));
+        RunProperties? fieldRProps = null;
+        if (properties.TryGetValue("font", out var fFont) || properties.TryGetValue("size", out _) ||
+            properties.TryGetValue("bold", out _) || properties.TryGetValue("color", out _) ||
+            properties.TryGetValue("italic", out _) || properties.TryGetValue("underline", out _) ||
+            properties.TryGetValue("strike", out _) ||
+            hasFieldFontSlot || fieldVertAlign != null || hasFieldExtraRpr)
+>>>>>>> upstream/main
         {
             fieldRProps = new RunProperties();
             // CT_RPr schema order: rFonts → b → ... → color → sz
             if (properties.TryGetValue("font", out var ff))
                 fieldRProps.AppendChild(new RunFonts { Ascii = ff, HighAnsi = ff, EastAsia = ff });
+<<<<<<< HEAD
             if (properties.TryGetValue("bold", out var fb) && IsTruthy(fb))
                 fieldRProps.AppendChild(new Bold());
+=======
+            foreach (var slotKey in fieldFontSlotKeys)
+            {
+                if (properties.TryGetValue(slotKey, out var slotVal))
+                    ApplyRunFormatting(fieldRProps, slotKey, slotVal);
+            }
+            // BUG-DUMP-FIELDBOLD-FALSE: route bold through ApplyRunFormatting so an
+            // explicit OFF (<w:b w:val="0"/>) round-trips — a caption field
+            // (Table/Figure SEQ) under a bold Caption style turns bold off; the
+            // on-only path dropped that override and the caption re-inherited the
+            // style's bold, growing every caption line and reflowing the page.
+            if (properties.TryGetValue("bold", out var fb))
+                ApplyRunFormatting(fieldRProps, "bold", fb);
+            // BUG-DUMP-R52-FIELDITALIC: italic/underline/strike on a field's
+            // cached result (a title-page <SUBJECT> placeholder rendered italic)
+            // were dropped — they were absent from AddField's vocabulary AND from
+            // FieldAddSupportedFormatKeys, so the typed `add field` path shed them
+            // and (being single-run) the field never took the rich raw-set route.
+            // ApplyRunFormatting writes each in CT_RPr schema order.
+            if (properties.TryGetValue("italic", out var fi))
+                ApplyRunFormatting(fieldRProps, "italic", fi);
+            if (properties.TryGetValue("underline", out var fu) && !string.IsNullOrEmpty(fu))
+                ApplyRunFormatting(fieldRProps, "underline", fu);
+            if (properties.TryGetValue("strike", out var fst) && IsTruthy(fst))
+                ApplyRunFormatting(fieldRProps, "strike", fst);
+>>>>>>> upstream/main
             // BUG-R13B(BUG1): route field color through ApplyRunFormatting (same
             // resolver the run/hyperlink Add paths use) so scheme/theme color
             // names (accent1, dark1, …) write the w:themeColor attribute instead
@@ -1213,6 +1827,19 @@ public partial class WordHandler
             // append, so AppendChild keeps it in valid schema position.
             if (fieldVertAlign != null)
                 fieldRProps.AppendChild(new VerticalTextAlignment { Val = fieldVertAlign.Value });
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-RPR-CONTAINER: apply the fuller rPr vocabulary a field result
+            // run can carry (caps/dstrike/outline/shadow/emboss/vanish/spacing/w/kern/
+            // position/szCs/highlight/em/lang/rtl/snapToGrid) through the same applier
+            // the run/hyperlink paths use, so a single-run formatted field result
+            // round-trips losslessly via the typed path. InsertRunPropInSchemaOrder
+            // (inside ApplyRunFormatting) keeps CT_RPr order regardless of the
+            // AppendChild sequence above.
+            foreach (var extraKey in WordBatchEmitter.FieldResultExtraRPrKeys)
+                if (properties.TryGetValue(extraKey, out var extraVal))
+                    ApplyRunFormatting(fieldRProps, extraKey, extraVal);
+>>>>>>> upstream/main
         }
 
         // Final emitted-run ordering: begin → instr → [separate → result] → end
@@ -1262,7 +1889,11 @@ public partial class WordHandler
             {
                 foreach (var fr in fieldRuns) fieldPara.AppendChild(fr);
                 var runs = GetAllRuns(fieldPara);
+<<<<<<< HEAD
                 var runIdx = runs.IndexOf(pathRun) + 1;
+=======
+                var runIdx = PathIndex.FromArrayIndex(runs.IndexOf(pathRun));
+>>>>>>> upstream/main
                 resultPath = $"{fieldParaPath}/r[{runIdx}]";
             }
         }
@@ -1349,6 +1980,7 @@ public partial class WordHandler
         // HYPERLINK keeps its <w:del> + <w:delInstrText>/<w:delText> instead of
         // resurrecting as live text. del converts FieldCode→DeletedFieldCode
         // (delInstrText is the only valid field-code form inside <w:del>).
+<<<<<<< HEAD
         WrapFieldRunsInRevision(fieldRuns, properties);
         return resultPath;
     }
@@ -1361,6 +1993,22 @@ public partial class WordHandler
     // (FieldCode) — ECMA-376 §17.16.23. format/paraMark* kinds don't apply to a
     // run-level field wrap and are ignored here.
     private void WrapFieldRunsInRevision(List<Run> fieldRuns, Dictionary<string, string> properties)
+=======
+        WrapRunsInRevision(fieldRuns, properties);
+        return resultPath;
+    }
+
+    // Wrap freshly-built runs in a tracked-change marker when the caller supplied
+    // revision.type (= ins/del/moveFrom/moveTo) + attribution. Used by the field
+    // rebuild (deleted/inserted hyperlinks & fields) AND by AddBreak (a tracked
+    // page/column break — BUG-DUMP-DELBREAK). Mirrors the per-run revision wrap
+    // used by Set/Add on plain runs; the only field-specific twist is that a
+    // <w:del>-wrapped instruction run must carry its code as <w:delInstrText>
+    // (DeletedFieldCode), not <w:instrText> (FieldCode) — ECMA-376 §17.16.23 —
+    // which is a guarded no-op for runs (e.g. break runs) that carry no FieldCode.
+    // format/paraMark* kinds don't apply to a run-level wrap and are ignored here.
+    private void WrapRunsInRevision(List<Run> runs, Dictionary<string, string> properties)
+>>>>>>> upstream/main
     {
         if (!properties.TryGetValue("revision.type", out var revType)
             || string.IsNullOrWhiteSpace(revType))
@@ -1388,7 +2036,11 @@ public partial class WordHandler
         var explicitId = properties.GetValueOrDefault("revision.id");
         var moveId = !string.IsNullOrEmpty(explicitId) ? explicitId : GenerateRevisionId();
 
+<<<<<<< HEAD
         foreach (var fr in fieldRuns)
+=======
+        foreach (var fr in runs)
+>>>>>>> upstream/main
         {
             if (fr.Parent == null) continue;
             if (revType == "del")
@@ -1593,7 +2245,36 @@ public partial class WordHandler
         }
 
         var brk = new Break { Type = breakType };
+        // <w:br w:clear> — float-clearing for text-wrapping breaks (Word's
+        // "clear all/left/right"). Round-tripped via the breakClear key.
+        if (properties.TryGetValue("breakClear", out var brkClear)
+            || properties.TryGetValue("breakclear", out brkClear)
+            || properties.TryGetValue("clear", out brkClear))
+        {
+            var clearCanon = brkClear.ToLowerInvariant() switch
+            {
+                "all" => "all",
+                "left" => "left",
+                "right" => "right",
+                "none" => "none",
+                _ => throw new ArgumentException($"Invalid break clear: '{brkClear}'. Valid values: all, left, right, none.")
+            };
+            brk.Clear = new EnumValue<BreakTextRestartLocationValues>(new BreakTextRestartLocationValues(clearCanon));
+        }
         var brkRun = new Run(brk);
+        // BUG-DUMP-BREAKRPR: a break-only run (<w:r><w:rPr>…</w:rPr><w:br/></w:r>)
+        // carries an rPr whose font/size sets the height of the line the break
+        // starts. The verbatim raw-set fallback in TryEmitBreakRun only fires for
+        // /body hosts, so a break inside a table cell rebuilt as a bare
+        // <w:r><w:br/></w:r> and the broken line collapsed to the default font
+        // size — inflating cell/row height and drifting the table. Re-apply the
+        // forwarded rPr here so it round-trips in every container.
+        if (properties.TryGetValue("breakRunRpr", out var brkRpr)
+            && !string.IsNullOrWhiteSpace(brkRpr)
+            && brkRpr.Contains("rPr", StringComparison.Ordinal))
+        {
+            try { brkRun.PrependChild(new RunProperties(brkRpr)); } catch { /* malformed: skip */ }
+        }
 
         string resultPath;
         if (parent is Paragraph brkPara)
@@ -1606,7 +2287,11 @@ public partial class WordHandler
             // index is a childElement-index (ResolveAnchorPosition counts pPr).
             // pPr-aware insert keeps pPr as the first child of <w:p>.
             InsertIntoParagraph(brkPara, brkRun, index);
+<<<<<<< HEAD
             var brkRunIdx = GetAllRuns(brkPara).IndexOf(brkRun) + 1;
+=======
+            var brkRunIdx = PathIndex.FromArrayIndex(GetAllRuns(brkPara).IndexOf(brkRun));
+>>>>>>> upstream/main
             // CONSISTENCY(para-path-canonical): parentPath already targets
             // the paragraph; replacing its trailing /p[...] segment with
             // paraId-form yields a path that mirrors what Get later
@@ -1616,6 +2301,13 @@ public partial class WordHandler
             // breaks added inside header/footer paragraphs.
             var canonicalParaPath = ReplaceTrailingParaSegment(parentPath, brkPara);
             resultPath = $"{canonicalParaPath}/r[{brkRunIdx}]";
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-DELBREAK: a tracked-DELETED/inserted break must keep its
+            // <w:del>/<w:ins> wrapper, else a deleted (invisible) page break
+            // resurrects as a live break and inflates the page count.
+            WrapRunsInRevision(new List<Run> { brkRun }, properties);
+>>>>>>> upstream/main
         }
         else
         {
@@ -1631,6 +2323,12 @@ public partial class WordHandler
             // works everywhere.
             AssignParaId(brkNewPara);
             InsertAtIndexOrAppend(parent, brkNewPara, index);
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-DELBREAK: see the in-paragraph branch above — preserve the
+            // tracked-change wrapper on the rebuilt break run.
+            WrapRunsInRevision(new List<Run> { brkRun }, properties);
+>>>>>>> upstream/main
             // CONSISTENCY(para-path-canonical): paraId-form is valid in
             // every container (the paraId is globally unique and Navigation
             // resolves it inside header/footer/cell parts as well as body).
@@ -1654,6 +2352,50 @@ public partial class WordHandler
     {
         var body = _doc.MainDocumentPart?.Document?.Body
             ?? throw new InvalidOperationException("Document body not found");
+
+        // Reject SDT nested inside a plain-text SDT (sdtPr/<w:text/>): the
+        // outer marks its content as plain-text-only, so adding any SDT
+        // descendant produces OOXML that Word rejects (error 0x422). Walk
+        // ancestors AND the parent's own SdtBlock chain (when parent is the
+        // SDT's content paragraph) so both block- and inline-nest paths are
+        // caught before any mutation. Mirrors the R22 nested-textbox guard.
+        for (var cur = parent; cur != null; cur = cur.Parent)
+        {
+            var sdtPr = (cur as SdtBlock)?.SdtProperties
+                ?? (cur as SdtRun)?.SdtProperties
+                ?? cur.GetFirstChild<SdtProperties>();
+            if (sdtPr?.GetFirstChild<SdtContentText>() != null)
+                throw new ArgumentException(
+                    "Cannot nest an SDT inside a plain-text SDT (sdtPr/<w:text/>). The outer control marks its content as plain-text-only; nested SDTs produce OOXML that Word rejects (error 0x422).");
+        }
+
+        // Verbatim carrier (dump-emitted): a rich BLOCK content control whose
+        // content references parts/relationships (a cover page with anchored
+        // textboxes and a logo image). Same shape as the activex/diagram/
+        // vmlshape carriers — sdtXml is the whole <w:sdt> element verbatim,
+        // part{N}/ext{N} ship the referenced parts; rel ids are rewritten to
+        // the freshly assigned ones before injection.
+        if (properties.TryGetValue("sdtXml", out var sdtCarrierXml)
+            && !string.IsNullOrEmpty(sdtCarrierXml))
+        {
+            var carrierHost = ResolveImageHostPart(parent);
+            var rewrite = MaterializeInlinedParts(carrierHost, properties, "sdt");
+            // A paragraph host means a run-level (inline) control — the same
+            // <w:sdt> XML, but the typed wrapper must be SdtRun so the SDK
+            // object model matches CT_P's particle (an inline picture control
+            // shipped by the dump carrier lands here with parent = p[last()]).
+            if (parent is Paragraph)
+            {
+                var sdtRun = new SdtRun(rewrite(sdtCarrierXml));
+                AppendToParent(parent, sdtRun);
+                var sdtRunIdx = PathIndex.FromArrayIndex(parent.Elements<SdtRun>().ToList().IndexOf(sdtRun));
+                return $"{parentPath}/sdt[{sdtRunIdx}]";
+            }
+            var sdtBlock = new SdtBlock(rewrite(sdtCarrierXml));
+            AppendToParent(parent, sdtBlock);
+            var sdtIdx2 = PathIndex.FromArrayIndex(parent.Elements<SdtBlock>().ToList().IndexOf(sdtBlock));
+            return $"{parentPath}/sdt[{sdtIdx2}]";
+        }
 
         // Case-insensitive lookup to support camelCase keys like "sdtType", "controlType", etc.
         // CONSISTENCY(tracking-preservation): mirror WordHandler.Add.cs:32-40 — never copy a
@@ -1686,11 +2428,19 @@ public partial class WordHandler
             "text", "plaintext", "richtext", "rich",
             "dropdown", "dropdownlist", "combobox", "combo",
             "date", "datepicker",
+<<<<<<< HEAD
             "group", "picture"
         };
         if (!supportedSdtTypes.Contains(sdtType))
             throw new NotSupportedException(
                 $"SDT type '{sdtType}' is not implemented. Supported: text, richtext, dropdown, combobox, date, group, picture. " +
+=======
+            "group", "picture", "checkbox"
+        };
+        if (!supportedSdtTypes.Contains(sdtType))
+            throw new NotSupportedException(
+                $"SDT type '{sdtType}' is not implemented. Supported: text, richtext, dropdown, combobox, date, group, picture, checkbox. " +
+>>>>>>> upstream/main
                 "Create the content control in Word, then edit via CLI.");
         var alias = ciProps.GetValueOrDefault("alias", ciProps.GetValueOrDefault("name", ""));
         var tag = ciProps.GetValueOrDefault("tag", "");
@@ -1775,6 +2525,15 @@ public partial class WordHandler
                     // BUG-DUMP-R42-8: picture content control — empty <w:picture/>.
                     sdtProps.AppendChild(new SdtContentPicture());
                     break;
+<<<<<<< HEAD
+=======
+                case "checkbox":
+                    // Word checkbox content control: a <w14:checkbox> marker in sdtPr
+                    // (checked flag + checked/unchecked box glyphs). The SDK auto-
+                    // declares the w14 namespace on serialization.
+                    sdtProps.AppendChild(BuildSdtCheckBox(IsTruthy(ciProps.GetValueOrDefault("checked", "false"))));
+                    break;
+>>>>>>> upstream/main
                 case "richtext" or "rich":
                     // Rich text has no specific type element (absence of w:text means rich text)
                     break;
@@ -1787,7 +2546,16 @@ public partial class WordHandler
 
             sdtRun.AppendChild(sdtProps);
             var sdtContent = new SdtContentRun();
+<<<<<<< HEAD
             var contentRun = new Run(new Text(sdtText) { Space = SpaceProcessingModeValues.Preserve });
+=======
+            // Checkbox controls carry the box glyph (☒ checked / ☐ unchecked) as
+            // their content run when no explicit text is supplied.
+            var inlineSeedText = sdtType == "checkbox" && string.IsNullOrEmpty(sdtText)
+                ? (IsTruthy(ciProps.GetValueOrDefault("checked", "false")) ? "☒" : "☐")
+                : sdtText;
+            var contentRun = new Run(new Text(inlineSeedText) { Space = SpaceProcessingModeValues.Preserve });
+>>>>>>> upstream/main
 
             // CONSISTENCY(rtl-cascade): mirror AddRun (Add.Text.cs:373-376).
             // When the host paragraph is direction=rtl (pPr/bidi or mark
@@ -1903,6 +2671,13 @@ public partial class WordHandler
                     // BUG-DUMP-R42-8: picture content control — empty <w:picture/>.
                     sdtProps.AppendChild(new SdtContentPicture());
                     break;
+<<<<<<< HEAD
+=======
+                case "checkbox":
+                    // Word checkbox content control — see inline branch above.
+                    sdtProps.AppendChild(BuildSdtCheckBox(IsTruthy(ciProps.GetValueOrDefault("checked", "false"))));
+                    break;
+>>>>>>> upstream/main
                 case "richtext" or "rich":
                     break;
                 default:
@@ -1914,11 +2689,41 @@ public partial class WordHandler
 
             sdtBlock.AppendChild(sdtProps);
             var sdtContent = new SdtContentBlock();
-            var contentPara = new Paragraph(new Run(new Text(sdtText) { Space = SpaceProcessingModeValues.Preserve }));
+            var blockSeedText = sdtType == "checkbox" && string.IsNullOrEmpty(sdtText)
+                ? (IsTruthy(ciProps.GetValueOrDefault("checked", "false")) ? "☒" : "☐")
+                : sdtText;
+            var contentPara = new Paragraph(new Run(new Text(blockSeedText) { Space = SpaceProcessingModeValues.Preserve }));
             sdtContent.AppendChild(contentPara);
             sdtBlock.AppendChild(sdtContent);
 
             InsertAtIndexOrAppend(parent, sdtBlock, index);
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R47-8: a table cell whose sole source content is a block
+            // SDT — <w:tc><w:tcPr/><w:sdt>…</w:sdt></w:tc>, common in form
+            // templates that wrap each cell value in a content control — has NO
+            // standalone paragraph. AddTable seeds every cell with one empty
+            // paragraph; appending the SDT leaves that seed as a spurious leading
+            // empty paragraph, so the cell renders two lines (a blank line above
+            // the value) and the row grows — drifting table and page layout. When
+            // the SDT becomes the cell's content, drop a leading empty auto-seed
+            // paragraph so the rebuilt cell matches the source's SDT-only shape.
+            // Gated tightly: only an empty paragraph (no runs / no text) that sits
+            // before the just-added SDT is removed; a cell that already had real
+            // paragraph content keeps it.
+            if (parent is TableCell sdtCell)
+            {
+                var seed = sdtCell.Elements<Paragraph>().FirstOrDefault();
+                if (seed != null
+                    && sdtCell.Elements().TakeWhile(e => e != sdtBlock).Contains(seed)
+                    && !seed.Elements<Run>().Any()
+                    && !seed.Elements<Hyperlink>().Any()
+                    && !seed.Descendants<Text>().Any())
+                {
+                    seed.Remove();
+                }
+            }
+>>>>>>> upstream/main
             // Root-aware path: the sdtBlock may have been inserted into a
             // header/footer; count SdtBlock siblings under its actual parent
             // and prefix with the correct root segment.
@@ -1931,6 +2736,28 @@ public partial class WordHandler
         return resultPath;
     }
 
+<<<<<<< HEAD
+=======
+    // Build a Word checkbox content-control marker (<w14:checkbox>) for the sdtPr.
+    // checked flag + the standard MS-Gothic 2612/2610 box glyph states, matching
+    // what Word writes for its "Check Box Content Control". The SDK declares the
+    // w14 namespace automatically on serialization.
+    private static DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox BuildSdtCheckBox(bool isChecked)
+    {
+        return new DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox
+        {
+            Checked = new DocumentFormat.OpenXml.Office2010.Word.Checked
+            {
+                Val = isChecked
+                    ? DocumentFormat.OpenXml.Office2010.Word.OnOffValues.One
+                    : DocumentFormat.OpenXml.Office2010.Word.OnOffValues.Zero
+            },
+            CheckedState = new DocumentFormat.OpenXml.Office2010.Word.CheckedState { Val = "2612", Font = "MS Gothic" },
+            UncheckedState = new DocumentFormat.OpenXml.Office2010.Word.UncheckedState { Val = "2610", Font = "MS Gothic" }
+        };
+    }
+
+>>>>>>> upstream/main
     // BUG-DUMP-SDTPROPS: apply the form-control sdtPr children that the typed
     // dump→batch path previously dropped — placeholder docPart + showingPlcHdr,
     // date-picker selected value/locale/calendar/store-as, and combo/dropdown
@@ -1947,7 +2774,12 @@ public partial class WordHandler
         // elements that placeholder + showingPlcHdr must precede per CT_SdtPr.
         bool typeIsContent = typeElement is SdtContentDate or SdtContentComboBox
             or SdtContentDropDownList or SdtContentText
+<<<<<<< HEAD
             or SdtContentGroup or SdtContentPicture;
+=======
+            or SdtContentGroup or SdtContentPicture
+            or DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox;
+>>>>>>> upstream/main
         OpenXmlElement? insertBefore = typeIsContent ? typeElement : null;
 
         void InsertSchemaOrdered(OpenXmlElement el)
@@ -2027,6 +2859,19 @@ public partial class WordHandler
         var wmSize = properties.GetValueOrDefault("size", "1pt");
         if (!wmSize.EndsWith("pt")) wmSize += "pt";
         var wmRotation = properties.GetValueOrDefault("rotation", "315");
+        // Normalize into 0-360 as the schema help promises (-45 → 315); a
+        // non-numeric value is rejected instead of landing verbatim in the
+        // VML style string.
+        {
+            if (!double.TryParse(wmRotation,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var wmRotDeg))
+                throw new ArgumentException(
+                    $"Invalid 'rotation' value: '{wmRotation}'. Expected a number in degrees (e.g. 315 or -45).");
+            wmRotDeg %= 360;
+            if (wmRotDeg < 0) wmRotDeg += 360;
+            wmRotation = wmRotDeg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
         var wmOpacity = properties.TryGetValue("opacity", out var wmoVal) ? wmoVal : ".5";
         var wmWidth = properties.GetValueOrDefault("width", "415pt");
         var wmHeight = properties.GetValueOrDefault("height", "207.5pt");
@@ -2130,6 +2975,14 @@ public partial class WordHandler
     private string AddDefault(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties, string type)
     {
         // Generic fallback: create typed element via SDK schema validation
+        // TryCreateTypedElement consumes EVERY prop (as an XML attribute or
+        // via the SetGenericAttribute fallback) but reads them through plain
+        // foreach, which doesn't fire TrackingPropertyDictionary's accessed-key
+        // recording — so a raw-element add (w:spacing w:after=...) warned
+        // unsupported_property for props that were in fact applied. Probe each
+        // key through ContainsKey (which does fire the tracking comparer).
+        foreach (var trackedKey in properties.Keys.ToList())
+            properties.ContainsKey(trackedKey);
         var created = GenericXmlQuery.TryCreateTypedElement(parent, type, properties, index);
         if (created == null)
             throw new ArgumentException($"Unknown element type '{type}' for {parentPath}. " +
@@ -2137,7 +2990,7 @@ public partial class WordHandler
                 "Use 'officecli docx add' for details.");
 
         var siblings = parent.ChildElements.Where(e => e.LocalName == created.LocalName).ToList();
-        var createdIdx = siblings.IndexOf(created) + 1;
+        var createdIdx = PathIndex.FromArrayIndex(siblings.IndexOf(created));
         var resultPath = $"{parentPath}/{created.LocalName}[{createdIdx}]";
         return resultPath;
     }
@@ -2180,6 +3033,75 @@ public partial class WordHandler
         return " \\h";
     }
 
+<<<<<<< HEAD
+=======
+    // R52-bt-1: the IF field's cached run was seeded with trueText
+    // unconditionally, so `IF 2 = 1 "T" "F"` displayed T until a real Word
+    // re-evaluation. Statically evaluate literal comparisons (numbers or
+    // quoted strings, operators = <> < > <= >=); expressions referencing
+    // other fields aren't decidable here — seed empty so the `evaluated`
+    // protocol reports field_not_evaluated instead of fabricating a result.
+    private static string EvaluateIfFieldPlaceholder(Dictionary<string, string> properties)
+    {
+        var trueText = properties.GetValueOrDefault("trueText", properties.GetValueOrDefault("truetext", ""));
+        var falseText = properties.GetValueOrDefault("falseText", properties.GetValueOrDefault("falsetext", ""));
+        var expr = properties.GetValueOrDefault("expression", properties.GetValueOrDefault("condition", ""));
+        var m = System.Text.RegularExpressions.Regex.Match(expr.Trim(),
+            @"^(?:""(?<ls>[^""]*)""|(?<ln>-?\d+(?:\.\d+)?))\s*(?<op><>|<=|>=|=|<|>)\s*(?:""(?<rs>[^""]*)""|(?<rn>-?\d+(?:\.\d+)?))$");
+        if (!m.Success) return "";
+        bool result;
+        var op = m.Groups["op"].Value;
+        if (m.Groups["ln"].Success && m.Groups["rn"].Success)
+        {
+            var l = double.Parse(m.Groups["ln"].Value, System.Globalization.CultureInfo.InvariantCulture);
+            var r = double.Parse(m.Groups["rn"].Value, System.Globalization.CultureInfo.InvariantCulture);
+            result = op switch { "=" => l == r, "<>" => l != r, "<" => l < r, ">" => l > r, "<=" => l <= r, _ => l >= r };
+        }
+        else
+        {
+            var l = m.Groups["ls"].Success ? m.Groups["ls"].Value : m.Groups["ln"].Value;
+            var r = m.Groups["rs"].Success ? m.Groups["rs"].Value : m.Groups["rn"].Value;
+            var cmp = string.Compare(l, r, StringComparison.OrdinalIgnoreCase);
+            result = op switch { "=" => cmp == 0, "<>" => cmp != 0, "<" => cmp < 0, ">" => cmp > 0, "<=" => cmp <= 0, _ => cmp >= 0 };
+        }
+        return result ? trueText : falseText;
+    }
+
+    // R53-fuzz-1: honour the \r restart and \* numbering-format switches in
+    // the cached value — they were written into instrText but the cache
+    // always showed continuing arabic numerals.
+    private static string FormatSeqCachedValue(int number, string switches)
+    {
+        var rm = System.Text.RegularExpressions.Regex.Match(switches, @"\\r\s+(\d+)");
+        if (rm.Success && int.TryParse(rm.Groups[1].Value, out var restartAt))
+            number = restartAt;
+        var fm = System.Text.RegularExpressions.Regex.Match(switches, @"\\\*\s+(\S+)");
+        var fmt = fm.Success ? fm.Groups[1].Value : "";
+        // Delegate to SeqEval's formatter (the RecalcSeqFields engine) so the
+        // insert-time seed and the recalc pass agree on \* semantics.
+        return FormatSeqValue(number, fmt)
+            ?? number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // Count SEQ fields already carrying this identifier so a newly appended
+    // one caches its 1-based position in the sequence.
+    private int CountExistingSeqFields(string? identifier)
+    {
+        if (string.IsNullOrEmpty(identifier)) return 1;
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body == null) return 1;
+        int count = 0;
+        foreach (var instr in body.Descendants<DocumentFormat.OpenXml.Wordprocessing.FieldCode>())
+        {
+            var text = instr.Text ?? "";
+            var im = System.Text.RegularExpressions.Regex.Match(text, @"^\s*SEQ\s+(\S+)");
+            if (im.Success && im.Groups[1].Value.Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                count++;
+        }
+        return count + 1;
+    }
+
+>>>>>>> upstream/main
     private static string QuoteFieldNameIfNeeded(string name)
     {
         if (string.IsNullOrEmpty(name)) return name;
@@ -2273,6 +3195,17 @@ public partial class WordHandler
 
     private string AddTextbox(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
+<<<<<<< HEAD
+=======
+        // R47: `/chart[N]` resolves to the paragraph that hosts the chart,
+        // not a chart-internal container. Adding a textbox there silently
+        // landed the drawing in body and returned an unresolvable
+        // `/chart[N]/textbox[M]` path. Reject up-front.
+        if (parentPath.StartsWith("/chart[", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                $"Cannot add a textbox to a chart path ('{parentPath}'). " +
+                "Charts don't host textbox children — use /body or a table cell as parent.");
+>>>>>>> upstream/main
         // BUG-D1-MULTIDRAWING-HOST: a paragraph parent means "attach the
         // textbox drawing to this existing paragraph" instead of creating a
         // fresh host. Used by the dump emitter when N textboxes share one
@@ -2341,6 +3274,13 @@ public partial class WordHandler
         //   shadow        → <a:effectLst><a:outerShdw>    ("true" or "blur;dist;dir;color;alpha")
         string geom = SanitizeGeometry(
             properties.GetValueOrDefault("geometry") ?? properties.GetValueOrDefault("shape") ?? "rect");
+<<<<<<< HEAD
+=======
+        // Adjust handle for shapes with a single "adj" guide (most notably
+        // roundRect's corner radius). Empty when unset → bare <a:avLst/>.
+        string avLstXml = BuildAdjXml(
+            properties.GetValueOrDefault("cornerRadius") ?? properties.GetValueOrDefault("adj"));
+>>>>>>> upstream/main
         string rotAttr = BuildRotAttr(
             properties.GetValueOrDefault("rotation") ?? properties.GetValueOrDefault("rot"));
         string vert = properties.GetValueOrDefault("textDirection") ?? properties.GetValueOrDefault("vert") ?? "";
@@ -2367,9 +3307,19 @@ public partial class WordHandler
         string fillXml;
         if (!string.IsNullOrEmpty(gradient))
             fillXml = BuildGradientXml(gradient);
+<<<<<<< HEAD
         else if (!string.IsNullOrEmpty(fillColor))
             fillXml = BuildSolidFillXml(fillColor, fillOpacity);
         else
+=======
+        else if (!string.IsNullOrEmpty(fillColor) && !IsNoFillColor(fillColor))
+            fillXml = BuildSolidFillXml(fillColor, fillOpacity);
+        else
+            // Unset, or the documented `fill=none` / `fill=transparent` sentinel
+            // (see `help docx add textbox`) → explicit no-fill. Previously a
+            // literal "none" fell through to BuildSolidFillXml and the color
+            // parser rejected it, so a borderless/transparent box was impossible.
+>>>>>>> upstream/main
             fillXml = "<a:noFill/>";
         string lnXml = BuildLineXml(lineStyle, lineWidth, lineColor);
         // effectLst follows fill+ln in CT_ShapeProperties schema order.
@@ -2380,10 +3330,27 @@ public partial class WordHandler
 
         string wrapInnerXml = WrapXmlFragment(wrap);
 
+<<<<<<< HEAD
         // Drawing scaffolding. EffectExtent + DocProperties + a:graphic with
         // a:graphicData uri = wordprocessingShape; inner wps:wsp carries
         // spPr (preset rect geometry + fill + line) + txbx (body paragraphs) + bodyPr.
         string drawingXml = $@"<w:drawing xmlns:w=""http://schemas.openxmlformats.org/wordprocessingml/2006/main"" xmlns:wp=""http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"" xmlns:wps=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wp:anchor distT=""0"" distB=""0"" distL=""114300"" distR=""114300"" simplePos=""0"" relativeHeight=""251{siblingShapes:D3}"" behindDoc=""0"" locked=""0"" layoutInCell=""1"" allowOverlap=""1""><wp:simplePos x=""0"" y=""0""/><wp:positionH relativeFrom=""{hRel}"">{posHInner}</wp:positionH><wp:positionV relativeFrom=""{vRel}"">{posVInner}</wp:positionV><wp:extent cx=""{cxEmu}"" cy=""{cyEmu}""/><wp:effectExtent l=""0"" t=""0"" r=""0"" b=""0""/>{wrapInnerXml}<wp:docPr id=""{docPropId}"" name=""{System.Security.SecurityElement.Escape(altText)}""/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wps:wsp><wps:cNvSpPr txBox=""1""/><wps:spPr><a:xfrm{rotAttr}><a:off x=""0"" y=""0""/><a:ext cx=""{cxEmu}"" cy=""{cyEmu}""/></a:xfrm><a:prstGeom prst=""{geom}""><a:avLst/></a:prstGeom>{fillXml}{lnXml}{effectXml}</wps:spPr><wps:txbx><w:txbxContent>{txbxBodyXml}</w:txbxContent></wps:txbx><wps:bodyPr rot=""0""{vertAttr}{bodyWrapAttr} lIns=""{lIns}"" tIns=""{tIns}"" rIns=""{rIns}"" bIns=""{bIns}"" anchor=""{anchorVal}"" anchorCtr=""0"">{spAutoFitXml}</wps:bodyPr></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing>";
+=======
+        // Z-order: behindDoc pushes the box behind body text; relativeHeight
+        // (alias zorder) is the stacking order (higher = front). Defaults keep the
+        // legacy in-front, auto-incrementing behaviour.
+        string behindDocVal = IsTruthy(properties.GetValueOrDefault("behindDoc", "")) ? "1" : "0";
+        string? relHeightRaw = properties.GetValueOrDefault("relativeHeight") ?? properties.GetValueOrDefault("zorder");
+        string relHeightVal = !string.IsNullOrWhiteSpace(relHeightRaw)
+            && long.TryParse(relHeightRaw.Trim(), out var rh) && rh >= 0
+            ? rh.ToString()
+            : $"251{siblingShapes:D3}";
+
+        // Drawing scaffolding. EffectExtent + DocProperties + a:graphic with
+        // a:graphicData uri = wordprocessingShape; inner wps:wsp carries
+        // spPr (preset rect geometry + fill + line) + txbx (body paragraphs) + bodyPr.
+        string drawingXml = $@"<w:drawing xmlns:w=""http://schemas.openxmlformats.org/wordprocessingml/2006/main"" xmlns:wp=""http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"" xmlns:wps=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wp:anchor distT=""0"" distB=""0"" distL=""114300"" distR=""114300"" simplePos=""0"" relativeHeight=""{relHeightVal}"" behindDoc=""{behindDocVal}"" locked=""0"" layoutInCell=""1"" allowOverlap=""1""><wp:simplePos x=""0"" y=""0""/><wp:positionH relativeFrom=""{hRel}"">{posHInner}</wp:positionH><wp:positionV relativeFrom=""{vRel}"">{posVInner}</wp:positionV><wp:extent cx=""{cxEmu}"" cy=""{cyEmu}""/><wp:effectExtent l=""0"" t=""0"" r=""0"" b=""0""/>{wrapInnerXml}<wp:docPr id=""{docPropId}"" name=""{System.Security.SecurityElement.Escape(altText)}""/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wps:wsp><wps:cNvSpPr txBox=""1""/><wps:spPr><a:xfrm{rotAttr}><a:off x=""0"" y=""0""/><a:ext cx=""{cxEmu}"" cy=""{cyEmu}""/></a:xfrm><a:prstGeom prst=""{geom}""><a:avLst>{avLstXml}</a:avLst></a:prstGeom>{fillXml}{lnXml}{effectXml}</wps:spPr><wps:txbx><w:txbxContent>{txbxBodyXml}</w:txbxContent></wps:txbx><wps:bodyPr rot=""0""{vertAttr}{bodyWrapAttr} lIns=""{lIns}"" tIns=""{tIns}"" rIns=""{rIns}"" bIns=""{bIns}"" anchor=""{anchorVal}"" anchorCtr=""0"">{spAutoFitXml}</wps:bodyPr></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing>";
+>>>>>>> upstream/main
 
         var drawing = ParseDrawingFromXml(drawingXml);
         var run = new Run(drawing);
@@ -2419,6 +3386,18 @@ public partial class WordHandler
         var idx = parentPath.LastIndexOf("/p[", StringComparison.Ordinal);
         var hostRoot = idx >= 0 ? parentPath.Substring(0, idx) : parentPath;
         if (string.IsNullOrEmpty(hostRoot)) hostRoot = "/";
+<<<<<<< HEAD
+=======
+        // Reject nesting: a textbox/shape inside an existing textbox's
+        // txbxContent produces OOXML the spec prohibits — Word refuses to open
+        // the file (0x800706BE). Fail fast before any XML mutation occurs.
+        for (var walk = para.Parent; walk != null; walk = walk.Parent)
+        {
+            if (walk.LocalName == "txbxContent")
+                throw new ArgumentException(
+                    $"Cannot add textbox/shape under {parentPath}: nested textboxes are not permitted by the OOXML spec (w:drawing inside w:txbxContent corrupts the file).");
+        }
+>>>>>>> upstream/main
         OpenXmlElement? anc = para.Parent;
         while (anc != null && anc is not (Body or TableCell or Header or Footer))
             anc = anc.Parent;
@@ -2502,6 +3481,18 @@ public partial class WordHandler
         // Accept body / cell / header / footer roots. Path's first segment
         // ("/body", "/header[N]", "/footer[N]", or "/body/.../tc[N]") is what
         // we re-use for the returned /<root>/textbox[N] path.
+<<<<<<< HEAD
+=======
+        // Reject nesting under a txbxContent ancestor (e.g. a cell inside a
+        // textbox-nested table): drawings under txbxContent corrupt the file
+        // (Word 0x800706BE). Mirror ResolveDrawingHostFromParagraph.
+        for (var walk = parent; walk != null; walk = walk.Parent)
+        {
+            if (walk.LocalName == "txbxContent")
+                throw new ArgumentException(
+                    $"Cannot add textbox/shape under {parentPath}: nested textboxes are not permitted by the OOXML spec (w:drawing inside w:txbxContent corrupts the file).");
+        }
+>>>>>>> upstream/main
         if (parent is Body) return (parent, parentPath.TrimEnd('/'));
         if (parent is TableCell) return (parent, parentPath);
         // OpenXmlPartRootElement (Header/Footer): use itself.
@@ -2552,9 +3543,18 @@ public partial class WordHandler
             if (lnWidthEmu == 0 && double.TryParse(width, out var pts)) lnWidthEmu = (long)Math.Round(pts * EmuConverter.EmuPerPoint);
         }
         string widthAttr = lnWidthEmu > 0 ? $" w=\"{lnWidthEmu}\"" : "";
+<<<<<<< HEAD
         // Style: "none" emits a:noFill, anything else emits a:solidFill +
         // optional a:prstDash for non-solid line types.
         bool isNone = string.Equals(style, "none", StringComparison.OrdinalIgnoreCase);
+=======
+        // Style "none" — or the color sentinels "none"/"transparent" — emit
+        // a:noFill (a borderless box), anything else emits a:solidFill + optional
+        // a:prstDash for non-solid line types. Accepting the color sentinel keeps
+        // `line.color=none` symmetric with `fill=none`.
+        bool isNone = string.Equals(style, "none", StringComparison.OrdinalIgnoreCase)
+            || IsNoFillColor(color);
+>>>>>>> upstream/main
         if (isNone) return $"<a:ln{widthAttr}><a:noFill/></a:ln>";
         string fill = !string.IsNullOrEmpty(color)
             ? $"<a:solidFill><a:srgbClr val=\"{SanitizeHex(color)}\"/></a:solidFill>"
@@ -2580,6 +3580,25 @@ public partial class WordHandler
         _                             => "solid",
     };
 
+<<<<<<< HEAD
+=======
+    /// <summary>Build the <c>&lt;a:avLst&gt;</c> inner XML for a shape's single
+    /// adjust handle (roundRect corner radius, etc.). Accepts a percentage 0-100
+    /// (the friendly form; ×1000 into the OOXML guide value where 100000 = 100%)
+    /// or a raw guide value > 100. Returns "" when unset → callers emit an empty
+    /// <c>&lt;a:avLst/&gt;</c> and the shape keeps its preset default.</summary>
+    private static string BuildAdjXml(string? adj)
+    {
+        if (string.IsNullOrWhiteSpace(adj)) return "";
+        var v = adj.Trim().TrimEnd('%');
+        if (!double.TryParse(v, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var n)) return "";
+        long val = n <= 100 ? (long)Math.Round(n * 1000) : (long)Math.Round(n);
+        val = Math.Clamp(val, 0, 100000);
+        return $"<a:gd name=\"adj\" fmla=\"val {val}\"/>";
+    }
+
+>>>>>>> upstream/main
     /// <summary>Build the <c>rot</c> attribute (with leading space) for
     /// <c>&lt;a:xfrm&gt;</c>. Accepts raw OOXML 60000ths-of-a-degree (the dump
     /// form, e.g. 2700000) or plain degrees (e.g. 45). A value ≤ 360 is read as
@@ -2642,6 +3661,16 @@ public partial class WordHandler
         return $" wrap=\"{sane}\"";
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary><c>none</c>/<c>transparent</c> are the documented sentinels for
+    /// an explicit no-fill / no-line (<c>a:noFill</c>), distinct from an unset
+    /// value (which leaves the theme default in place).</summary>
+    private static bool IsNoFillColor(string? color) =>
+        string.Equals(color, "none", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(color, "transparent", StringComparison.OrdinalIgnoreCase);
+
+>>>>>>> upstream/main
     /// <summary>solidFill, optionally translucent. Opacity accepts 0-100000
     /// (OOXML alpha, the dump form), a "NN%" string, or a 0-1 / 0-100 number.</summary>
     private static string BuildSolidFillXml(string color, string? opacity)
@@ -2670,11 +3699,55 @@ public partial class WordHandler
         return Math.Clamp((int)Math.Round(alpha), 0, 100000);
     }
 
+<<<<<<< HEAD
     /// <summary>Build <c>&lt;a:gradFill&gt;</c> from a stop list. Each stop is
     /// <c>color</c> with an optional <c>@pos</c> (0-100000); positions are spread
     /// evenly when omitted. e.g. "FF6B6B@0;FFE66D@100000" or "FF6B6B,FFE66D".</summary>
     private static string BuildGradientXml(string gradient)
     {
+=======
+    /// <summary>Build <c>&lt;a:gradFill&gt;</c> from a gradient spec. Two forms are
+    /// accepted so a spec is portable between charts and textboxes:
+    /// <list type="bullet">
+    /// <item>stop list — <c>color[@pos]</c> separated by <c>;</c>/<c>,</c>, positions
+    /// (0-100000) spread evenly when omitted. e.g. "FF6B6B@0;FFE66D@100000".</item>
+    /// <item>chart form — <c>C1-C2[-C3…][:angleDeg]</c>, the syntax cChart
+    /// <c>chartFill</c> uses. e.g. "FF6B6B-FFE66D:90". The angle emits <c>a:lin</c>.</item>
+    /// </list></summary>
+    private static string BuildGradientXml(string gradient)
+    {
+        gradient = gradient.Trim();
+        // Chart-style "C1-C2[-…][:angle]": distinguished by the '-' color separator
+        // and the absence of any stop-list punctuation (','/';'/'@'). Hex/named
+        // colors never contain '-', so this is unambiguous.
+        if (gradient.IndexOfAny(new[] { ',', ';', '@' }) < 0 && gradient.Contains('-'))
+        {
+            string linXml = "";
+            var colonIdx = gradient.IndexOf(':');
+            if (colonIdx >= 0)
+            {
+                var angleStr = gradient[(colonIdx + 1)..].Trim();
+                gradient = gradient[..colonIdx];
+                if (double.TryParse(angleStr, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var deg))
+                {
+                    long ang = ((long)Math.Round(deg * 60000) % 21_600_000 + 21_600_000) % 21_600_000;
+                    linXml = $"<a:lin ang=\"{ang}\" scaled=\"1\"/>";
+                }
+            }
+            var cols = gradient.Split('-', StringSplitOptions.RemoveEmptyEntries);
+            if (cols.Length == 0) return "<a:noFill/>";
+            var csb = new System.Text.StringBuilder("<a:gradFill><a:gsLst>");
+            for (int i = 0; i < cols.Length; i++)
+            {
+                int pos = cols.Length == 1 ? 0 : (int)Math.Round(i * 100000.0 / (cols.Length - 1));
+                csb.Append($"<a:gs pos=\"{pos}\"><a:srgbClr val=\"{SanitizeHex(cols[i].Trim())}\"/></a:gs>");
+            }
+            csb.Append("</a:gsLst>").Append(linXml).Append("</a:gradFill>");
+            return csb.ToString();
+        }
+
+>>>>>>> upstream/main
         var stops = gradient.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
         if (stops.Length == 0) return "<a:noFill/>";
         var sb = new System.Text.StringBuilder("<a:gradFill><a:gsLst>");
@@ -2743,7 +3816,11 @@ public partial class WordHandler
         "downarrow"              => "downArrow",
         "star5"                  => "star5",
         "wedgerectcallout"       => "wedgeRectCallout",
+<<<<<<< HEAD
         _                        => "rect",
+=======
+        _ => throw new ArgumentException($"Unknown geometry '{preset}'. Valid: rect, ellipse, line, roundRect, triangle, diamond, pentagon, hexagon, octagon, rightArrow, leftArrow, upArrow, downArrow, star5, wedgeRectCallout."),
+>>>>>>> upstream/main
     };
 
     /// <summary>Parse a w:drawing element from XML with full namespace
@@ -2805,4 +3882,23 @@ public partial class WordHandler
         }
         return count;
     }
+<<<<<<< HEAD
+=======
+
+    // 1-based index of the anchor paragraph's wpg:wgp group among all groups in
+    // the host — matches the Navigation "group" resolver (a `diagram` emits one
+    // group). Kept separate from CountShapesInHost: a group carries child
+    // textboxes, so the shape/textbox heuristics would misclassify it.
+    private static int CountGroupsInHost(OpenXmlElement host, Paragraph anchor)
+    {
+        int count = 0;
+        foreach (var p in host.Elements<Paragraph>())
+        {
+            if (p.Descendants<Drawing>().Any(d => d.InnerXml.Contains("<wpg:wgp")))
+                count++;
+            if (ReferenceEquals(p, anchor)) return count;
+        }
+        return count;
+    }
+>>>>>>> upstream/main
 }

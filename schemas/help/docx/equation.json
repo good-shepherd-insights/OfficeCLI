@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "equation",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["formula", "math"],
+>>>>>>> upstream/main
   "parent": "body|paragraph",
   "operations": {
     "add": true,
@@ -26,10 +30,18 @@
         "inline"
       ],
       "add": true,
+<<<<<<< HEAD
       "set": false,
       "get": true,
       "examples": [
         "--prop mode=inline"
+=======
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop mode=inline",
+        "--prop mode=display"
+>>>>>>> upstream/main
       ],
       "readback": "display | inline",
       "enforcement": "report"

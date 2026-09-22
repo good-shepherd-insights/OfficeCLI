@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -16,8 +20,9 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
-    public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
+    public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
     {
+        Core.ViewRangeGuard.RejectTextRange(range, "pptx");
         var sb = new StringBuilder();
         int slideNum = 0;
         int totalSlides = GetSlideParts().Count();
@@ -469,8 +474,9 @@ public partial class PowerPointHandler
         };
     }
 
-    public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
+    public JsonNode ViewAsTextJson(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null, string? range = null)
     {
+        Core.ViewRangeGuard.RejectTextRange(range, "pptx");
         var slidesArray = new JsonArray();
         int slideNum = 0;
         int totalSlides = GetSlideParts().Count();
@@ -510,11 +516,24 @@ public partial class PowerPointHandler
         };
     }
 
+    private static bool TryBox(Drawing.Transform2D? xfrm, out long x, out long y, out long w, out long h)
+    {
+        x = y = w = h = 0;
+        if (xfrm?.Offset?.X == null || xfrm.Offset.Y == null || xfrm.Extents?.Cx == null || xfrm.Extents.Cy == null) return false;
+        x = xfrm.Offset.X.Value; y = xfrm.Offset.Y.Value; w = xfrm.Extents.Cx.Value; h = xfrm.Extents.Cy.Value;
+        return true;
+    }
+
     public List<DocumentIssue> ViewAsIssues(string? issueType = null, int? limit = null)
     {
         var issues = new List<DocumentIssue>();
         int issueNum = 0;
         int slideNum = 0;
+
+        // Slide dimensions for the off-slide geometry check (16:9 default if unset).
+        var slideSize = _doc.PresentationPart?.Presentation?.SlideSize;
+        long slideW = (long)(slideSize?.Cx?.Value ?? 12192000);
+        long slideH = (long)(slideSize?.Cy?.Value ?? 6858000);
 
         foreach (var slidePart in GetSlideParts())
         {
@@ -710,12 +729,44 @@ public partial class PowerPointHandler
             // suggestion. A dedicated a11y audit mode is the right home for
             // this kind of structural lint if it returns later.
 
+<<<<<<< HEAD
             // Check for font consistency issues
+=======
+            const long offTol = 180000; // 0.5cm in EMU — off-slide grazing tolerance
+            // Pre-pass: collect off-slide TEXT boxes so a co-located graphic
+            // container (a card background carrying no text of its own) can be
+            // flagged too. Without this, a fix that only moves the flagged text
+            // leaves the card behind — `view issues` passes but the card is
+            // detached and still clipped (observed: a fix that satisfied the
+            // checker yet broke the layout). Each entry: bounds + text snippet.
+            var offSlideTextBoxes = new List<(long x, long y, long w, long h, string text)>();
+            // allBoxes[i] aligns with shapes[i] (paint order = document order). Used
+            // by the occlusion check: a text box covered by a LATER opaque box reads
+            // as hidden. w==0 marks a shape with no usable geometry (never overlaps).
+            var allBoxes = new List<(long x, long y, long w, long h, bool opaque)>();
+            foreach (var s in shapes)
+            {
+                var sx = s.ShapeProperties?.Transform2D;
+                bool hasGeom = sx?.Offset?.X != null && sx.Offset.Y != null && sx.Extents?.Cx != null && sx.Extents.Cy != null;
+                long x = 0, y = 0, w = 0, h = 0;
+                if (hasGeom) { x = sx!.Offset!.X!.Value; y = sx.Offset.Y!.Value; w = sx.Extents!.Cx!.Value; h = sx.Extents.Cy!.Value; }
+                allBoxes.Add((x, y, w, h, hasGeom && IsOpaqueOccluder(s)));
+
+                var st = GetShapeText(s);
+                if (hasGeom && !string.IsNullOrWhiteSpace(st))
+                {
+                    long worst = Math.Max(Math.Max(-x, (x + w) - slideW), Math.Max(-y, (y + h) - slideH));
+                    if (worst > offTol) offSlideTextBoxes.Add((x, y, w, h, st));
+                }
+            }
+
+>>>>>>> upstream/main
             int shapeIdx = 0;
             foreach (var shape in shapes)
             {
                 shapeIdx++;
                 var shapePath = $"/slide[{slideNum}]/{BuildElementPathSegment("shape", shape, shapeIdx)}";
+<<<<<<< HEAD
 
                 // CONSISTENCY(text-overflow-check): merged in from former `check` command.
                 var overflow = CheckTextOverflow(shape);
@@ -733,23 +784,174 @@ public partial class PowerPointHandler
 
                 var runs = shape.Descendants<Drawing.Run>().ToList();
                 if (runs.Count <= 1) continue;
+=======
+>>>>>>> upstream/main
 
-                var fonts = runs.Select(r =>
-                    r.RunProperties?.GetFirstChild<Drawing.LatinFont>()?.Typeface
-                    ?? r.RunProperties?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface)
-                    .Where(f => f != null).Distinct().ToList();
-
-                if (fonts.Count > 1)
+                // CONSISTENCY(text-overflow-check): merged in from former `check` command.
+                var overflow = CheckTextOverflow(shape);
+                if (overflow != null)
                 {
                     issues.Add(new DocumentIssue
                     {
-                        Id = $"F{++issueNum}",
+                        Id = $"O{++issueNum}",
                         Type = IssueType.Format,
+<<<<<<< HEAD
                         Severity = IssueSeverity.Info,
                         Path = shapePath,
                         Message = $"Inconsistent fonts in text box: {string.Join(", ", fonts)}"
                     });
                 }
+=======
+                        Severity = IssueSeverity.Warning,
+                        Path = shapePath,
+                        Message = overflow
+                    });
+                }
+
+                // Off-slide: a shape whose declared box extends substantially
+                // past a slide edge. Box geometry only (x/y/w/h) — a shape placed
+                // off the canvas is a layout defect regardless of how text wraps.
+                // Two emit cases:
+                //   1. the shape carries text → its own content is clipped;
+                //   2. the shape carries NO text but hosts an off-slide text box
+                //      (a card background) → flag it so a fix moves the whole card.
+                // Full-bleed pictures aren't in this Shape loop, and a spanning
+                // decorative fill (extent ≈ slide) is skipped as legit bleed.
+                var offText = GetShapeText(shape);
+                var offXfrm = shape.ShapeProperties?.Transform2D;
+                if (offXfrm?.Offset?.X != null && offXfrm.Offset.Y != null
+                    && offXfrm.Extents?.Cx != null && offXfrm.Extents.Cy != null)
+                {
+                    long ox = offXfrm.Offset.X!.Value, oy = offXfrm.Offset.Y!.Value;
+                    long ow = offXfrm.Extents.Cx!.Value, oh = offXfrm.Extents.Cy!.Value;
+                    long offL = -ox, offT = -oy, offR = (ox + ow) - slideW, offB = (oy + oh) - slideH;
+                    long offWorst = Math.Max(Math.Max(offL, offR), Math.Max(offT, offB));
+                    if (offWorst > offTol)
+                    {
+                        string offEdge = offWorst == offR ? "right" : offWorst == offB ? "bottom"
+                                       : offWorst == offL ? "left" : "top";
+                        if (!string.IsNullOrWhiteSpace(offText))
+                        {
+                            // Name the clipped text so `view issues` is self-contained —
+                            // the reader sees WHICH content runs off-canvas without a
+                            // follow-up `get`. Whitespace-collapse and cap the snippet.
+                            var offSnippet = System.Text.RegularExpressions.Regex.Replace(offText.Trim(), @"\s+", " ");
+                            if (offSnippet.Length > 40) offSnippet = offSnippet[..40] + "…";
+                            issues.Add(new DocumentIssue
+                            {
+                                Id = $"O{++issueNum}",
+                                Type = IssueType.Format,
+                                Severity = IssueSeverity.Warning,
+                                Path = shapePath,
+                                Message = $"Text shape \"{offSnippet}\" extends {offWorst / 360000.0:F1}cm past slide {offEdge} edge"
+                            });
+                        }
+                        else
+                        {
+                            // Container case: a textless shape that runs off-slide
+                            // AND hosts an off-slide text box. Skip spanning fills
+                            // (full-width/height backdrops = legit bleed); require a
+                            // hosted off-slide text box (rectangle intersection) so a
+                            // bare decorative bleed never trips it.
+                            bool spans = ow >= slideW - offTol || oh >= slideH - offTol;
+                            var hosted = spans
+                                ? default
+                                : offSlideTextBoxes.FirstOrDefault(b =>
+                                    b.x < ox + ow && b.x + b.w > ox && b.y < oy + oh && b.y + b.h > oy);
+                            if (hosted.text != null)
+                            {
+                                var hostSnip = System.Text.RegularExpressions.Regex.Replace(hosted.text.Trim(), @"\s+", " ");
+                                if (hostSnip.Length > 40) hostSnip = hostSnip[..40] + "…";
+                                issues.Add(new DocumentIssue
+                                {
+                                    Id = $"O{++issueNum}",
+                                    Type = IssueType.Format,
+                                    Severity = IssueSeverity.Warning,
+                                    Path = shapePath,
+                                    Message = $"Container shape extends {offWorst / 360000.0:F1}cm past slide {offEdge} edge (clips \"{hostSnip}\")"
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Occlusion: a text shape whose box is substantially covered by a
+                // LATER (higher z-order) opaque shape — the text is painted under an
+                // opaque fill and reads as hidden. The shape's OWN background is
+                // earlier in paint order, so it is never the culprit. Requires an
+                // explicit opaque fill on the occluder and >20% area overlap, so a
+                // text box correctly stacked over its own card, a translucent scrim,
+                // or an incidental graze never trips it.
+                if (!string.IsNullOrWhiteSpace(offText) && shapeIdx - 1 < allBoxes.Count)
+                {
+                    var ab = allBoxes[PathIndex.ToArrayIndex(shapeIdx)];
+                    long aArea = ab.w * ab.h;
+                    if (aArea > 0)
+                    {
+                        for (int j = shapeIdx; j < allBoxes.Count; j++)
+                        {
+                            var bb = allBoxes[j];
+                            if (!bb.opaque) continue;
+                            long ixw = Math.Min(ab.x + ab.w, bb.x + bb.w) - Math.Max(ab.x, bb.x);
+                            long ixh = Math.Min(ab.y + ab.h, bb.y + bb.h) - Math.Max(ab.y, bb.y);
+                            if (ixw <= 0 || ixh <= 0) continue;
+                            if ((ixw * ixh) * 5 >= aArea) // ≥20% of the text box covered
+                            {
+                                var occPath = $"/slide[{slideNum}]/{BuildElementPathSegment("shape", shapes[j], j + 1)}";
+                                var occSnip = System.Text.RegularExpressions.Regex.Replace(offText.Trim(), @"\s+", " ");
+                                if (occSnip.Length > 40) occSnip = occSnip[..40] + "…";
+                                issues.Add(new DocumentIssue
+                                {
+                                    Id = $"O{++issueNum}",
+                                    Type = IssueType.Format,
+                                    Severity = IssueSeverity.Warning,
+                                    Path = shapePath,
+                                    Message = $"Text \"{occSnip}\" is hidden behind overlapping shape {occPath}"
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Low contrast: a shape with its OWN opaque dark solid fill that
+                // carries opaque dark text reads fine on a laptop and vanishes on
+                // projection. Declared-model only — the shape's explicit fill IS
+                // the backdrop for its own runs, so there is no z-order guesswork
+                // (unlike text over a fill=none box sitting on another shape). Scoped
+                // tight to keep false positives near zero: explicit srgbClr on BOTH
+                // fill and run (scheme / inherited colors skipped), translucent runs
+                // skipped (intentional ghost / watermark text), and any color carrying
+                // a +lumMod/+shade transform skipped (those shift brightness). Floor
+                // matches the SKILL contrast rule: fill < 30%, text < 80% brightness.
+                var fillSolid = shape.ShapeProperties?.GetFirstChild<Drawing.SolidFill>();
+                if (fillSolid != null
+                    && TryOpaqueRgbLuminance(ReadColorFromFill(fillSolid), out double fillLum, out _)
+                    && fillLum < 0.30 * 255)
+                {
+                    foreach (var run in shape.Descendants<Drawing.Run>())
+                    {
+                        if (run.Text?.Text is not { Length: > 0 }) continue;
+                        var runSolid = run.RunProperties?.GetFirstChild<Drawing.SolidFill>();
+                        if (runSolid == null) continue;
+                        if (TryOpaqueRgbLuminance(ReadColorFromFill(runSolid), out double runLum, out string runHex)
+                            && runLum < 0.80 * 255)
+                        {
+                            issues.Add(new DocumentIssue
+                            {
+                                Id = $"C{++issueNum}",
+                                Type = IssueType.Format,
+                                Subtype = Core.IssueSubtypes.LowContrast,
+                                Severity = IssueSeverity.Warning,
+                                Path = shapePath,
+                                Message = $"Low-contrast text #{runHex} on dark fill — unreadable on projection. "
+                                        + "Use FFFFFF or a color brighter than 80%."
+                            });
+                            break; // one report per shape is enough
+                        }
+                    }
+                }
+>>>>>>> upstream/main
             }
 
             // Table row/grid width mismatch. OOXML requires each <a:tr> to have
@@ -760,6 +962,7 @@ public partial class PowerPointHandler
             // skip it; either way it's malformed. Common cause: an earlier
             // `add row --prop cols=N` with N < grid count, now rejected at
             // write time but old files may still carry the bug.
+<<<<<<< HEAD
             int tableIdx = 0;
             foreach (var graphicFrame in shapeTree.Descendants<GraphicFrame>())
             {
@@ -793,22 +996,161 @@ public partial class PowerPointHandler
             // applies to every picture on the slide, including those nested in
             // groups.
             foreach (var pic in shapeTree.Descendants<Picture>())
+=======
+            // Elements with no pixel on the canvas (issue #301). The off-slide
+            // check above covers TEXT shapes; a picture, graphic frame,
+            // connector or group placed entirely outside the slide passed
+            // `view issues` and `validate` alike. Partial overhang is NOT
+            // reported here — bleed (a background or decorative image pulled
+            // past the edge) is a design idiom — only a box that intersects
+            // the slide nowhere, which PowerPoint does not show at all.
+>>>>>>> upstream/main
             {
-                var alt = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Description?.Value;
-                if (string.IsNullOrEmpty(alt))
+                int picN = 0, gfN = 0, cxN = 0, grpN = 0;
+                foreach (var el in shapeTree.ChildElements)
                 {
-                    var name = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Name?.Value ?? "?";
+                    string kind; int n; long x, y, w, h;
+                    switch (el)
+                    {
+                        case Picture pic:
+                            kind = "picture"; n = ++picN;
+                            if (!TryBox(pic.ShapeProperties?.Transform2D, out x, out y, out w, out h)) continue;
+                            break;
+                        case GraphicFrame gf:
+                            kind = gf.Descendants<Drawing.Table>().Any() ? "table"
+                                 : gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any() ? "chart" : "graphicFrame";
+                            n = ++gfN;
+                            if (gf.Transform?.Offset?.X == null || gf.Transform.Extents?.Cx == null) continue;
+                            x = gf.Transform.Offset.X!.Value; y = gf.Transform.Offset.Y!.Value;
+                            w = gf.Transform.Extents.Cx!.Value; h = gf.Transform.Extents.Cy!.Value;
+                            break;
+                        case ConnectionShape cx:
+                            kind = "connector"; n = ++cxN;
+                            if (!TryBox(cx.ShapeProperties?.Transform2D, out x, out y, out w, out h)) continue;
+                            break;
+                        case GroupShape grp:
+                            kind = "group"; n = ++grpN;
+                            var tg = grp.GroupShapeProperties?.TransformGroup;
+                            if (tg?.Offset?.X == null || tg.Extents?.Cx == null) continue;
+                            x = tg.Offset.X!.Value; y = tg.Offset.Y!.Value; w = tg.Extents.Cx!.Value; h = tg.Extents.Cy!.Value;
+                            break;
+                        default: continue;
+                    }
+                    if (w <= 0 || h <= 0) continue;
+                    bool fullyOutside = x >= slideW || y >= slideH || x + w <= 0 || y + h <= 0;
+                    if (!fullyOutside) continue;
+                    string edge = x >= slideW ? "right" : x + w <= 0 ? "left" : y >= slideH ? "bottom" : "top";
+                    var elName = el.Descendants<NonVisualDrawingProperties>().FirstOrDefault()?.Name?.Value;
                     issues.Add(new DocumentIssue
                     {
-                        Id = $"F{++issueNum}",
+                        Id = $"O{++issueNum}",
                         Type = IssueType.Format,
-                        Severity = IssueSeverity.Info,
-                        Path = $"/slide[{slideNum}]",
-                        Message = $"Picture \"{name}\" is missing alt text (accessibility issue)"
+                        Severity = IssueSeverity.Warning,
+                        Path = $"/slide[{slideNum}]/{BuildElementPathSegment(kind, el, n)}",
+                        Message = $"{char.ToUpperInvariant(kind[0])}{kind[1..]}{(elName != null ? $" \"{elName}\"" : "")} lies entirely outside the slide ({edge} edge) and is not visible",
+                        Suggestion = $"Move it onto the slide (0–{slideW / 360000.0:F1}cm × 0–{slideH / 360000.0:F1}cm) or remove it."
                     });
                 }
             }
 
+<<<<<<< HEAD
+=======
+            // A picture whose box does not keep its source's aspect ratio is
+            // being stretched (issue #301). The crop (<a:srcRect>) and the
+            // stretch inset (<a:fillRect>) are folded in first, so a crop that
+            // restores the box ratio stays silent; pictures covering the whole
+            // slide are skipped (a texture pulled over a background is meant
+            // to stretch); 5% is about where the eye starts to notice.
+            {
+                int picN = 0;
+                foreach (var pic in shapeTree.Elements<Picture>())
+                {
+                    picN++;
+                    if (!TryBox(pic.ShapeProperties?.Transform2D, out var bx, out var by, out var bw, out var bh) || bw <= 0 || bh <= 0) continue;
+                    if ((double)bw * bh >= 0.9 * (double)slideW * slideH) continue;
+                    var embed = pic.BlipFill?.Blip?.Embed?.Value;
+                    if (embed == null) continue;
+                    (int Width, int Height)? dims = null;
+                    try
+                    {
+                        if (slidePart.GetPartById(embed) is ImagePart imgPart)
+                        {
+                            // The package stream may not seek; the header
+                            // reader needs a seekable stream and only the
+                            // first bytes (PNG/BMP/GIF headers, JPEG SOF scan).
+                            using var st = imgPart.GetStream(FileMode.Open, FileAccess.Read);
+                            using var head = new MemoryStream();
+                            var buf = new byte[64 * 1024];
+                            int n = st.Read(buf, 0, buf.Length);
+                            head.Write(buf, 0, n); head.Position = 0;
+                            dims = ImageSource.TryGetDimensions(head);
+                        }
+                    }
+                    catch { }
+                    if (dims is not { Width: > 0, Height: > 0 } d) continue;
+                    double srcW = d.Width, srcH = d.Height;
+                    var src = pic.BlipFill?.SourceRectangle;
+                    if (src != null)
+                    {
+                        srcW *= 1 - ((src.Left?.Value ?? 0) + (src.Right?.Value ?? 0)) / 100000.0;
+                        srcH *= 1 - ((src.Top?.Value ?? 0) + (src.Bottom?.Value ?? 0)) / 100000.0;
+                    }
+                    double boxW = bw, boxH = bh;
+                    var fill = pic.BlipFill?.GetFirstChild<Drawing.Stretch>()?.FillRectangle;
+                    if (fill != null)
+                    {
+                        boxW *= 1 - ((fill.Left?.Value ?? 0) + (fill.Right?.Value ?? 0)) / 100000.0;
+                        boxH *= 1 - ((fill.Top?.Value ?? 0) + (fill.Bottom?.Value ?? 0)) / 100000.0;
+                    }
+                    if (srcW <= 0 || srcH <= 0 || boxW <= 0 || boxH <= 0) continue;
+                    double srcRatio = srcW / srcH, boxRatio = boxW / boxH;
+                    double off = Math.Abs(boxRatio / srcRatio - 1);
+                    if (off <= 0.05) continue;
+                    double fixH = bw / srcRatio, fixW = bh * srcRatio;
+                    var picName = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Name?.Value;
+                    issues.Add(new DocumentIssue
+                    {
+                        Id = $"P{++issueNum}",
+                        Type = IssueType.Format,
+                        Subtype = Core.IssueSubtypes.PictureAspectDistorted,
+                        Severity = IssueSeverity.Warning,
+                        Path = $"/slide[{slideNum}]/{BuildElementPathSegment("picture", pic, picN)}",
+                        Message = $"Picture{(picName != null ? $" \"{picName}\"" : "")} is stretched: source {d.Width}x{d.Height}px ({srcRatio:0.00}:1) in a {bw / 360000.0:0.0}x{bh / 360000.0:0.0}cm box ({boxRatio:0.00}:1), {off * 100:0}% off. suggest.height={fixH / 360000.0:0.0}cm",
+                        Suggestion = $"Keep the width and set height={fixH / 360000.0:0.0}cm, or keep the height and set width={fixW / 360000.0:0.0}cm, or crop the source to the box ratio."
+                    });
+                }
+            }
+
+            int tableIdx = 0;
+            foreach (var graphicFrame in shapeTree.Descendants<GraphicFrame>())
+            {
+                var table = graphicFrame.Descendants<Drawing.Table>().FirstOrDefault();
+                if (table == null) continue;
+                tableIdx++;
+                var gridColCount = table.TableGrid?.Elements<Drawing.GridColumn>().Count() ?? 0;
+                if (gridColCount == 0) continue;
+                int rowIdx = 0;
+                foreach (var tr in table.Elements<Drawing.TableRow>())
+                {
+                    rowIdx++;
+                    var tcCount = tr.Elements<Drawing.TableCell>().Count();
+                    if (tcCount != gridColCount)
+                    {
+                        issues.Add(new DocumentIssue
+                        {
+                            Id = $"S{++issueNum}",
+                            Type = IssueType.Structure,
+                            Severity = IssueSeverity.Warning,
+                            Path = $"/slide[{slideNum}]/table[{tableIdx}]/tr[{rowIdx}]",
+                            Message = $"Row has {tcCount} cell(s) but table grid has {gridColCount} column(s). " +
+                                      "Real PowerPoint silently pads/clips; other viewers may render incorrectly. " +
+                                      "Add empty cells or use gridSpan to merge."
+                        });
+                    }
+                }
+            }
+
+>>>>>>> upstream/main
             // Slide-level a:fld fields (slidenum, datetime1/2/3/..., footer, header)
             // without a cached rendered text — same observability pattern as Word
             // complex fields and xlsx unevaluated formulas. PowerPoint populates
@@ -881,4 +1223,59 @@ public partial class PowerPointHandler
     // IsDynamicSlideFieldType has been collapsed into Helpers.cs's
     // IsDynamicSlideFieldTypeStatic — single source of truth.
     private static bool IsDynamicSlideFieldType(string fldType) => IsDynamicSlideFieldTypeStatic(fldType);
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// Would this shape's fill hide whatever sits beneath it? True only for an
+    /// EXPLICIT opaque fill — opaque solid (via <see cref="TryOpaqueRgbLuminance"/>),
+    /// or a picture / pattern / gradient fill. Explicit no-fill, a translucent
+    /// solid, and an absent (inherited) fill all return false so the occlusion
+    /// check keeps its false-positive rate near zero.
+    /// </summary>
+    private static bool IsOpaqueOccluder(Shape s)
+    {
+        var sp = s.ShapeProperties;
+        if (sp == null) return false;
+        if (sp.GetFirstChild<Drawing.NoFill>() != null) return false;
+        var solid = sp.GetFirstChild<Drawing.SolidFill>();
+        if (solid != null) return TryOpaqueRgbLuminance(ReadColorFromFill(solid), out _, out _);
+        if (sp.GetFirstChild<Drawing.BlipFill>() != null) return true;
+        if (sp.GetFirstChild<Drawing.PatternFill>() != null) return true;
+        if (sp.GetFirstChild<Drawing.GradientFill>() != null) return true;
+        return false; // inherited / no explicit fill → conservatively not an occluder
+    }
+
+    /// <summary>
+    /// Parse a <see cref="ReadColorFromFill"/> result into a perceived luminance
+    /// (0–255, <c>r*0.299 + g*0.587 + b*0.114</c>) for the low-contrast check.
+    /// Returns false — caller skips — for anything that is not a clean opaque
+    /// explicit RGB: scheme/preset/system color names (non-hex), colors carrying
+    /// a <c>+lumMod/+shade/…</c> transform suffix, and translucent colors
+    /// (8-digit <c>RRGGBBAA</c> with alpha &lt; 80%). This keeps the check on
+    /// firmly declared ground where the false-positive rate is near zero.
+    /// </summary>
+    private static bool TryOpaqueRgbLuminance(string? color, out double luminance, out string hex6)
+    {
+        luminance = 0;
+        hex6 = "";
+        if (string.IsNullOrEmpty(color)) return false;
+        if (color.Contains('+')) return false;          // +lumMod/+shade transform — brightness shifts, skip
+        var hex = color.TrimStart('#');
+        if (hex.Length != 6 && hex.Length != 8) return false;   // scheme names / partial → skip
+        foreach (var c in hex) if (!Uri.IsHexDigit(c)) return false;
+        if (hex.Length == 8)
+        {
+            int a = Convert.ToInt32(hex.Substring(6, 2), 16); // CSS RRGGBBAA — alpha last
+            if (a < 0.80 * 255) return false;            // translucent (ghost / watermark) — intentional, skip
+            hex = hex.Substring(0, 6);
+        }
+        int r = Convert.ToInt32(hex.Substring(0, 2), 16);
+        int g = Convert.ToInt32(hex.Substring(2, 2), 16);
+        int b = Convert.ToInt32(hex.Substring(4, 2), 16);
+        luminance = r * 0.299 + g * 0.587 + b * 0.114;
+        hex6 = hex.ToUpperInvariant();
+        return true;
+    }
+>>>>>>> upstream/main
 }

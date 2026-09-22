@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 namespace OfficeCli.Handlers;
@@ -54,9 +58,19 @@ public static partial class WordBatchEmitter
         "/word/footnotes.xml",
         "/word/endnotes.xml",
         "/word/fontTable.xml",           // BUG-DUMP-R42-3: EmitFontTableRaw round-trips faces + altName subs
+<<<<<<< HEAD
         // OPC auto-managed
         "/docProps/core.xml",            // restamped by OfficeCliMetadata
         "/docProps/app.xml",             // restamped by OfficeCliMetadata
+=======
+        "/word/webSettings.xml",         // EmitWebSettingsRaw round-trips the whole part verbatim
+        // docProps stores — EmitDocPropsRaw round-trips core/app/custom verbatim
+        // so data-bound content controls keep their source display text (the
+        // OfficeCLI audit stamp still rides in custom.xml via StampOnSave).
+        "/docProps/core.xml",
+        "/docProps/app.xml",
+        "/docProps/custom.xml",
+>>>>>>> upstream/main
         "/[Content_Types].xml",
         "/_rels/.rels",
     };
@@ -68,10 +82,22 @@ public static partial class WordBatchEmitter
         "/word/footer",            // footer1.xml etc
         "/word/fonts/",            // BUG-DUMP-R45-1: embedded fonts (.odttf) — EmitFontTableRaw embed-binary
         "/word/media/",            // images — picture run emit
+<<<<<<< HEAD
         "/word/charts/",           // chart XML + embedded xlsx — chart run emit
         "/word/embeddings/",       // OLE payloads — warning already raised per-run
         "/word/diagrams/",         // SmartArt — partial coverage via shape emit
         "/word/activeX/",          // ActiveX controls (form-control aux)
+=======
+        "/media/",                 // package-root media (some picture add paths
+                                   // land here) — round-tripped by the same
+                                   // picture data-URI carrier; warning was a
+                                   // false alarm (source/replay MD5 identical)
+        "/word/charts/",           // chart XML + embedded xlsx — chart run emit
+        "/word/embeddings/",       // OLE payloads — warning already raised per-run
+        "/word/diagrams/",         // SmartArt — partial coverage via shape emit
+        "/word/activeX/",          // ActiveX controls — `add activex` inlined-parts carrier
+        "/customXml/",             // customXml data stores — EmitCustomXmlRaw embed-binary pairs
+>>>>>>> upstream/main
         "/word/printerSettings/",  // SDK strips on save
         "/word/customizations.xml", // legacy customizations
     };
@@ -80,14 +106,20 @@ public static partial class WordBatchEmitter
     // Order matters: prefixes are tested in declaration order; first match wins.
     private static readonly (string Prefix, string Element, string Reason)[] UnsupportedReasons = new[]
     {
+<<<<<<< HEAD
         ("/customXml/itemProps",       "customXmlProps",         "customXml schema-store reference dropped on dump"),
         ("/customXml/item",            "customXml",              "customXml data store (SDT/content-control bindings) dropped on dump"),
         ("/customXml/",                "customXml",              "customXml part dropped on dump"),
+=======
+>>>>>>> upstream/main
         ("/word/glossary/",            "glossary",               "Building Blocks / AutoText repository dropped on dump"),
         ("/word/people.xml",           "people",                 "modern-comment author metadata dropped on dump"),
         ("/word/commentsIds.xml",      "commentsIds",            "modern-comment durable-id metadata dropped on dump"),
         ("/word/commentsExtensible.xml","commentsExtensible",    "modern-comment extension metadata dropped on dump"),
+<<<<<<< HEAD
         ("/word/webSettings.xml",      "webSettings",            "web-publishing settings dropped on dump"),
+=======
+>>>>>>> upstream/main
         ("/word/vbaProject.bin",       "vbaProject",             "VBA macro project dropped on dump"),
         ("/word/vbaData.xml",          "vbaData",                "VBA macro metadata dropped on dump"),
     };
@@ -117,6 +149,7 @@ public static partial class WordBatchEmitter
             if (KnownEmittedExact.Contains(uri)) continue;
             if (KnownEmittedPrefixes.Any(p => uri.StartsWith(p, StringComparison.OrdinalIgnoreCase))) continue;
 
+<<<<<<< HEAD
             // Special-case: docProps/custom.xml — OfficeCliMetadata always
             // restamps OfficeCLI.* entries; user-authored entries are silently
             // dropped on save. Warn only if the part carries non-OfficeCLI
@@ -137,6 +170,8 @@ public static partial class WordBatchEmitter
                 continue;
             }
 
+=======
+>>>>>>> upstream/main
             // Look up the catalogued reason; if none matches, emit a generic
             // "unknown part" warning so silent loss never goes unreported.
             string element = "auxiliaryPart";

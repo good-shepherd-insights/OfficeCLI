@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -7,6 +11,7 @@ using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
 using A = DocumentFormat.OpenXml.Drawing;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using DW14 = DocumentFormat.OpenXml.Office2010.Word.Drawing;
 using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 
 namespace OfficeCli.Handlers;
@@ -28,6 +33,7 @@ public partial class WordHandler
         // part that can host a <w:drawing>.
         var main = _doc.MainDocumentPart;
         uint maxId = 0;
+<<<<<<< HEAD
         void Scan(OpenXmlElement? root)
         {
             if (root == null) return;
@@ -36,6 +42,16 @@ public partial class WordHandler
                 if (dp.Id?.HasValue == true && dp.Id.Value > maxId)
                     maxId = dp.Id.Value;
             }
+=======
+        if (main != null)
+        {
+            foreach (var root in EnumerateContentRoots(main))
+                foreach (var dp in root.Descendants<DW.DocProperties>())
+                {
+                    if (dp.Id?.HasValue == true && dp.Id.Value > maxId)
+                        maxId = dp.Id.Value;
+                }
+>>>>>>> upstream/main
         }
         Scan(main?.Document?.Body);
         if (main != null)
@@ -98,11 +114,62 @@ public partial class WordHandler
         return new Run(new Drawing(inline));
     }
 
+    // BUG-R24-WRAPPOLY: rebuild a wrapTight/wrapThrough polygon from the captured
+    // "edited;side;x,y x,y …" string (see ImageHelpers GET-side). Falls back to
+    // the default full-bounds square (0,0 → 21600,21600) when the prop is absent
+    // or malformed, so a typed `add picture wrap=tight` with no polygon behaves
+    // exactly as before.
+    private static DW.WrapPolygon BuildWrapPolygon(string? serialized)
+    {
+        DW.WrapPolygon Default() => new(
+            new DW.StartPoint { X = 0, Y = 0 },
+            new DW.LineTo { X = 21600, Y = 0 },
+            new DW.LineTo { X = 21600, Y = 21600 },
+            new DW.LineTo { X = 0, Y = 21600 },
+            new DW.LineTo { X = 0, Y = 0 }) { Edited = false };
+        if (string.IsNullOrWhiteSpace(serialized)) return Default();
+        var parts = serialized.Split(';');
+        if (parts.Length < 3) return Default();
+        var vertTokens = parts[2].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var pts = new List<(int X, int Y)>();
+        foreach (var t in vertTokens)
+        {
+            var xy = t.Split(',');
+            if (xy.Length == 2 && int.TryParse(xy[0], out var x) && int.TryParse(xy[1], out var y))
+                pts.Add((x, y));
+        }
+        if (pts.Count < 3) return Default();
+        var poly = new DW.WrapPolygon { Edited = parts[0] == "1" };
+        poly.AppendChild(new DW.StartPoint { X = pts[0].X, Y = pts[0].Y });
+        for (int i = 1; i < pts.Count; i++)
+            poly.AppendChild(new DW.LineTo { X = pts[i].X, Y = pts[i].Y });
+        return poly;
+    }
+
+    // Recover the wrapText side captured in the polygon prop's 2nd field; default
+    // bothSides (Word's default and the prior hardcoded value).
+    private static DW.WrapTextValues WrapSideFrom(string? serialized)
+    {
+        var side = serialized?.Split(';') is { Length: >= 2 } p ? p[1] : "bothSides";
+        return WrapSideValue(side);
+    }
+
+    // Map a wrapText side token (left/right/largest/bothSides) to its enum;
+    // default bothSides (Word's default and OOXML required value on wrapSquare).
+    private static DW.WrapTextValues WrapSideValue(string? side) => side switch
+    {
+        "left" => DW.WrapTextValues.Left,
+        "right" => DW.WrapTextValues.Right,
+        "largest" => DW.WrapTextValues.Largest,
+        _ => DW.WrapTextValues.BothSides,
+    };
+
     private static Run CreateAnchorImageRun(string relationshipId, long cx, long cy, string altText,
         string wrap, long hPos, long vPos,
         DW.HorizontalRelativePositionValues hRel, DW.VerticalRelativePositionValues vRel,
         bool behindText, uint docPropId, string? pictureName = null,
         string? hAlign = null, string? vAlign = null, uint relativeHeight = 1U,
+<<<<<<< HEAD
         (long L, long T, long R, long B)? effectExtent = null)
     {
         OpenXmlElement wrapElement = wrap.ToLowerInvariant() switch
@@ -125,6 +192,26 @@ public partial class WordHandler
                 new DW.LineTo { X = 0, Y = 21600 },
                 new DW.LineTo { X = 0, Y = 0 }
             ) { Edited = false }) { WrapText = DW.WrapTextValues.BothSides },
+=======
+        (long L, long T, long R, long B)? effectExtent = null,
+        (uint T, uint B, uint L, uint R)? wrapDist = null,
+        string? wrapPolygon = null,
+        string? sizeRelH = null, string? sizeRelV = null,
+        string? wrapSide = null)
+    {
+        OpenXmlElement wrapElement = wrap.ToLowerInvariant() switch
+        {
+            "square" => new DW.WrapSquare { WrapText = WrapSideValue(wrapSide) },
+            // WrapText is REQUIRED on wrapTight/wrapThrough (same as wrapSquare);
+            // omitting it produces schema-invalid XML that real Word refuses to
+            // open. BUG-R24-WRAPPOLY: honor a captured source polygon (vertices +
+            // edited flag + wrap side) when present; the default full-bounds
+            // square otherwise extends the wrap boundary and shifts text.
+            "tight" => new DW.WrapTight(BuildWrapPolygon(wrapPolygon))
+                { WrapText = WrapSideFrom(wrapPolygon) },
+            "through" => new DW.WrapThrough(BuildWrapPolygon(wrapPolygon))
+                { WrapText = WrapSideFrom(wrapPolygon) },
+>>>>>>> upstream/main
             "topandbottom" or "topbottom" => new DW.WrapTopBottom(),
             "none" => new DW.WrapNone() as OpenXmlElement,
             _ => throw new ArgumentException($"Invalid wrap value: '{wrap}'. Valid values: none, square, tight, through, topandbottom.")
@@ -182,10 +269,17 @@ public partial class WordHandler
         )
         {
             BehindDoc = behindText,
-            DistanceFromTop = 0U,
-            DistanceFromBottom = 0U,
-            DistanceFromLeft = 114300U,
-            DistanceFromRight = 114300U,
+            // BUG: distT/distB/distL/distR (the gap between a floating image
+            // and the text wrapping around it) were hardcoded — top/bottom to 0
+            // and left/right to 114300 (0.125") regardless of source. A figure
+            // with asymmetric wrap distances (distL=0 distR=71755) came back
+            // with a symmetric 0.125" margin, shifting every line of the
+            // adjacent text. Restore the captured values; default to the old
+            // hardcoded margins when the caller has none (interactive add).
+            DistanceFromTop = wrapDist?.T ?? 0U,
+            DistanceFromBottom = wrapDist?.B ?? 0U,
+            DistanceFromLeft = wrapDist?.L ?? 114300U,
+            DistanceFromRight = wrapDist?.R ?? 114300U,
             SimplePos = false,
             // BUG-DUMP-R26-1: honour the captured z-order instead of the old
             // hardcoded 1U, which collapsed every overlapping float to the same
@@ -196,7 +290,46 @@ public partial class WordHandler
             Locked = false
         };
 
+        // BUG-DUMP-NAR-WP14: re-attach the wp14 relative-sizing extensions
+        // (<wp14:sizeRelH>/<wp14:sizeRelV> with <wp14:pctWidth>/<wp14:pctHeight>).
+        // These are the last children of wp:anchor; without them a picture sized
+        // relative to the page falls back to its absolute extent and reflows.
+        // Prop form: "relativeFrom;pct" (e.g. "page;0").
+        AppendRelativeSize(anchor, sizeRelH, horizontal: true);
+        AppendRelativeSize(anchor, sizeRelV, horizontal: false);
+
         return new Run(new Drawing(anchor));
+    }
+
+    /// <summary>
+    /// Append a wp14 relative-size child (sizeRelH or sizeRelV) to an anchor from
+    /// a "relativeFrom;pct" prop. No-op when spec is null/blank or malformed.
+    /// </summary>
+    private static void AppendRelativeSize(DW.Anchor anchor, string? spec, bool horizontal)
+    {
+        if (string.IsNullOrWhiteSpace(spec)) return;
+        var parts = spec.Split(';');
+        if (parts.Length < 2) return;
+        var relFrom = parts[0].Trim();
+        var pct = parts[1].Trim();
+        if (horizontal)
+        {
+            var rw = new DW14.RelativeWidth(new DW14.PercentageWidth(pct))
+            {
+                ObjectId = new EnumValue<DW14.SizeRelativeHorizontallyValues>(
+                    new DW14.SizeRelativeHorizontallyValues(relFrom)),
+            };
+            anchor.AppendChild(rw);
+        }
+        else
+        {
+            var rh = new DW14.RelativeHeight(new DW14.PercentageHeight(pct))
+            {
+                RelativeFrom = new EnumValue<DW14.SizeRelativeVerticallyValues>(
+                    new DW14.SizeRelativeVerticallyValues(relFrom)),
+            };
+            anchor.AppendChild(rh);
+        }
     }
 
     private static DW.HorizontalRelativePositionValues ParseHorizontalRelative(string value) =>
@@ -206,7 +339,11 @@ public partial class WordHandler
             "column" => DW.HorizontalRelativePositionValues.Column,
             "character" => DW.HorizontalRelativePositionValues.Character,
             "margin" => DW.HorizontalRelativePositionValues.Margin,
-            _ => throw new ArgumentException($"Invalid horizontal relative position: '{value}'. Valid values: margin, page, column, character.")
+            "leftmargin" => DW.HorizontalRelativePositionValues.LeftMargin,
+            "rightmargin" => DW.HorizontalRelativePositionValues.RightMargin,
+            "insidemargin" => DW.HorizontalRelativePositionValues.InsideMargin,
+            "outsidemargin" => DW.HorizontalRelativePositionValues.OutsideMargin,
+            _ => throw new ArgumentException($"Invalid horizontal relative position: '{value}'. Valid values: margin, page, column, character, leftMargin, rightMargin, insideMargin, outsideMargin.")
         };
 
     private static DW.VerticalRelativePositionValues ParseVerticalRelative(string value) =>
@@ -216,8 +353,53 @@ public partial class WordHandler
             "paragraph" => DW.VerticalRelativePositionValues.Paragraph,
             "line" => DW.VerticalRelativePositionValues.Line,
             "margin" => DW.VerticalRelativePositionValues.Margin,
-            _ => throw new ArgumentException($"Invalid vertical relative position: '{value}'. Valid values: margin, page, paragraph, line.")
+            "topmargin" => DW.VerticalRelativePositionValues.TopMargin,
+            "bottommargin" => DW.VerticalRelativePositionValues.BottomMargin,
+            "insidemargin" => DW.VerticalRelativePositionValues.InsideMargin,
+            "outsidemargin" => DW.VerticalRelativePositionValues.OutsideMargin,
+            _ => throw new ArgumentException($"Invalid vertical relative position: '{value}'. Valid values: margin, page, paragraph, line, topMargin, bottomMargin, insideMargin, outsideMargin.")
         };
+
+    // Accessibility "decorative" flag. Stored as a docPr extension:
+    // <a:extLst><a:ext uri="{C183D7F6-DF14-4A22-8298-3B9A5F5C6C3B}">
+    //   <adec:decorative val="1" xmlns:adec="…/2017/decorative"/></a:ext></a:extLst>.
+    // adec is not a strongly-typed SDK element, so the marker is built/read as an
+    // OpenXmlUnknownElement under the typed extension list.
+    private const string DecorativeExtUri = "{C183D7F6-DF14-4A22-8298-3B9A5F5C6C3B}";
+    private const string DecorativeNs = "http://schemas.microsoft.com/office/drawing/2017/decorative";
+
+    private static void SetPictureDecorative(DW.DocProperties docProps)
+    {
+        if (docProps == null) return;
+        var extList = docProps.GetFirstChild<A.NonVisualDrawingPropertiesExtensionList>();
+        if (extList == null)
+        {
+            extList = new A.NonVisualDrawingPropertiesExtensionList();
+            docProps.AppendChild(extList);
+        }
+        // Avoid duplicating an existing decorative ext.
+        if (extList.Elements<A.Extension>()
+                .Any(e => string.Equals(e.Uri?.Value, DecorativeExtUri, StringComparison.OrdinalIgnoreCase)))
+            return;
+        var ext = new A.Extension { Uri = DecorativeExtUri };
+        var dec = new DocumentFormat.OpenXml.OpenXmlUnknownElement("adec", "decorative", DecorativeNs);
+        dec.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", "val", "", "1"));
+        ext.AppendChild(dec);
+        extList.AppendChild(ext);
+    }
+
+    private static bool IsPictureDecorative(DW.DocProperties? docProps)
+    {
+        var extList = docProps?.GetFirstChild<A.NonVisualDrawingPropertiesExtensionList>();
+        if (extList == null) return false;
+        // The adec:decorative marker deserializes either as a typed element
+        // (SDK-known) or as an OpenXmlUnknownElement, so match by LocalName.
+        return extList.Descendants()
+            .Any(e => e.LocalName == "decorative"
+                && (e.GetAttributes().Any(a => a.LocalName == "val"
+                        && (a.Value == "1" || string.Equals(a.Value, "true", StringComparison.OrdinalIgnoreCase)))
+                    || !e.GetAttributes().Any(a => a.LocalName == "val")));
+    }
 
     private static string GetDrawingInfo(Drawing drawing)
     {
@@ -251,10 +433,37 @@ public partial class WordHandler
         };
         if (docProps?.Id?.HasValue == true) node.Format["id"] = docProps.Id.Value;
         if (docProps?.Name?.Value != null) node.Format["name"] = docProps.Name.Value;
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R28-PICHIDDEN: <wp:docPr hidden="1"> marks a drawing invisible.
+        // A footer/background logo set is commonly two overlapping anchored
+        // pictures — a visible colour logo and a hidden monochrome print variant
+        // (LogoColour + LogoMono). Without reading the flag back the dump dropped
+        // it, so the mono picture replayed visible and rendered (black) over the
+        // colour logo. Surface it so AddPicture restores the hidden state.
+        if (docProps?.Hidden?.Value == true) node.Format["hidden"] = true;
+        // Accessibility: <wp:docPr>/<a:extLst>/<a:ext uri="{C183D7F6-…}">/<adec:decorative val="1"/>
+        // marks the image decorative (ignored by screen readers). Surface it so
+        // AddPicture can restore the decorative extension on round-trip.
+        if (IsPictureDecorative(docProps)) node.Format["decorative"] = true;
+>>>>>>> upstream/main
         if (extent?.Cx != null) node.Format["width"] = $"{extent.Cx.Value / EmuConverter.EmuPerCmF:F1}cm";
         if (extent?.Cy != null) node.Format["height"] = $"{extent.Cy.Value / EmuConverter.EmuPerCmF:F1}cm";
         if (docProps?.Description?.Value != null) node.Format["alt"] = docProps.Description.Value;
 
+<<<<<<< HEAD
+=======
+        // A picture rendered from mermaid (render=image) stamps `mermaid:<source>`
+        // into its alt-text as the regeneration carrier. Surface the bare source as
+        // a first-class Format["mermaid"] so dump/get/agents read it directly instead
+        // of slicing the accessibility text. Storage stays in alt (round-trips for
+        // free); this is a read-side convenience only. Mirrors the pptx picture node.
+        var mermaidAlt = docProps?.Description?.Value;
+        if (mermaidAlt != null
+            && mermaidAlt.StartsWith(Core.Diagram.MermaidImageRenderer.SourceTag, StringComparison.Ordinal))
+            node.Format["mermaid"] = mermaidAlt.Substring(Core.Diagram.MermaidImageRenderer.SourceTag.Length);
+
+>>>>>>> upstream/main
         // BUG-DUMP-R51-1: a click-hyperlink on the image — <a:hlinkClick r:id="…">
         // on the picture's <pic:cNvPr> (NonVisualDrawingProperties.HyperlinkOnClick),
         // or the same on <wp:docPr> (DW.DocProperties.HyperlinkOnClick) — makes the
@@ -345,8 +554,53 @@ public partial class WordHandler
             // replay produces an inline picture (BUG-R6-1).
             node.Format["anchor"] = true;
             node.Format["wrap"] = DetectWrapType(anchorEl);
+<<<<<<< HEAD
             if (anchorEl.BehindDoc?.Value == true)
                 node.Format["behindText"] = true;
+=======
+            // BUG-DUMP-WRAPSIDE: wrapSquare carries a wrapText side (left/right/
+            // largest/bothSides) controlling which sides text flows past the
+            // float. DetectWrapType returns only the type, and the apply path
+            // hardcoded bothSides — so a right-floated image with text wrapping
+            // on its left ONLY ("left") rebuilt as bothSides, reflowing the
+            // surrounding text and pushing the page. Capture the side so it
+            // round-trips. (tight/through carry their side in wrap.polygon below.)
+            var sqWrapText = anchorEl.GetFirstChild<DW.WrapSquare>()?.WrapText;
+            if (sqWrapText?.Value is { } sqv && sqv != DW.WrapTextValues.BothSides)
+                node.Format["wrap.side"] =
+                    sqv == DW.WrapTextValues.Left ? "left"
+                    : sqv == DW.WrapTextValues.Right ? "right"
+                    : sqv == DW.WrapTextValues.Largest ? "largest" : "bothSides";
+            if (anchorEl.BehindDoc?.Value == true)
+                node.Format["behindText"] = true;
+            // BUG-R24-WRAPPOLY: a wrapTight / wrapThrough wrap carries a custom
+            // <wp:wrapPolygon> whose vertices define the exact text-flow boundary.
+            // The apply path (BuildAnchorWrap) hardcoded the default full-bounds
+            // polygon (0,0 21600,21600), so a source polygon that hugs the image
+            // tighter (e.g. y-max 20750 ≈ 96% height) was replaced by the full
+            // square — extending the wrap boundary ~4% of the image height and
+            // shifting wrapped/below text by several px (a header logo pushed the
+            // whole body down 5px). Capture the polygon verbatim (edited flag +
+            // wrapText side + "x,y x,y …" vertices) so the apply path can rebuild
+            // the exact boundary. Only present for tight/through.
+            var wrapPolyEl = anchorEl.GetFirstChild<DW.WrapTight>()?.WrapPolygon
+                          ?? anchorEl.GetFirstChild<DW.WrapThrough>()?.WrapPolygon;
+            if (wrapPolyEl != null)
+            {
+                var verts = new List<string>();
+                if (wrapPolyEl.StartPoint is { } sp)
+                    verts.Add($"{sp.X?.Value ?? 0},{sp.Y?.Value ?? 0}");
+                foreach (var lt in wrapPolyEl.Elements<DW.LineTo>())
+                    verts.Add($"{lt.X?.Value ?? 0},{lt.Y?.Value ?? 0}");
+                if (verts.Count > 0)
+                {
+                    var edited = wrapPolyEl.Edited?.Value == true ? "1" : "0";
+                    var side = (anchorEl.GetFirstChild<DW.WrapTight>()?.WrapText
+                             ?? anchorEl.GetFirstChild<DW.WrapThrough>()?.WrapText)?.InnerText ?? "bothSides";
+                    node.Format["wrap.polygon"] = $"{edited};{side};{string.Join(" ", verts)}";
+                }
+            }
+>>>>>>> upstream/main
             // BUG-DUMP-R26-1: capture the anchor's z-order (relativeHeight).
             // Distinct values (251664384, 251665408, …) sequence overlapping
             // floats front-to-back; dump never read it and the apply path
@@ -355,6 +609,27 @@ public partial class WordHandler
             if (anchorEl.RelativeHeight?.HasValue == true)
                 node.Format["relativeHeight"] = anchorEl.RelativeHeight.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-NAR-WP14: capture the wp14 relative-sizing extensions so
+            // the Add path can re-attach them. Emitted as "relativeFrom;pct"
+            // (e.g. "page;0"). Without this, anchored pictures sized relative to
+            // the page lost the extension and re-rendered at absolute size,
+            // shifting layout and pagination.
+            var relW = anchorEl.GetFirstChild<DW14.RelativeWidth>();
+            if (relW != null)
+            {
+                var pctW = relW.GetFirstChild<DW14.PercentageWidth>()?.InnerText ?? "0";
+                node.Format["sizeRelH"] = $"{relW.ObjectId?.InnerText ?? "page"};{pctW}";
+            }
+            var relH = anchorEl.GetFirstChild<DW14.RelativeHeight>();
+            if (relH != null)
+            {
+                var pctH = relH.GetFirstChild<DW14.PercentageHeight>()?.InnerText ?? "0";
+                node.Format["sizeRelV"] = $"{relH.RelativeFrom?.InnerText ?? "page"};{pctH}";
+            }
+
+>>>>>>> upstream/main
             var hPos = anchorEl.GetFirstChild<DW.HorizontalPosition>();
             if (hPos != null)
             {
@@ -436,8 +711,16 @@ public partial class WordHandler
                 for (int ci = 0; ci < 4; ci++)
                 {
                     cv[ci] = ParseHelpers.SafeParseDouble(StripPct(parts[ci]), "crop");
+<<<<<<< HEAD
                     if (cv[ci] < 0 || cv[ci] > 100)
                         throw new ArgumentException($"Invalid 'crop' value: '{parts[ci].Trim()}'. Crop percentage must be between 0 and 100.");
+=======
+                    // Negative srcRect values are legal (ST_Percentage): they
+                    // EXPAND the canvas beyond the bitmap (Word's "crop out").
+                    // Real documents carry e.g. -2.934; mirror the pptx range.
+                    if (cv[ci] < -1000 || cv[ci] > 1000)
+                        throw new ArgumentException($"Invalid 'crop' value: '{parts[ci].Trim()}'. Crop percentage must be between -1000 and 1000.");
+>>>>>>> upstream/main
                 }
                 srcRect.Left = (int)(cv[0] * 1000);
                 srcRect.Top = (int)(cv[1] * 1000);
@@ -447,8 +730,13 @@ public partial class WordHandler
             else if (parts.Length == 1)
             {
                 if (!double.TryParse(StripPct(value), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var cv1)
+<<<<<<< HEAD
                     || cv1 < 0 || cv1 > 100)
                     throw new ArgumentException($"Invalid 'crop' value: '{value}'. Expected percentage 0-100.");
+=======
+                    || cv1 < -1000 || cv1 > 1000)
+                    throw new ArgumentException($"Invalid 'crop' value: '{value}'. Expected percentage -1000..1000.");
+>>>>>>> upstream/main
                 var pctAll = (int)(cv1 * 1000);
                 srcRect.Left = pctAll; srcRect.Top = pctAll;
                 srcRect.Right = pctAll; srcRect.Bottom = pctAll;
@@ -523,6 +811,62 @@ public partial class WordHandler
     // so insert it AFTER the last of xfrm/custGeom/prstGeom/fill/ln that exists
     // (in practice immediately after <a:prstGeom>). No-op if the run has no
     // ShapeProperties (defensive).
+<<<<<<< HEAD
+=======
+    // Whole-<pic:spPr> verbatim replacement: the fixed rebuild loses xfrm
+    // flip flags (mirrored logos), a content extent that legitimately differs
+    // from the frame's wp:extent, bwMode, and explicit <a:noFill/>/<a:ln>
+    // blocks. Swap the rebuilt spPr for the captured source block; the
+    // r:embed lives on <a:blip> inside blipFill, untouched here.
+    // Whole-<pic:spPr> verbatim replacement: the fixed rebuild loses xfrm
+    // flip flags (mirrored logos), a content extent that legitimately differs
+    // from the frame's wp:extent, bwMode, and explicit <a:noFill/>/<a:ln>
+    // blocks. Swap the rebuilt spPr for the captured source block; the
+    // r:embed lives on <a:blip> inside blipFill, untouched here. The captured
+    // fragment has no xmlns declarations (it was cut out of document.xml), so
+    // stamp the standard prefixes onto the root tag before parsing; an exotic
+    // undeclared prefix makes the parse throw and we keep the rebuilt spPr.
+    private static void ApplySpPrVerbatim(Run imgRun, string spPrXml)
+    {
+        var spPr = imgRun.Descendants<PIC.ShapeProperties>().FirstOrDefault();
+        if (spPr?.Parent == null) return;
+        const string NsDecls =
+            " xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"" +
+            " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"" +
+            " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"" +
+            " xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\"";
+        // BUG-DUMP-R72-SPPR-IDEMPOTENT: dump→batch is not a fixpoint for the
+        // verbatim picture spPr. On the first round-trip the captured fragment
+        // (cut from document.xml) has no xmlns:pic/a/r/a14 of its own, so blindly
+        // prepending NsDecls is fine. But the SDK serializes the rebuilt spPr WITH
+        // those decls, so a *second* dump captures a fragment that already carries
+        // them; prepending again yields a duplicate xmlns:pic attribute — invalid
+        // XML — and `new PIC.ShapeProperties(withNs)` throws, the catch swallows it,
+        // and the picture silently falls back to the generic rebuilt spPr (losing
+        // bwMode, xfrm flip flags, custom content extent, noFill, …). Strip the four
+        // decls we are about to add from the ROOT open tag first so re-stamping is
+        // duplicate-safe and the round-trip converges. Other prefixes the content
+        // genuinely needs (a16, adec, …) are left untouched.
+        var rootTag = new System.Text.RegularExpressions.Regex(@"^(\s*<pic:spPr)([^>]*?)(/?>)");
+        var withNs = rootTag.Replace(spPrXml, m =>
+        {
+            var attrs = System.Text.RegularExpressions.Regex.Replace(
+                m.Groups[2].Value,
+                " xmlns:(?:pic|a|r|a14)=\"[^\"]*\"", string.Empty);
+            return m.Groups[1].Value + NsDecls + attrs + m.Groups[3].Value;
+        }, 1);
+        // Fallback for the (defensive) case the root-tag anchor did not match.
+        if (!withNs.Contains(" xmlns:pic="))
+            withNs = new System.Text.RegularExpressions.Regex("<pic:spPr")
+                .Replace(spPrXml, "<pic:spPr" + NsDecls, 1);
+        PIC.ShapeProperties fresh;
+        try { fresh = new PIC.ShapeProperties(withNs); }
+        catch { return; }
+        spPr.InsertAfterSelf(fresh);
+        spPr.Remove();
+    }
+
+>>>>>>> upstream/main
     private static void ApplySpPrEffects(Run imgRun, string effectLstXml)
     {
         var spPr = imgRun.Descendants<PIC.ShapeProperties>().FirstOrDefault();

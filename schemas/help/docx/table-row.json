@@ -45,6 +45,21 @@
       "readback": "true when header, key absent otherwise",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "cantSplit": {
+      "type": "bool",
+      "description": "w:cantSplit — keep the row on one page (no break across pages). Row-scoped: apply per row, not on the table (Word stores it per-row too).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop cantSplit=true"
+      ],
+      "readback": "true when set, key absent otherwise",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "height.rule": {
       "type": "string",
       "add": false,
@@ -113,6 +128,20 @@
       ],
       "readback": "'Ndxa' | 'N%' | 'auto' | 'nil'",
       "enforcement": "report"
+<<<<<<< HEAD
+=======
+    },
+    "cellSpacing": {
+      "type": "number",
+      "description": "Spacing between cells in the row, in twips (w:tblCellSpacing on trPr).",
+      "add": false,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop cellSpacing=100"
+      ],
+      "enforcement": "report"
+>>>>>>> upstream/main
     }
   }
 }

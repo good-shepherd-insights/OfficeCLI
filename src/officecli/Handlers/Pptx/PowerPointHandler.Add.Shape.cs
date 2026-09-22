@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -65,7 +69,11 @@ public partial class PowerPointHandler
                         slideParts = GetSlideParts().ToList();
                         if (slideIdx < 1 || slideIdx > slideParts.Count)
                             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+<<<<<<< HEAD
                         slidePart = slideParts[slideIdx - 1];
+=======
+                        slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
                         var slideG = GetSlide(slidePart);
                         shapeTree = slideG.CommonSlideData?.ShapeTree
                             ?? throw new InvalidOperationException("Slide has no shape tree");
@@ -90,15 +98,29 @@ public partial class PowerPointHandler
                     {
                         var slideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
                         if (!slideMatch.Success)
+<<<<<<< HEAD
                             throw new ArgumentException(
                                 $"Shapes must be added to a slide, master, layout, or group: /slide[N], /slide[N]/group[K], /slidemaster[N], /slidelayout[N], or /slidemaster[N]/slidelayout[L]");
+=======
+                        {
+                            var hint = parentPath.StartsWith("-")
+                                ? " The parent is a positional argument, not a flag — run 'add <file> /slide[N] --type shape ...'."
+                                : "";
+                            throw new ArgumentException(
+                                $"Shapes must be added to a slide, master, layout, or group, but got parent '{parentPath}'. Expected /slide[N], /slide[N]/group[K], /slidemaster[N], /slidelayout[N], or /slidemaster[N]/slidelayout[L].{hint}");
+                        }
+>>>>>>> upstream/main
 
                         slideIdx = int.Parse(slideMatch.Groups[1].Value);
                         slideParts = GetSlideParts().ToList();
                         if (slideIdx < 1 || slideIdx > slideParts.Count)
                             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
+<<<<<<< HEAD
                         slidePart = slideParts[slideIdx - 1];
+=======
+                        slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
                         var slide = GetSlide(slidePart);
                         shapeTree = slide.CommonSlideData?.ShapeTree
                             ?? throw new InvalidOperationException("Slide has no shape tree");
@@ -109,7 +131,11 @@ public partial class PowerPointHandler
                 }
 
                 var text = properties.GetValueOrDefault("text", "");
+<<<<<<< HEAD
                 XmlTextValidator.ValidateOrThrow(text, "text");
+=======
+                XmlTextValidator.ValidateOrThrow(text, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                 var shapeId = AcquireShapeId(shapeTree, properties);
                 var shapeName = properties.GetValueOrDefault("name", $"TextBox {shapeTree.Elements<Shape>().Count() + 1}");
 
@@ -327,6 +353,32 @@ public partial class PowerPointHandler
                         ApplyTextMargin(bodyPr, marginVal);
                 }
 
+                // Verbatim shape-level <a:lstStyle> re-injection. The default
+                // txBody carries an empty <a:lstStyle/> stub; the source's
+                // per-level lnSpc/defTabSz/algn/fonts live only in the captured
+                // OuterXml (NodeBuilder lstStyleRaw). Replace the stub with the
+                // parsed verbatim element so text reflow off the source metrics
+                // is preserved. CT_TextBody order: bodyPr, lstStyle, p+ — replace
+                // in place keeps lstStyle after bodyPr and before the first p.
+                if (properties.TryGetValue("lstStyleRaw", out var lstStyleRawVal)
+                    && !string.IsNullOrWhiteSpace(lstStyleRawVal)
+                    && newShape.TextBody != null)
+                {
+                    var newLstStyle = new Drawing.ListStyle(lstStyleRawVal);
+                    var existingLstStyle = newShape.TextBody.GetFirstChild<Drawing.ListStyle>();
+                    if (existingLstStyle != null)
+                    {
+                        existingLstStyle.InsertAfterSelf(newLstStyle);
+                        existingLstStyle.Remove();
+                    }
+                    else
+                    {
+                        var anchorBodyPr = newShape.TextBody.GetFirstChild<Drawing.BodyProperties>();
+                        if (anchorBodyPr != null) anchorBodyPr.InsertAfterSelf(newLstStyle);
+                        else newShape.TextBody.InsertAt(newLstStyle, 0);
+                    }
+                }
+
                 // Text alignment (horizontal)
                 if (properties.TryGetValue("align", out var alignVal))
                 {
@@ -335,6 +387,21 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.Alignment = alignment;
+                    }
+                }
+
+                // CJK / line-break pPr attributes on the shape's first-paragraph
+                // (eaLnBrk / latinLnBrk / fontAlgn / defTabSz). Shapes/textboxes
+                // built with an inline text= seed their first paragraph here, not
+                // through AddParagraph — without this the dropped attributes
+                // rewrapped CJK text on round-trip. Apply to every paragraph.
+                foreach (var pBreakKey in new[] { "eaLnBrk", "latinLnBrk", "fontAlgn", "defTabSz" })
+                {
+                    if (!properties.TryGetValue(pBreakKey, out var pBreakVal)) continue;
+                    foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
+                    {
+                        var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
+                        ApplyParagraphBreakProp(pProps, pBreakKey, pBreakVal);
                     }
                 }
 
@@ -364,20 +431,41 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("underline", out var ulVal)
                     || properties.TryGetValue("font.underline", out ulVal))
                 {
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
+                    var ulEnum = ulVal.ToLowerInvariant() switch
                     {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                        rProps.Underline = ulVal.ToLowerInvariant() switch
-                        {
-                            "true" or "single" or "sng" => Drawing.TextUnderlineValues.Single,
-                            "double" or "dbl" => Drawing.TextUnderlineValues.Double,
-                            "heavy" => Drawing.TextUnderlineValues.Heavy,
-                            "dotted" => Drawing.TextUnderlineValues.Dotted,
-                            "dash" => Drawing.TextUnderlineValues.Dash,
-                            "wavy" => Drawing.TextUnderlineValues.Wavy,
-                            "false" or "none" => Drawing.TextUnderlineValues.None,
-                            _ => throw new ArgumentException($"Invalid underline value: '{ulVal}'. Valid values: single, double, heavy, dotted, dash, wavy, none.")
-                        };
+                        "true" or "single" or "sng" => Drawing.TextUnderlineValues.Single,
+                        "double" or "dbl" => Drawing.TextUnderlineValues.Double,
+                        "heavy" => Drawing.TextUnderlineValues.Heavy,
+                        "dotted" => Drawing.TextUnderlineValues.Dotted,
+                        "dash" => Drawing.TextUnderlineValues.Dash,
+                        "wavy" => Drawing.TextUnderlineValues.Wavy,
+                        "false" or "none" => Drawing.TextUnderlineValues.None,
+                        _ => throw new ArgumentException($"Invalid underline value: '{ulVal}'. Valid values: single, double, heavy, dotted, dash, wavy, none.")
+                    };
+                    foreach (var rProps in RunPropTargets())
+                    {
+                        if (rProps is Drawing.RunProperties rp) rp.Underline = ulEnum;
+                        else if (rProps is Drawing.EndParagraphRunProperties ep) ep.Underline = ulEnum;
+                    }
+                }
+
+                // Underline color — mirrors Set ShapeProperties.cs:436. Writes
+                // <a:uFill><a:solidFill><a:srgbClr val="…"/></a:solidFill></a:uFill>
+                // on every run; ReorderDrawingRunProperties keeps the schema
+                // order (uLn before uFill before latin).
+                if (properties.TryGetValue("underline.color", out var ulColorVal)
+                    || properties.TryGetValue("underlineColor", out ulColorVal)
+                    || properties.TryGetValue("underlinecolor", out ulColorVal)
+                    || properties.TryGetValue("font.underline.color", out ulColorVal))
+                {
+                    var ulHex = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(ulColorVal).Rgb;
+                    foreach (var rProps in RunPropTargets())
+                    {
+                        rProps.RemoveAllChildren<Drawing.UnderlineFill>();
+                        rProps.RemoveAllChildren<Drawing.UnderlineFillText>();
+                        rProps.AppendChild(new Drawing.UnderlineFill(
+                            new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = ulHex })));
+                        ReorderDrawingRunProperties(rProps);
                     }
                 }
 
@@ -408,16 +496,47 @@ public partial class PowerPointHandler
                     || properties.TryGetValue("font.strike", out stVal)
                     || properties.TryGetValue("font.strikethrough", out stVal))
                 {
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
+                    var stEnum = stVal.ToLowerInvariant() switch
                     {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                        rProps.Strike = stVal.ToLowerInvariant() switch
+                        "true" or "single" => Drawing.TextStrikeValues.SingleStrike,
+                        "double" => Drawing.TextStrikeValues.DoubleStrike,
+                        "false" or "none" => Drawing.TextStrikeValues.NoStrike,
+                        _ => throw new ArgumentException($"Invalid strikethrough value: '{stVal}'. Valid values: single, double, none.")
+                    };
+                    foreach (var rProps in RunPropTargets())
+                    {
+                        if (rProps is Drawing.RunProperties rp) rp.Strike = stEnum;
+                        else if (rProps is Drawing.EndParagraphRunProperties ep) ep.Strike = stEnum;
+                    }
+                }
+
+                // Caps (allCaps / smallCaps / cap=all|small|none)
+                // CONSISTENCY(allcaps-alias): mirror Word commit ccaed17a;
+                // accept allCaps/allcaps/smallCaps/smallcaps as run-level rPr cap.
+                {
+                    string? capValue = null;
+                    if (properties.TryGetValue("cap", out var rawCap)) capValue = rawCap;
+                    else if (properties.TryGetValue("allCaps", out var allCaps)
+                          || properties.TryGetValue("allcaps", out allCaps))
+                        capValue = (allCaps is "0" or "false" or "False" or "none") ? "none" : "all";
+                    else if (properties.TryGetValue("smallCaps", out var smallCaps)
+                          || properties.TryGetValue("smallcaps", out smallCaps))
+                        capValue = (smallCaps is "0" or "false" or "False" or "none") ? "none" : "small";
+
+                    if (capValue != null)
+                    {
+                        // ST_TextCapsType enum is lowercase {none, small, all}.
+                        // Mixed-case input ("SMALL", "ALL") written verbatim
+                        // produces schema-invalid OOXML — PowerPoint then
+                        // refuses to open the file. Normalize on write.
+                        capValue = capValue.ToLowerInvariant();
+                        if (capValue is not ("none" or "small" or "all"))
+                            throw new ArgumentException($"Invalid cap value: '{capValue}'. Valid values: none, small, all.");
+                        foreach (var run in newShape.Descendants<Drawing.Run>())
                         {
-                            "true" or "single" => Drawing.TextStrikeValues.SingleStrike,
-                            "double" => Drawing.TextStrikeValues.DoubleStrike,
-                            "false" or "none" => Drawing.TextStrikeValues.NoStrike,
-                            _ => throw new ArgumentException($"Invalid strikethrough value: '{stVal}'. Valid values: single, double, none.")
-                        };
+                            var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
+                            rProps.SetAttribute(new OpenXmlAttribute("", "cap", "", capValue));
+                        }
                     }
                 }
 
@@ -498,7 +617,9 @@ public partial class PowerPointHandler
                     {
                         switch (afVal.ToLowerInvariant())
                         {
-                            case "true" or "normal": bodyPr.AppendChild(new Drawing.NormalAutoFit()); break;
+                            // R10-4: 'shrink'/'true' alias normAutofit (PowerPoint's
+                            // shrink-text-on-overflow mode).
+                            case "true" or "shrink" or "normal": bodyPr.AppendChild(ApplyNormalAutoFitScale(new Drawing.NormalAutoFit(), properties)); break;
                             case "shape": bodyPr.AppendChild(new Drawing.ShapeAutoFit()); break;
                             case "false" or "none": bodyPr.AppendChild(new Drawing.NoAutoFit()); break;
                         }
@@ -600,7 +721,11 @@ public partial class PowerPointHandler
                         if (properties.TryGetValue("adj", out var adjSpec)
                             && !string.IsNullOrWhiteSpace(adjSpec))
                         {
+<<<<<<< HEAD
                             ApplyAdjustHandles(avLstForAdd, adjSpec);
+=======
+                            ApplyAdjustHandles(avLstForAdd, adjSpec, presetGeom);
+>>>>>>> upstream/main
                         }
                         newShape.ShapeProperties.AppendChild(
                             new Drawing.PresetGeometry(avLstForAdd) { Preset = presetGeom }
@@ -730,10 +855,33 @@ public partial class PowerPointHandler
                     else
                         outline.AppendChild(BuildSolidFill(lineColor));
                 }
+                // styledLine: the dump signals a <p:style> raw-set follows and
+                // no explicit line colour was captured — the stroke colour comes
+                // from lnRef, so the default-black fill injection must be
+                // skipped (stress013's theme-tinted borders replayed black).
+                bool shStyledLine = IsTruthy(properties.GetValueOrDefault("styledLine"))
+                                    || IsTruthy(properties.GetValueOrDefault("styledline"));
                 if (properties.TryGetValue("linewidth", out var lwStr) || properties.TryGetValue("lineWidth", out lwStr) || properties.TryGetValue("line.width", out lwStr) || properties.TryGetValue("border.width", out lwStr))
                 {
                     var outline = EnsureOutline(newShape.ShapeProperties!);
                     outline.Width = Core.EmuConverter.ParseLineWidth(lwStr);
+                    if (!shStyledLine) EnsureOutlineHasFill(outline);
+                }
+                else if (compoundLineWidth != null)
+                {
+                    var outline = EnsureOutline(newShape.ShapeProperties!);
+                    outline.Width = Core.EmuConverter.ParseLineWidth(compoundLineWidth);
+                    if (!shStyledLine) EnsureOutlineHasFill(outline);
+                }
+                // Stash the compound dash so the lineDash branch in
+                // SetRunOrShapeProperties below picks it up via the
+                // shared effectProps dispatch.
+                if (compoundLineDash != null
+                    && !properties.ContainsKey("linedash")
+                    && !properties.ContainsKey("lineDash")
+                    && !properties.ContainsKey("line.dash"))
+                {
+                    properties["lineDash"] = compoundLineDash;
                 }
                 else if (compoundLineWidth != null)
                 {
@@ -761,13 +909,37 @@ public partial class PowerPointHandler
                 // (presets render with no stroke) is the lesser harm; defer the
                 // default-outline UX to a caller-driven `line=default`/UI layer.
 
-                // List style (bullet/numbered)
-                if (properties.TryGetValue("list", out var listVal) || properties.TryGetValue("liststyle", out listVal))
+                // Outline policy: "user didn't ask = we don't write". Earlier the
+                // handler auto-injected a 0.75pt #595959 outline whenever the caller
+                // picked a geometry and gave no fill+line, mimicking PowerPoint's
+                // "Insert Shape" UI default. That phantom border survived through
+                // dump→replay: NodeBuilder reported lineColor=595959, the batch
+                // emitter forwarded it, and every round-trip grew a darker border on
+                // a shape the user never asked to outline. The visibility regression
+                // (presets render with no stroke) is the lesser harm; defer the
+                // default-outline UX to a caller-driven `line=default`/UI layer.
+
+                // List style (bullet/numbered). bulletRaw (full bullet group)
+                // wins over the lossy `list` keyword when both are present.
+                // Probe both unconditionally (tracking): an else-if left `list`
+                // unread when bulletRaw was present, warning a false
+                // unsupported_property on dump replays that emit both.
+                var hasShBulletRaw = properties.TryGetValue("bulletRaw", out var shBulletRaw) || properties.TryGetValue("bulletraw", out shBulletRaw);
+                var hasShList = properties.TryGetValue("list", out var listVal) || properties.TryGetValue("liststyle", out listVal) || properties.TryGetValue("bullet", out listVal);
+                if (hasShBulletRaw)
                 {
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
-                        ApplyListStyle(pProps, listVal);
+                        ApplyBulletRaw(pProps, shBulletRaw!);
+                    }
+                }
+                else if (hasShList)
+                {
+                    foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
+                    {
+                        var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
+                        ApplyListStyle(pProps, listVal!, preserveIndent: properties.ContainsKey("indent") || properties.ContainsKey("marginLeft") || properties.ContainsKey("marginleft") || properties.ContainsKey("marL") || properties.ContainsKey("marl"));
                     }
                 }
 
@@ -811,7 +983,20 @@ public partial class PowerPointHandler
                       "textfill", "textgradient", "geometry",
                       "baseline", "superscript", "subscript",
                       "textwarp", "wordart", "autofit",
+<<<<<<< HEAD
                       "wrap", "wordwrap",
+=======
+                      // WordArt raw forms — verbatim prstTxWarp (keeps avLst)
+                      // and the bodyPr-level 3D-text scene3d/sp3d pair.
+                      "textwarpraw", "textWarpRaw",
+                      "textscene3draw", "textScene3dRaw",
+                      "textsp3draw", "textSp3dRaw",
+                      // shrink-on-overflow scale — consumed alongside autofit=normal
+                      "fontScale", "fontscale", "lnSpcReduction", "lnspcreduction",
+                      "wrap", "wordwrap", "anchorCtr", "anchorctr", "upright",
+                      "columns", "numcol", "columnSpacing", "columnspacing",
+                      "vertOverflow", "vertoverflow", "horzOverflow", "horzoverflow",
+>>>>>>> upstream/main
                       "lineopacity", "line.opacity",
                       "linegradient", "line.gradient",
                       // previously dropped silently — route through Set
@@ -823,13 +1008,34 @@ public partial class PowerPointHandler
                       "headend", "headEnd", "arrowstart", "arrowStart",
                       "tailend", "tailEnd", "arrowend", "arrowEnd",
                       "image", "imagefill",
+<<<<<<< HEAD
+=======
+                      // blip-fill framing — consumed alongside image= so the
+                      // stretch insets / crop round-trip with the image fill.
+                      "fillRect", "fillrect", "srcRect", "srcrect",
+>>>>>>> upstream/main
                       // CONSISTENCY(rpr-attr-fallback / R21-fuzzer-1+2): drawingML
                       // run-property attributes must reach SetRunOrShapeProperties
                       // so the long-tail rPr-attribute branch routes them to the
                       // first run instead of dropping them on the <p:sp> element.
                       "lang", "lang.latin", "altLang", "altlang", "spc", "kern", "cap",
                       "kumimoji", "normalizeH", "normalizeh", "noProof", "noproof",
+<<<<<<< HEAD
                       "dirty", "smtClean", "smtclean", "smtId", "smtid", "err" };
+=======
+                      "dirty", "smtClean", "smtclean", "smtId", "smtid", "err",
+                      // BUG1: text direction — Set handles in SetRunOrShapeProperties
+                      "textdirection", "textdir",
+                      // BUG2: text outline — Set handles all three key variants
+                      "textOutline", "textoutline", "textOutlineRaw", "textoutlineraw", "textFillRaw", "textfillraw",
+                      "textOutline.width", "textoutline.width",
+                      "textOutline.color", "textoutline.color",
+                      // CONSISTENCY(highlight): a:highlight — Set's curated case
+                      // in SetRunOrShapeProperties writes it; route Add through
+                      // the same fan-out so both paths support it (root
+                      // the project conventions Feature Implementation Checklist).
+                      "highlight" };
+>>>>>>> upstream/main
                 // CONSISTENCY(tracking-prop): explicit TryGetValue per known
                 // key instead of `.Where(...)` iteration. Foreach over the
                 // TrackingPropertyDictionary marks every entry as consumed

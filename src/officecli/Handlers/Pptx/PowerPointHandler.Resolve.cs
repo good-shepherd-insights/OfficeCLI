@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -23,7 +27,11 @@ public partial class PowerPointHandler
     {
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count) return null;
+<<<<<<< HEAD
         var shapeTree = GetSlide(slideParts[slideIdx - 1]).CommonSlideData?.ShapeTree;
+=======
+        var shapeTree = GetSlide(slideParts[PathIndex.ToArrayIndex(slideIdx)]).CommonSlideData?.ShapeTree;
+>>>>>>> upstream/main
         if (shapeTree == null) return null;
         var shapes = shapeTree.Elements<Shape>().ToList();
         for (int i = 0; i < shapes.Count; i++)
@@ -40,7 +48,11 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
@@ -48,7 +60,11 @@ public partial class PowerPointHandler
         if (shapeIdx < 1 || shapeIdx > shapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found (total: {shapes.Count})");
 
+<<<<<<< HEAD
         return (slidePart, shapes[shapeIdx - 1]);
+=======
+        return (slidePart, shapes[PathIndex.ToArrayIndex(shapeIdx)]);
+>>>>>>> upstream/main
     }
 
     private (SlidePart slidePart, GraphicFrame gf, ChartPart? chartPart, ExtendedChartPart? extChartPart) ResolveChart(int slideIdx, int chartIdx)
@@ -57,7 +73,11 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
@@ -138,7 +158,11 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
@@ -171,9 +195,26 @@ public partial class PowerPointHandler
             if (!string.IsNullOrEmpty(rest))
             {
                 var segments = GenericXmlQuery.ParsePathSegments(rest);
+<<<<<<< HEAD
                 var target = GenericXmlQuery.NavigateByPath(current, segments);
                 if (target != null) current = target;
                 else throw new ArgumentException($"Element not found: {path}. Resolved table[{tblIdx}] on slide[{slideIdx}] but sub-path '{rest}' does not exist. Available children: {DescribeChildren(current)}");
+=======
+                // Step-navigate so the error reports children of the deepest
+                // resolved node — e.g. typing /tr[1]/td[1] should hint that
+                // tr's children are tc (not list table's children).
+                OpenXmlElement? deepest = current;
+                foreach (var seg in segments)
+                {
+                    var next = GenericXmlQuery.NavigateByPath(deepest!, new[] { seg });
+                    if (next == null)
+                    {
+                        throw new ArgumentException($"Element not found: {path}. Resolved table[{tblIdx}] on slide[{slideIdx}] but sub-path '{rest}' does not exist. Available children: {DescribeChildren(deepest!)}");
+                    }
+                    deepest = next;
+                }
+                current = deepest!;
+>>>>>>> upstream/main
             }
             return (slidePart, current);
         }
@@ -189,7 +230,11 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+<<<<<<< HEAD
             var slidePart = slideParts[slideIdx - 1];
+=======
+            var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
             OpenXmlElement current = ResolvePlaceholderShape(slidePart, phId);
 
             if (!string.IsNullOrEmpty(rest))
@@ -529,8 +574,12 @@ public partial class PowerPointHandler
     /// </summary>
     internal static SlideLayoutPart? ResolveSlideLayout(PresentationPart presentationPart, string? layoutHint)
     {
+<<<<<<< HEAD
         var allLayouts = presentationPart.SlideMasterParts
             .SelectMany(m => m.SlideLayoutParts).ToList();
+=======
+        var allLayouts = PowerPointHandler.LayoutsInOrder(presentationPart);
+>>>>>>> upstream/main
         if (allLayouts.Count == 0) return null;
 
         if (string.IsNullOrEmpty(layoutHint))

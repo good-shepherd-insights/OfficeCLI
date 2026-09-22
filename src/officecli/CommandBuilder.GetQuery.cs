@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -28,7 +32,7 @@ static partial class CommandBuilder
         getCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(getFileArg)!;
-            var path = result.GetValue(pathArg)!;
+            var path = MsysPathHint.Restore(result.GetValue(pathArg)!)!;
             var depth = result.GetValue(depthOpt);
             // CONSISTENCY(dos-hardening): cap user-supplied depth so a huge
             // --depth on a deeply-nested doc can't drive the node-building
@@ -168,21 +172,40 @@ static partial class CommandBuilder
     private static Command BuildQueryCommand(Option<bool> jsonOption)
     {
         var queryFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
-        var selectorArg = new Argument<string>("selector") { Description = "CSS-like selector (e.g. paragraph[style=Normal] > run[font!=Arial])" };
+        var selectorArg = new Argument<string>("selector") { Description = "CSS-like selector: element type, [attribute] predicates with = != ~= > < >= <= and and/or, '>' child combinator, ',' union, and a positional [N] (e.g. paragraph[style=Normal] > run[font!=Arial], row[2]). Pseudo-classes: :contains(text) — xlsx/pptx also accept the shorthand elem:text — plus :empty, :has(formula) and :no-alt. There is no :lt() / :nth-child() / :first: use the positional [N] instead." };
 
         var queryFindOpt = new Option<string?>("--find") { Description = "Filter results to elements containing this text (case-insensitive substring)" };
+<<<<<<< HEAD
+=======
+        var queryCompactOpt = new Option<bool>("--compact") { Description = "One line per element in document order: path<TAB>[label]<TAB>\"text(truncated at 60, … mark)\"; empty text shows (empty); tables fold to [table RxC]. Final line is always 'total: N of M elements / K slides' (pptx) or 'total: N of M elements' (docx — never gains a container segment): N = element lines above (lineCount-1 == N proves you read everything), M = all top-level frames. Full-document listing: selector '*' lists all top-level frames/blocks in document order and makes N == M (docx '*' folds tables without descending into cell paragraphs; 'paragraph, table' descends). Labels are a closed set (pptx: title/placeholder/textbox/shape/picture/chart/connector/group/equation + 'table RxC'; docx: style name). This format is a stability contract: columns/labels may be added, never changed or reordered. pptx/docx only (xlsx: use 'view text --range'). Add columns with --fields." };
+        var queryFieldsOpt = new Option<string?>("--fields") { Description = "Comma-separated Format keys appended as extra k=v columns in --compact output (e.g. x,y,width)" };
+>>>>>>> upstream/main
 
         var queryCommand = new Command("query", "Query document elements with CSS-like selectors");
         queryCommand.Add(queryFileArg);
         queryCommand.Add(selectorArg);
         queryCommand.Add(jsonOption);
         queryCommand.Add(queryFindOpt);
+<<<<<<< HEAD
+=======
+        queryCommand.Add(queryCompactOpt);
+        queryCommand.Add(queryFieldsOpt);
+>>>>>>> upstream/main
 
         queryCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(queryFileArg)!;
+<<<<<<< HEAD
             var selector = result.GetValue(selectorArg)!;
             var textFilter = result.GetValue(queryFindOpt);
+=======
+            var selector = MsysPathHint.Restore(result.GetValue(selectorArg)!)!;
+            var textFilter = result.GetValue(queryFindOpt);
+            var compact = result.GetValue(queryCompactOpt);
+            var fields = result.GetValue(queryFieldsOpt);
+            if (compact && json)
+                throw new OfficeCli.Core.CliException("--compact is a plain-text line format; drop --json (or drop --compact for the JSON tree).") { Code = "invalid_value" };
+>>>>>>> upstream/main
 
             if (TryResident(file.FullName, req =>
             {
@@ -190,6 +213,11 @@ static partial class CommandBuilder
                 req.Json = json;
                 req.Args["selector"] = selector;
                 if (textFilter != null) req.Args["find"] = textFilter;
+<<<<<<< HEAD
+=======
+                if (compact) req.Args["compact"] = "true";
+                if (fields != null) req.Args["fields"] = fields;
+>>>>>>> upstream/main
             }, json) is {} rc) return rc;
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
@@ -209,6 +237,15 @@ static partial class CommandBuilder
             var (results, warnings) = OfficeCli.Core.AttributeFilter.FilterSelector(selector, handler.Query, keyResolver);
             if (!string.IsNullOrEmpty(textFilter))
                 results = results.Where(n => n.Text != null && OfficeCli.Core.AttributeFilter.MatchesTextFilter(n.Text, textFilter)).ToList();
+<<<<<<< HEAD
+=======
+            if (compact)
+            {
+                foreach (var w in warnings) Console.Error.WriteLine(w.Message);
+                Console.WriteLine(FormatNodesCompact(handler, results, fields));
+                return 0;
+            }
+>>>>>>> upstream/main
             if (json)
             {
                 // CONSISTENCY(query-json-children): Query returns nodes with empty
@@ -230,14 +267,31 @@ static partial class CommandBuilder
                         catch { /* path may not be Get-resolvable; leave as-is */ }
                     }
                 }
+<<<<<<< HEAD
                 var cliWarnings = warnings.Select(w => new OfficeCli.Core.CliWarning { Message = w, Code = "filter_warning" }).ToList();
+=======
+                var cliWarnings = warnings.Select(w => new OfficeCli.Core.CliWarning
+                {
+                    Message = w.Message,
+                    Code = w.Code,
+                    Kind = w.Kind,
+                    Key = w.Key,
+                    Value = w.Value,
+                    Available = w.Available,
+                    Suggestion = w.Suggestion,
+                }).ToList();
+>>>>>>> upstream/main
                 Console.WriteLine(OutputFormatter.WrapEnvelope(
                     OutputFormatter.FormatNodes(results, OutputFormat.Json),
                     cliWarnings.Count > 0 ? cliWarnings : null));
             }
             else
             {
+<<<<<<< HEAD
                 foreach (var w in warnings) Console.Error.WriteLine(w);
+=======
+                foreach (var w in warnings) Console.Error.WriteLine(w.Message);
+>>>>>>> upstream/main
                 var output = OutputFormatter.FormatNodes(results, OutputFormat.Text);
                 if (!string.IsNullOrEmpty(output))
                     Console.WriteLine(output);
@@ -251,5 +305,150 @@ static partial class CommandBuilder
         }, json); });
 
         return queryCommand;
+    }
+
+    /// <summary>
+    /// `query --compact` line format. STABILITY CONTRACT — this output is
+    /// consumed programmatically (parsed line-by-line, counted for
+    /// read-completeness accounting); treat every token below as API:
+    /// column order, the TAB separator, the `…` truncation mark, `(empty)`,
+    /// the `[label]` bracket form, and the total-line shape may only gain
+    /// NEW trailing columns, never change or reorder existing ones. Any
+    /// change lands in the CHANGELOG.
+    ///
+    ///   {path}\t[{label}]\t"{text ≤60 chars, \t/\n/"/\\ escaped}"
+    ///   {path}\t[table {R}x{C}]                     (tables fold; no text col)
+    ///   {path}\t[{label}]\t(empty)                  (no text)
+    ///   ...--fields k1,k2 appends \tk1=v1\tk2=v2 columns (missing key → k=)
+    ///   total: {N} of {M} elements / {K} slides     (pptx)
+    ///   total: {N} of {M} elements                  (docx)
+    ///
+    /// N = exactly the number of lines above the total line (post-filter;
+    /// a folded table counts as 1) so `lineCount - 1 == N` proves the reader
+    /// saw the whole result. M = all top-level frames in the document
+    /// (pptx: shapes/pictures/tables/charts/connectors/groups across slides;
+    /// docx: body-level blocks). The total line is always emitted (N=0
+    /// included) and is always the last line, exactly once. The docx total
+    /// has NO container segment — that absence is itself frozen (appending
+    /// one later would be a total-line change, which the contract forbids).
+    /// Full listing: '*' on both formats (docx aliases it to top-level
+    /// body blocks in document order — see WordHandler.QueryDispatch).
+    ///
+    /// Element lines are in document order: pptx sorts by slide index then
+    /// z-order (multi-type selectors like '*' would otherwise group by type),
+    /// docx follows document flow. Labels are a CLOSED SET per format —
+    /// pptx: title/placeholder/textbox/shape/picture/chart/connector/group/
+    /// equation + the folded 'table RxC'; docx: the paragraph's style name
+    /// (open set of values, fixed [style] position). New label values may be
+    /// added; existing ones never change meaning.
+    /// </summary>
+    internal static string FormatNodesCompact(IDocumentHandler handler, List<DocumentNode> results, string? fields)
+    {
+        if (handler is ExcelHandler)
+            throw new OfficeCli.Core.CliException(
+                "--compact is not supported for xlsx: 'view text' is already the compact per-row form ([/Sheet1/row[N]] A1=v ...). Use 'view text' or 'view text --range Sheet1!A1:C10'.")
+            { Code = "invalid_value" };
+
+        var fieldList = string.IsNullOrWhiteSpace(fields)
+            ? null
+            : fields.Split(',').Select(f => f.Trim()).Where(f => f.Length > 0).ToList();
+
+        // Document order (see contract above): multi-type selectors return
+        // results grouped per element type; re-sort pptx frames by slide index
+        // then z-order so the line sequence mirrors the deck. Stable sort keeps
+        // relative order where either key is missing. docx query results
+        // already follow document flow.
+        if (handler is PowerPointHandler)
+        {
+            results = results
+                .Select((n, i) => (n, i))
+                .OrderBy(t => System.Text.RegularExpressions.Regex.Match(t.n.Path, @"^/slide\[(\d+)\]") is { Success: true } m
+                    ? int.Parse(m.Groups[1].Value) : int.MaxValue)
+                .ThenBy(t => t.n.Format.TryGetValue("zorder", out var z) && int.TryParse(z?.ToString(), out var zi)
+                    ? zi : int.MaxValue)
+                .ThenBy(t => t.i)
+                .Select(t => t.n)
+                .ToList();
+        }
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var n in results)
+        {
+            sb.Append(n.Path);
+            if (n.Type == "table" && n.Format.TryGetValue("rows", out var r) && n.Format.TryGetValue("cols", out var c))
+            {
+                sb.Append('\t').Append($"[table {r}x{c}]");
+            }
+            else
+            {
+                // pptx Type already carries the semantic label (title/placeholder/
+                // textbox/shape/...); docx paragraphs label by style name.
+                var label = !string.IsNullOrEmpty(n.Style) ? n.Style : n.Type;
+                sb.Append('\t').Append('[').Append(label).Append(']');
+                sb.Append('\t').Append(CompactText(n.Text));
+            }
+            if (fieldList != null)
+                foreach (var f in fieldList)
+                    sb.Append('\t').Append(f).Append('=')
+                      .Append(n.Format.TryGetValue(f, out var v) && v != null ? v.ToString() : "");
+            sb.Append('\n');
+        }
+
+        var (total, containerSuffix) = CountCompactDenominator(handler);
+        sb.Append($"total: {results.Count} of {total} elements{containerSuffix}");
+        return sb.ToString();
+    }
+
+    private static string CompactText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "(empty)";
+        // NEWLINE-SEMANTICS-V2 fix: a soft line break inside an element's text
+        // reads back as '\v' (174bd906 unified '\v'=soft break / '\n'=paragraph).
+        // That commit updated the run-text/view/dump paths but NOT this escape
+        // set, so a raw U+000B leaked into the one-line-per-element compact output
+        // — a line-oriented consumer treats the control byte as a line terminator
+        // and sees only the text up to the first soft break (looked like the field
+        // was truncated to its first line). Escape '\v' the same way '\n'/'\t' are
+        // so multi-line element text stays on a single, fully-visible line. This
+        // restores the format's "one line per element" contract; it does not
+        // change or reorder any existing token.
+        var t = text.Replace("\\", "\\\\").Replace("\t", "\\t")
+                    .Replace("\r", "").Replace("\n", "\\n").Replace("\v", "\\v")
+                    .Replace("\"", "\\\"");
+        t = OfficeCli.Core.DisplayText.Truncate(t, 60);
+        return "\"" + t + "\"";
+    }
+
+    /// <summary>
+    /// Denominator for the compact total line: every top-level frame in the
+    /// document, independent of the user's selector, so the agent can compare
+    /// "what I matched" against "what exists".
+    /// </summary>
+    private static (int Total, string ContainerSuffix) CountCompactDenominator(IDocumentHandler handler)
+    {
+        if (handler is PowerPointHandler)
+        {
+            int slides = handler.Query("slide").Count;
+            // Frame selectors overlap (title/textbox are shapes); dedupe by path.
+            var paths = new HashSet<string>();
+            foreach (var sel in new[] { "shape", "picture", "table", "chart", "connector", "group" })
+            {
+                try { foreach (var n in handler.Query(sel)) paths.Add(n.Path); }
+                catch { /* selector unsupported on this doc — skip */ }
+            }
+            return (paths.Count, $" / {slides} slides");
+        }
+        // docx: body-level content blocks (paragraphs + tables + sdt + ...).
+        // sectPr is layout metadata, not an addressable element — exclude it
+        // so the denominator matches what a selector can actually reach.
+        try
+        {
+            var body = handler.Get("/body", depth: 1);
+            return (body.Children.Count(c => c.Type != "section"), "");
+        }
+        catch
+        {
+            return (0, "");
+        }
     }
 }

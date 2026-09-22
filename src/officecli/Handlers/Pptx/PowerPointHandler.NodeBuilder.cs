@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -13,6 +17,46 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
+<<<<<<< HEAD
+=======
+    // Map a paragraph <a:pPr algn=…> to the canonical friendly token. The four
+    // core values get friendly names (left/center/right/justify); the OOXML-only
+    // values (justLow / dist / thaiDist) pass through as their raw token so they
+    // round-trip through ParseTextAlignment instead of folding to "left".
+    private static string MapTextAlignToFriendly(EnumValue<Drawing.TextAlignmentTypeValues>? algn)
+    {
+        var inner = algn?.InnerText;
+        return inner switch
+        {
+            "l" => "left",
+            "ctr" => "center",
+            "r" => "right",
+            "just" => "justify",
+            null or "" => "left",
+            _ => inner,   // justLow / dist / thaiDist — preserve verbatim
+        };
+    }
+
+    // Emit the simple-valued CT_TextParagraphProperties attributes that were
+    // previously dropped on readback: line-break / punctuation / font-alignment
+    // / default-tab-size. These are heavily used by CJK source decks
+    // (eaLnBrk="0" suppresses East-Asian line breaking) — dropping them rewrapped
+    // text and shifted layout on round-trip. Canonical keys mirror the OOXML
+    // attribute names so Add/Set re-apply them symmetrically.
+    private static void EmitParagraphBreakProps(Drawing.ParagraphProperties? pProps, DocumentNode node)
+    {
+        if (pProps == null) return;
+        if (pProps.EastAsianLineBreak?.HasValue == true)
+            node.Format["eaLnBrk"] = pProps.EastAsianLineBreak.Value ? "1" : "0";
+        if (pProps.LatinLineBreak?.HasValue == true)
+            node.Format["latinLnBrk"] = pProps.LatinLineBreak.Value ? "1" : "0";
+        if (pProps.FontAlignment?.HasValue == true && !string.IsNullOrEmpty(pProps.FontAlignment.InnerText))
+            node.Format["fontAlgn"] = pProps.FontAlignment.InnerText!;
+        if (pProps.DefaultTabSize?.HasValue == true)
+            node.Format["defTabSz"] = FormatEmu(pProps.DefaultTabSize.Value);
+    }
+
+>>>>>>> upstream/main
     // CONSISTENCY(effect-color-8digit): shadow/glow readback contract is
     // CSS-form 8-digit hex '#RRGGBBAA' (schema/help/pptx/shape.json
     // shadow.readback / glow.readback). FormatHexWithAlpha falls back to
@@ -31,6 +75,7 @@ public partial class PowerPointHandler
         var tail = plusIdx >= 0 ? color[plusIdx..] : "";
         var hadHash = head.StartsWith('#');
         var hex = hadHash ? head[1..] : head;
+<<<<<<< HEAD
         if (hex.Length == 6 && hex.All(Uri.IsHexDigit))
         {
             // Schema readback contract: '#RRGGBBAA'. Ensure both '#' and the
@@ -42,6 +87,20 @@ public partial class PowerPointHandler
             // Already 8-digit but lacking '#' — add the leading hash.
             return $"#{hex.ToUpperInvariant()}{tail}";
         }
+=======
+        // All callers are shadow / innerShadow / glow composite strings of the
+        // form "#RRGGBB-blur-angle-dist-opacity": the alpha is carried by the
+        // dedicated trailing OPACITY field. So the color token must stay 6-digit
+        // (no alpha byte). Emitting an 8-digit "#RRGGBBAA" here double-encodes
+        // the same a:alpha element — opaque "#RRGGBBFF" alongside a non-100
+        // opacity (R1-B4 / R4-6), and re-applies alpha twice on replay. Strip
+        // any alpha byte FormatHexWithAlpha baked in, leaving opacity as the
+        // single source of truth.
+        if (hex.Length == 6 && hex.All(Uri.IsHexDigit))
+            return $"#{hex.ToUpperInvariant()}{tail}";
+        if (hex.Length == 8 && hex.All(Uri.IsHexDigit))
+            return $"#{hex[..6].ToUpperInvariant()}{tail}";
+>>>>>>> upstream/main
         return color;
     }
 
@@ -259,10 +318,19 @@ public partial class PowerPointHandler
             grpNode.Format["childOffset"] = $"{grpChOff!.X?.Value ?? 0},{grpChOff.Y?.Value ?? 0}";
         if (grpChExtDiverges)
             grpNode.Format["childExtent"] = $"{grpChExt!.Cx?.Value ?? 0},{grpChExt.Cy?.Value ?? 0}";
+<<<<<<< HEAD
         var grpFillColor = ReadColorFromFill(grp.GroupShapeProperties?.GetFirstChild<Drawing.SolidFill>());
         if (grpFillColor != null) grpNode.Format["fill"] = grpFillColor;
         else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.NoFill>() != null) grpNode.Format["fill"] = "none";
         else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.GradientFill>() != null) grpNode.Format["fill"] = "gradient";
+=======
+        // Note: p:grpSpPr has no fill child per OOXML CT_GroupShapeProperties
+        // (only xfrm/scene3d/extLst), so even if a legacy file carries a
+        // stray fill on grpSpPr, PowerPoint silently ignores it. Don't
+        // surface a fill key on group Get — it would mislead callers into
+        // thinking a fill on the group means something visible. Apply fill
+        // to the child shapes instead.
+>>>>>>> upstream/main
         var grpZIdx = contentElements.IndexOf(grp);
         if (grpZIdx >= 0) grpNode.Format["zorder"] = grpZIdx + 1;
         // Hyperlink (nvGrpSpPr/cNvPr/a:hlinkClick) — same slot as shape/picture.
@@ -329,11 +397,19 @@ public partial class PowerPointHandler
         var creationId = ReadCNvPrCreationId(gf);
         if (creationId != null) node.Format["extLst.creationId"] = creationId;
         var offset = gf.Transform?.Offset;
+<<<<<<< HEAD
         if (offset?.X != null) node.Format["x"] = FormatEmu(offset.X.Value);
         if (offset?.Y != null) node.Format["y"] = FormatEmu(offset.Y.Value);
         var extents = gf.Transform?.Extents;
         if (extents?.Cx != null) node.Format["width"] = FormatEmu(extents.Cx.Value);
         if (extents?.Cy != null) node.Format["height"] = FormatEmu(extents.Cy.Value);
+=======
+        if (offset?.X != null) node.Format["x"] = Core.EmuConverter.FormatEmuLossy(offset.X.Value);
+        if (offset?.Y != null) node.Format["y"] = Core.EmuConverter.FormatEmuLossy(offset.Y.Value);
+        var extents = gf.Transform?.Extents;
+        if (extents?.Cx != null) node.Format["width"] = Core.EmuConverter.FormatEmuLossy(extents.Cx.Value);
+        if (extents?.Cy != null) node.Format["height"] = Core.EmuConverter.FormatEmuLossy(extents.Cy.Value);
+>>>>>>> upstream/main
         if (gf.Parent is ShapeTree zTree)
         {
             var contentEls = zTree.ChildElements
@@ -379,7 +455,11 @@ public partial class PowerPointHandler
 
         var gridCols = table?.TableGrid?.Elements<Drawing.GridColumn>().ToList();
         if (gridCols != null && gridCols.Count > 0)
+<<<<<<< HEAD
             node.Format["colWidths"] = string.Join(",", gridCols.Select(gc => gc.Width?.Value is long w ? FormatEmu(w) : "0"));
+=======
+            node.Format["colWidths"] = string.Join(",", gridCols.Select(gc => gc.Width?.Value is long w ? Core.EmuConverter.FormatEmuLossy(w) : "0"));
+>>>>>>> upstream/main
 
         // Table style
         var tblPr = table?.GetFirstChild<Drawing.TableProperties>();
@@ -396,11 +476,20 @@ public partial class PowerPointHandler
         // TableLook flags
         if (tblPr != null)
         {
-            if (tblPr.FirstRow is not null) node.Format["firstRow"] = tblPr.FirstRow.Value;
+            // firstRow and bandRow default to TRUE in AddTable (an interactive
+            // nicety — a bare `add table` yields a styled header + banding). But
+            // the OOXML default for an ABSENT firstRow/bandRow attribute is
+            // FALSE. Emit their EFFECTIVE value (absent → false) so a source
+            // that omits them round-trips faithfully instead of gaining a header
+            // row / banding on replay (bnc480256: <a:tblPr bandRow="1"> with no
+            // firstRow replayed as firstRow="1", adding a header band + gap).
+            // The other four default to false in AddTable already, so emitting
+            // them only when present stays faithful.
+            node.Format["firstRow"] = tblPr.FirstRow?.Value ?? false;
             if (tblPr.LastRow is not null) node.Format["lastRow"] = tblPr.LastRow.Value;
             if (tblPr.FirstColumn is not null) node.Format["firstCol"] = tblPr.FirstColumn.Value;
             if (tblPr.LastColumn is not null) node.Format["lastCol"] = tblPr.LastColumn.Value;
-            if (tblPr.BandRow is not null) node.Format["bandedRows"] = tblPr.BandRow.Value;
+            node.Format["bandedRows"] = tblPr.BandRow?.Value ?? false;
             if (tblPr.BandColumn is not null) node.Format["bandedCols"] = tblPr.BandColumn.Value;
         }
 
@@ -413,14 +502,25 @@ public partial class PowerPointHandler
         var offset = gf.Transform?.Offset;
         if (offset != null)
         {
-            if (offset.X is not null) node.Format["x"] = FormatEmu(offset.X!);
-            if (offset.Y is not null) node.Format["y"] = FormatEmu(offset.Y!);
+            if (offset.X is not null) node.Format["x"] = Core.EmuConverter.FormatEmuLossy(offset.X!);
+            if (offset.Y is not null) node.Format["y"] = Core.EmuConverter.FormatEmuLossy(offset.Y!);
         }
         var extents = gf.Transform?.Extents;
         if (extents != null)
         {
-            if (extents.Cx is not null) node.Format["width"] = FormatEmu(extents.Cx!);
-            if (extents.Cy is not null) node.Format["height"] = FormatEmu(extents.Cy!);
+            if (extents.Cx is not null) node.Format["width"] = Core.EmuConverter.FormatEmuLossy(extents.Cx!);
+            if (extents.Cy is not null) node.Format["height"] = Core.EmuConverter.FormatEmuLossy(extents.Cy!);
+        }
+
+        // CONSISTENCY(zorder): mirror shape/picture/connector — emit when
+        // parented to a ShapeTree so dump/replay preserves stacking order.
+        if (gf.Parent is ShapeTree tblZTree)
+        {
+            var tblZContent = tblZTree.ChildElements
+                .Where(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape)
+                .ToList();
+            var tblZIdx = tblZContent.IndexOf(gf);
+            if (tblZIdx >= 0) node.Format["zorder"] = tblZIdx + 1;
         }
 
         // CONSISTENCY(zorder): mirror shape/picture/connector — emit when
@@ -449,7 +549,7 @@ public partial class PowerPointHandler
 
                 // Row height
                 if (row.Height?.HasValue == true)
-                    rowNode.Format["height"] = FormatEmu(row.Height.Value);
+                    rowNode.Format["height"] = Core.EmuConverter.FormatEmuLossy(row.Height.Value);
 
                 if (depth > 1)
                 {
@@ -480,6 +580,27 @@ public partial class PowerPointHandler
                         if (string.IsNullOrEmpty(cellText) && hasAnyRun)
                             cellNode.Format["hasEmptyRun"] = true;
 
+<<<<<<< HEAD
+=======
+                        // Verbatim cell text-body passthrough. The batch emitter
+                        // rebuilds a cell via `set tc[K] text=...`, which routes
+                        // through AppendLineWithTabs and produces BARE paragraphs:
+                        // every per-paragraph <a:pPr> child (lnSpc/spcBef/spcAft/
+                        // buClrTx/buFontTx/buSzTx/buNone/tabLst/defRPr), the
+                        // <a:lstStyle>, and every run's rich <a:rPr> (ea/latin/
+                        // solidFill) are dropped — the cell text reflows off the
+                        // source's intended metrics. Capture the whole <a:txBody>
+                        // OuterXml so the cell Set path can re-inject it verbatim,
+                        // superseding the text= rebuild. Only when the cell carries
+                        // real paragraph content (skip the trivial empty-cell seed,
+                        // which round-trips fine through the existing text= path).
+                        // CONSISTENCY(cell-txbody-raw-passthrough): mirrors the shape
+                        // lstStyleRaw / effectsRaw verbatim passthrough.
+                        if (cell.TextBody != null
+                            && CellTextBodyHasRichContent(cell.TextBody))
+                            cellNode.Format["txBodyRaw"] = cell.TextBody.OuterXml;
+
+>>>>>>> upstream/main
                         // Cell fill (blip, gradient, or solid)
                         var tcPr = cell.TableCellProperties ?? cell.GetFirstChild<Drawing.TableCellProperties>();
                         var cellBlipFill = tcPr?.GetFirstChild<Drawing.BlipFill>();
@@ -503,6 +624,14 @@ public partial class PowerPointHandler
                             var cellFillSolid = tcPr?.GetFirstChild<Drawing.SolidFill>();
                             var cellFillColor = ReadColorFromFill(cellFillSolid);
                             if (cellFillColor != null) cellNode.Format["fill"] = cellFillColor;
+<<<<<<< HEAD
+=======
+                            // Explicit <a:noFill/> beats the table style's band/
+                            // firstRow fill; dropping it painted the cell with the
+                            // style fill on round-trip (sample18).
+                            else if (tcPr?.GetFirstChild<Drawing.NoFill>() != null)
+                                cellNode.Format["fill"] = "none";
+>>>>>>> upstream/main
                         }
 
                         // Cell borders (including diagonal tl2br/tr2bl)
@@ -510,7 +639,11 @@ public partial class PowerPointHandler
 
                         // BUG-R6-A: cell padding readback (Set wrote LeftMargin/etc; Get
                         // missed it on the NodeBuilder cell branch). Canonical key is
+<<<<<<< HEAD
                         // "padding.*" per cross-handler rule (root CLAUDE.md).
+=======
+                        // "padding.*" per cross-handler rule (the project conventions).
+>>>>>>> upstream/main
                         if (tcPr?.LeftMargin?.HasValue == true)
                             cellNode.Format["padding.left"] = FormatEmu(tcPr.LeftMargin.Value);
                         if (tcPr?.RightMargin?.HasValue == true)
@@ -684,7 +817,11 @@ public partial class PowerPointHandler
                         var cellFirstPProps = cellFirstPara?.ParagraphProperties;
                         if (cellFirstPProps != null)
                         {
+<<<<<<< HEAD
                             var cellLsPct = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+=======
+                            var cellLsPct = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
+>>>>>>> upstream/main
                             if (cellLsPct.HasValue) cellNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(cellLsPct.Value);
                             var cellLsPts = cellFirstPProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
                             if (cellLsPts.HasValue) cellNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(cellLsPts.Value);
@@ -838,7 +975,28 @@ public partial class PowerPointHandler
 
         node.Format["name"] = name;
         if (phTypeStr != null) node.Format["phType"] = phTypeStr;
+<<<<<<< HEAD
         if (phElemForNode?.Index?.Value is uint phIdx) node.Format["phIndex"] = (int)phIdx;
+=======
+        // Store the placeholder idx as its raw uint, NOT (int). Decks (often
+        // authored by third-party editors) use high idx values up to uint.MaxValue
+        // (4294967295); an (int) cast overflows that to -1, which AddPlaceholder's
+        // uint.TryParse then rejects → the placeholder auto-assigns a fresh idx,
+        // binds to the WRONG layout slot, and loses all inherited font/size/color
+        // (whole-deck text re-styling). Mirrors the Query.cs placeholder builders,
+        // which already store ph.Index.Value (uint) directly.
+        if (phElemForNode?.Index?.Value is uint phIdx) node.Format["phIndex"] = phIdx;
+        // A truly BARE <p:ph/> (no type attribute AND no idx) must round-trip
+        // bare. FormatPlaceholderType(null) reports "body" for human-facing Get,
+        // but replaying it as type="body"+idx binds the shape to the layout's
+        // body slot and inherits its bullet/formatting — a bare ph inherits none
+        // of that (ECMA-376 default type is "obj", unbound). Source decks use a
+        // bare ph precisely to opt OUT of master styling (formatting-bullet-
+        // indent: "Object without master styling" gained a bullet on replay).
+        // Emit a round-trip marker; AddPlaceholder writes <p:ph/> verbatim.
+        if (isPlaceholder && phElemForNode?.Type?.Value == null && phElemForNode?.Index?.Value == null)
+            node.Format["phBare"] = "true";
+>>>>>>> upstream/main
 
         // CONSISTENCY(splocks-round-trip): <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
         // is the on-disk marker that the shape cannot be ungrouped (PowerPoint
@@ -1023,7 +1181,70 @@ public partial class PowerPointHandler
 
         // Image (blip) fill on shape
         var blipFill = shape.ShapeProperties?.GetFirstChild<Drawing.BlipFill>();
-        if (blipFill != null) node.Format["image"] = "true";
+        if (blipFill != null)
+        {
+            node.Format["image"] = "true";
+            // R9-7: surface the embedded image's file name on a companion key so
+            // the readback is round-trippable, mirroring R4-7 background.src.
+            // Keep Format["image"] == "true" for the long-standing bare contract.
+            var blipEmbedId = blipFill.GetFirstChild<Drawing.Blip>()?.Embed?.Value;
+            if (!string.IsNullOrEmpty(blipEmbedId) && part != null)
+            {
+                try
+                {
+                    var imgPart = part.GetPartById(blipEmbedId!);
+                    var fileName = System.IO.Path.GetFileName(imgPart.Uri.ToString());
+                    if (!string.IsNullOrEmpty(fileName))
+                        node.Format["image.src"] = fileName;
+                }
+                catch { /* dangling rel — no src surfaced */ }
+            }
+            // Round-trip the blip fill's framing: the <a:srcRect> crop insets and
+            // the <a:stretch><a:fillRect> stretch insets. ApplyShapeImageFill
+            // formerly always wrote a child-less <a:fillRect/>, so an image
+            // stretched past the shape bounds (a banner skyline with negative
+            // fillRect t/b) snapped back to an exact-fit stretch and the framing
+            // shifted on round-trip. Mirrors the PictureToNode fillRect/srcRect
+            // readback so shape image fills frame identically.
+            var shSrcRect = blipFill.GetFirstChild<Drawing.SourceRectangle>();
+            if (shSrcRect != null)
+            {
+                var sl = shSrcRect.Left?.Value; var st = shSrcRect.Top?.Value;
+                var sr = shSrcRect.Right?.Value; var sb = shSrcRect.Bottom?.Value;
+                if (sl.HasValue || st.HasValue || sr.HasValue || sb.HasValue)
+                    node.Format["srcRect"] = $"{sl ?? 0},{st ?? 0},{sr ?? 0},{sb ?? 0}";
+            }
+            var shFr = blipFill.GetFirstChild<Drawing.Stretch>()?.GetFirstChild<Drawing.FillRectangle>();
+            if (shFr != null)
+            {
+                var fl = shFr.Left?.Value; var ft = shFr.Top?.Value;
+                var frv = shFr.Right?.Value; var fb = shFr.Bottom?.Value;
+                if (fl.HasValue || ft.HasValue || frv.HasValue || fb.HasValue)
+                    node.Format["fillRect"] = $"{fl ?? 0},{ft ?? 0},{frv ?? 0},{fb ?? 0}";
+            }
+        }
+
+        // Pattern fill on shape — round-trip the input form "preset:fg:bg".
+        var patternFill = shape.ShapeProperties?.GetFirstChild<Drawing.PatternFill>();
+        if (patternFill != null)
+        {
+            var preset = patternFill.Preset?.InnerText ?? "";
+            var fgEl = patternFill.GetFirstChild<Drawing.ForegroundColor>();
+            var bgEl = patternFill.GetFirstChild<Drawing.BackgroundColor>();
+            var fgHex = fgEl?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+            // Use the EnumValue's InnerText (the OOXML token, e.g. "tx1"); the
+            // newer SDK backs SchemeColorValues with a struct whose Value.ToString()
+            // is "SchemeColorValues { }", which is not a parseable color. Mirrors
+            // the scheme-color readback in PowerPointHandler.Fill.cs.
+            var fgScheme = fgEl?.GetFirstChild<Drawing.SchemeColor>()?.Val?.InnerText;
+            var bgHex = bgEl?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+            var bgScheme = bgEl?.GetFirstChild<Drawing.SchemeColor>()?.Val?.InnerText;
+            var fg = fgHex != null ? ParseHelpers.FormatHexColor(fgHex) : (fgScheme ?? "");
+            var bg = bgHex != null ? ParseHelpers.FormatHexColor(bgHex) : (bgScheme ?? "");
+            node.Format["pattern"] = string.IsNullOrEmpty(bg) ? $"{preset}:{fg}" : $"{preset}:{fg}:{bg}";
+            if (!node.Format.ContainsKey("fill"))
+                node.Format["fill"] = "pattern";
+        }
 
         // Pattern fill on shape — round-trip the input form "preset:fg:bg".
         var patternFill = shape.ShapeProperties?.GetFirstChild<Drawing.PatternFill>();
@@ -1047,8 +1268,26 @@ public partial class PowerPointHandler
         var firstParaBullet = shape.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault()?.ParagraphProperties;
         if (firstParaBullet != null)
         {
+<<<<<<< HEAD
             var firstList = ReadListStyleFromPProps(firstParaBullet);
             if (firstList != null) node.Format["list"] = firstList;
+=======
+            var firstBulletRaw = ReadBulletRawFromPProps(firstParaBullet);
+            if (firstBulletRaw != null)
+            {
+                node.Format["bulletRaw"] = firstBulletRaw;
+                // R7-10: emit a re-feedable `list` companion alongside bulletRaw when
+                // the bullet maps to a canonical keyword (suppressed for raw-char
+                // passthroughs, preserving the bulletRaw-only contract for custom bullets).
+                var firstListCanon = ReadCanonicalListKeyword(firstParaBullet);
+                if (firstListCanon != null) node.Format["list"] = firstListCanon;
+            }
+            else
+            {
+                var firstList = ReadListStyleFromPProps(firstParaBullet);
+                if (firstList != null) node.Format["list"] = firstList;
+            }
+>>>>>>> upstream/main
         }
 
         // Collect font info
@@ -1157,6 +1396,7 @@ public partial class PowerPointHandler
             {
                 var firstRunUColor = ReadColorFromFill(firstRunUFill.GetFirstChild<Drawing.SolidFill>());
                 if (firstRunUColor != null) node.Format["underline.color"] = firstRunUColor;
+<<<<<<< HEAD
             }
             // R57 bt-1: <a:uLn> companion reader — see run-level emit below
             // for the rationale. Mirrors uFill at shape level so a single-run
@@ -1184,7 +1424,68 @@ public partial class PowerPointHandler
                     var v when v == Drawing.TextStrikeValues.NoStrike => "none",
                     _ => "single",
                 };
+=======
+>>>>>>> upstream/main
             }
+            // R57 bt-1: <a:uLn> companion reader — see run-level emit below
+            // for the rationale. Mirrors uFill at shape level so a single-run
+            // shape with <a:uLn w=…> on the only run round-trips both color
+            // and width through dump→replay.
+            var firstRunULn = firstRun.RunProperties.GetFirstChild<Drawing.Underline>();
+            if (firstRunULn != null)
+            {
+                if (!node.Format.ContainsKey("underline.color"))
+                {
+                    var firstRunULnColor = ReadColorFromFill(firstRunULn.GetFirstChild<Drawing.SolidFill>());
+                    if (firstRunULnColor != null) node.Format["underline.color"] = firstRunULnColor;
+                }
+                if (firstRunULn.Width?.HasValue == true)
+                    node.Format["underline.width"] = EmuConverter.FormatLineWidth(firstRunULn.Width.Value);
+            }
+            // BUG-PPTX-R2-03: mirror the run-level <a:ln> (text outline / glyph
+            // stroke) reader at shape level — same pattern as uFill/uLn above.
+            // Without this, `Add/Set shape textOutline=…` round-trips at the run
+            // scope only and Get on the shape drops the key, so the Add path
+            // (which forwards textOutline through effectKeys) looks broken.
+            var firstRunOutline = firstRun.RunProperties.GetFirstChild<Drawing.Outline>();
+            if (firstRunOutline != null)
+            {
+                string? toWidth = firstRunOutline.Width?.HasValue == true
+                    ? EmuConverter.FormatLineWidth(firstRunOutline.Width.Value) : null;
+                string? toColor = ReadColorFromFill(firstRunOutline.GetFirstChild<Drawing.SolidFill>());
+                if (toWidth != null) node.Format["textOutline.width"] = toWidth;
+                if (toColor != null) node.Format["textOutline.color"] = toColor;
+                if (toWidth != null && toColor != null)
+                    node.Format["textOutline"] = $"{toWidth}:{toColor}";
+                else if (toWidth != null)
+                    node.Format["textOutline"] = toWidth;
+                else if (toColor != null)
+                    node.Format["textOutline"] = toColor;
+                else
+                    node.Format["textOutline"] = "true";
+                // Mirror the run-level textOutlineRaw carrier (dash/gradient/
+                // cap-join beyond the width:color compound, sample10).
+                if (firstRunOutline.ChildElements.Any(c => c is not Drawing.SolidFill)
+                    || firstRunOutline.GetAttributes().Any(a => a.LocalName != "w"))
+                    node.Format["textOutlineRaw"] = firstRunOutline.OuterXml;
+            }
+            if (firstRun.RunProperties.Strike?.HasValue == true)
+            {
+                // Emit explicit "none" too, so a round-trip Add(strike=none) → Get
+                // returns the same key. PowerPoint writes <a:rPr strike="noStrike"/>
+                // verbatim; dropping it silently breaks batch (dump | apply) parity.
+                node.Format["strike"] = firstRun.RunProperties.Strike.Value switch
+                {
+                    var v when v == Drawing.TextStrikeValues.DoubleStrike => "double",
+                    var v when v == Drawing.TextStrikeValues.NoStrike => "none",
+                    _ => "single",
+                };
+            }
+            // CONSISTENCY(highlight): mirror the run-level a:highlight reader at
+            // shape level so `Add shape highlight=…` (first-run write) surfaces
+            // on shape-level Get, same pattern as uFill/uLn/textOutline above.
+            var firstRunHighlight = ReadColorFromHighlight(firstRun.RunProperties.GetFirstChild<Drawing.Highlight>());
+            if (firstRunHighlight != null) node.Format["highlight"] = firstRunHighlight;
 
             // Character spacing on first run
             if (firstRun.RunProperties.Spacing?.HasValue == true)
@@ -1246,6 +1547,37 @@ public partial class PowerPointHandler
                     node.Format["bold"] = endRPrShape.Bold.Value;
                 if (endRPrShape.Italic?.HasValue == true)
                     node.Format["italic"] = endRPrShape.Italic.Value;
+<<<<<<< HEAD
+=======
+                // CONSISTENCY(rpr-attr-fallback): underline/strike on runless
+                // shapes land on endParaRPr (Add's RunPropTargets fallback,
+                // same as bold/italic) — surface them here, mirroring the
+                // run-present readers at line ~1141/~1198.
+                if (endRPrShape.Underline?.HasValue == true && endRPrShape.Underline.Value != Drawing.TextUnderlineValues.None)
+                {
+                    var epUlInner = endRPrShape.Underline.InnerText;
+                    node.Format["underline"] = epUlInner switch
+                    {
+                        "sng" => "single",
+                        "dbl" => "double",
+                        _ => epUlInner
+                    };
+                }
+                if (endRPrShape.Strike?.HasValue == true)
+                {
+                    node.Format["strike"] = endRPrShape.Strike.Value switch
+                    {
+                        var v when v == Drawing.TextStrikeValues.DoubleStrike => "double",
+                        var v when v == Drawing.TextStrikeValues.NoStrike => "none",
+                        _ => "single",
+                    };
+                }
+                // BUG3: cap readback on runless shapes — mirror the run-present
+                // path at line ~1139 which uses Capital.InnerText ("all"/"small").
+                var epCapAttr = endRPrShape.GetAttributes().FirstOrDefault(a => a.LocalName == "cap");
+                if (epCapAttr.Value != null && epCapAttr.Value != "none")
+                    node.Format["cap"] = epCapAttr.Value;
+>>>>>>> upstream/main
                 var epColor = ReadColorFromFill(endRPrShape.GetFirstChild<Drawing.SolidFill>());
                 if (epColor != null) node.Format["color"] = epColor;
             }
@@ -1492,7 +1824,11 @@ public partial class PowerPointHandler
             var softEdge = activeEffectList.GetFirstChild<Drawing.SoftEdge>();
             if (softEdge?.Radius?.HasValue == true)
                 // Unit-qualified pt — matches the cross-format canonical from
+<<<<<<< HEAD
                 // root CLAUDE.md (line.width "0.75pt", padding "12pt", glow
+=======
+                // the project conventions (line.width "0.75pt", padding "12pt", glow
+>>>>>>> upstream/main
                 // "4pt"). The bare numeric form here was the lone outlier on
                 // the effects readback surface and broke dump round-trip
                 // when set softEdge=<value> re-parses the readback.
@@ -1709,11 +2045,46 @@ public partial class PowerPointHandler
                 };
             }
 
+<<<<<<< HEAD
+=======
+            // Multi-column text (a:bodyPr @numCol / @spcCol). Set writes
+            // ColumnCount/ColumnSpacing; Get must surface them so dump→replay
+            // and the HTML preview round-trip the column layout.
+            if (bodyPr.ColumnCount?.HasValue == true && bodyPr.ColumnCount.Value > 1)
+            {
+                node.Format["columns"] = bodyPr.ColumnCount.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (bodyPr.ColumnSpacing?.HasValue == true)
+                    node.Format["columnSpacing"] = $"{Units.EmuToPt(bodyPr.ColumnSpacing.Value):0.##}pt";
+            }
+
+>>>>>>> upstream/main
             // TextWarp (WordArt)
             var prstTxWarp = bodyPr.GetFirstChild<Drawing.PresetTextWarp>();
             if (prstTxWarp?.Preset?.HasValue == true)
+            {
                 node.Format["textWarp"] = prstTxWarp.Preset.InnerText;
+                // Verbatim form when the warp carries adjust values — the
+                // preset-name-only readback loses <a:avLst><a:gd fmla=…>,
+                // flattening the curve amount on dump→replay.
+                if (prstTxWarp.AdjustValueList?.HasChildren == true)
+                    node.Format["textWarpRaw"] = prstTxWarp.OuterXml;
+            }
 
+<<<<<<< HEAD
+=======
+            // 3D text: <a:scene3d>/<a:sp3d> INSIDE bodyPr (camera/lighting +
+            // extrusion/bevel — distinct from the shape-level pair on spPr).
+            // Previously dropped entirely, so a WordArt-3D deck replayed flat
+            // (sample12). Verbatim raw carriers, spliced back by the
+            // textScene3dRaw / textSp3dRaw Set cases.
+            var bodyScene3d = bodyPr.GetFirstChild<Drawing.Scene3DType>();
+            if (bodyScene3d != null)
+                node.Format["textScene3dRaw"] = bodyScene3d.OuterXml;
+            var bodySp3d = bodyPr.GetFirstChild<Drawing.Shape3DType>();
+            if (bodySp3d != null)
+                node.Format["textSp3dRaw"] = bodySp3d.OuterXml;
+
+>>>>>>> upstream/main
             // Word-wrap (a:bodyPr @wrap = "square" | "none"). Set already
             // accepts wrap=true/false and writes Square/None; Get must
             // surface it so dump→replay preserves the attribute. Match the
@@ -1721,17 +2092,68 @@ public partial class PowerPointHandler
             if (bodyPr.Wrap?.HasValue == true)
                 node.Format["wrap"] = bodyPr.Wrap.Value != Drawing.TextWrappingValues.None;
 
+<<<<<<< HEAD
+=======
+            // anchorCtr (center the text BLOCK horizontally) and upright
+            // (keep glyphs upright inside a rotated body) — simple bodyPr
+            // attributes previously dropped on dump→replay (sample16 /
+            // sample13: anchor-centered eaVert columns drifted, rotated
+            // upright text flipped).
+            if (bodyPr.AnchorCenter?.HasValue == true)
+                node.Format["anchorCtr"] = bodyPr.AnchorCenter.Value;
+            if (bodyPr.UpRight?.HasValue == true)
+                node.Format["upright"] = bodyPr.UpRight.Value;
+            // Overflow clipping (clip-vertical-overflow: vertOverflow="clip"
+            // dropped → overflowing text replayed visible).
+            if (bodyPr.VerticalOverflow?.HasValue == true)
+                node.Format["vertOverflow"] = bodyPr.VerticalOverflow.InnerText;
+            if (bodyPr.HorizontalOverflow?.HasValue == true)
+                node.Format["horzOverflow"] = bodyPr.HorizontalOverflow.InnerText;
+
+>>>>>>> upstream/main
             // AutoFit — surface only when the source bodyPr carries an
             // explicit child. An empty <a:bodyPr/> inherits from the
             // layout/master cascade; emitting "none" as the default forces
             // <a:noAutoFit/> on replay (Add/Set autoFit=none injects the
             // child), breaking shrink-to-fit on every placeholder dump→
             // replay cycle. CONSISTENCY(empty-bodyPr-inherits).
+<<<<<<< HEAD
             if (bodyPr.GetFirstChild<Drawing.NormalAutoFit>() != null) node.Format["autoFit"] = "normal";
+=======
+            var normAutoFit = bodyPr.GetFirstChild<Drawing.NormalAutoFit>();
+            if (normAutoFit != null)
+            {
+                node.Format["autoFit"] = "normal";
+                // Preserve the shrink-on-overflow scale PowerPoint computed and
+                // stored (fontScale="92500" = 92.5%, lnSpcReduction similar).
+                // Without this the box rebuilt at 100% and text re-flowed across
+                // the whole deck. OOXML thousandths-of-percent, emitted raw.
+                if (normAutoFit.FontScale?.Value is int afFs && afFs != 100000)
+                    node.Format["fontScale"] = afFs;
+                if (normAutoFit.LineSpaceReduction?.Value is int afLr && afLr != 0)
+                    node.Format["lnSpcReduction"] = afLr;
+            }
+>>>>>>> upstream/main
             else if (bodyPr.GetFirstChild<Drawing.ShapeAutoFit>() != null) node.Format["autoFit"] = "shape";
             else if (bodyPr.GetFirstChild<Drawing.NoAutoFit>() != null) node.Format["autoFit"] = "none";
         }
 
+<<<<<<< HEAD
+=======
+        // Shape-level txBody <a:lstStyle> with content (lvl1pPr..lvl9pPr:
+        // lnSpc/defTabSz/algn/fonts). The NodeBuilder models per-paragraph
+        // props but never the txBody lstStyle, so rebuild emitted an empty
+        // <a:lstStyle/> and text reflowed off the source's per-level metrics.
+        // Surface the whole element's OuterXml verbatim so AddShape can
+        // re-inject it in CT_TextBody order (after bodyPr, before first p).
+        // Skip empty stubs (<a:lstStyle/>) — they inherit from the cascade
+        // and an empty re-inject is a no-op. CONSISTENCY(lstStyle-raw-passthrough):
+        // mirrors customGeometryXml / effectsRaw verbatim passthrough.
+        var shapeLstStyle = shape.TextBody?.GetFirstChild<Drawing.ListStyle>();
+        if (shapeLstStyle != null && shapeLstStyle.HasChildren)
+            node.Format["lstStyleRaw"] = shapeLstStyle.OuterXml;
+
+>>>>>>> upstream/main
         // Text alignment (from first paragraph). Only surface when explicitly
         // present in the source XML; the previous else-branch hard-coded
         // align=left whenever pPr/algn was absent, which baked an explicit
@@ -1741,6 +2163,7 @@ public partial class PowerPointHandler
         var firstPara = shape.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
         if (firstPara?.ParagraphProperties?.Alignment?.HasValue == true)
         {
+<<<<<<< HEAD
             var alInner = firstPara.ParagraphProperties.Alignment.InnerText;
             node.Format["align"] = alInner switch
             {
@@ -1750,13 +2173,16 @@ public partial class PowerPointHandler
                 "just" => "justify",
                 _ => alInner
             };
+=======
+            node.Format["align"] = MapTextAlignToFriendly(firstPara.ParagraphProperties.Alignment);
+>>>>>>> upstream/main
         }
 
         // Paragraph spacing and indent (from first paragraph)
         var pProps = firstPara?.ParagraphProperties;
         if (pProps != null)
         {
-            var lsPct = pProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            var lsPct = pProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
             if (lsPct.HasValue) node.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(lsPct.Value);
             var lsPts = pProps.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (lsPts.HasValue) node.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(lsPts.Value);
@@ -1771,6 +2197,10 @@ public partial class PowerPointHandler
             // set so LTR docs don't get a noisy `direction=ltr` everywhere.
             if (pProps.RightToLeft?.HasValue == true)
                 node.Format["direction"] = pProps.RightToLeft.Value ? "rtl" : "ltr";
+<<<<<<< HEAD
+=======
+            EmitParagraphBreakProps(pProps, node);
+>>>>>>> upstream/main
         }
         // Inherit direction from slideLayout / slideMaster placeholder defaults
         // when the shape itself doesn't declare one. Surfaced as
@@ -1819,11 +2249,7 @@ public partial class PowerPointHandler
                     var paraPProps = para.ParagraphProperties;
                     if (paraPProps?.Alignment?.HasValue == true)
                     {
-                        var paraAlignVal = paraPProps.Alignment.Value;
-                        paraNode.Format["align"] = paraAlignVal == Drawing.TextAlignmentTypeValues.Center ? "center"
-                            : paraAlignVal == Drawing.TextAlignmentTypeValues.Right ? "right"
-                            : paraAlignVal == Drawing.TextAlignmentTypeValues.Justified ? "justify"
-                            : "left";
+                        paraNode.Format["align"] = MapTextAlignToFriendly(paraPProps.Alignment);
                     }
                     if (paraPProps?.Level?.HasValue == true) paraNode.Format["level"] = paraPProps.Level.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     if (paraPProps?.Indent?.HasValue == true) paraNode.Format["indent"] = FormatPptIndentPoints(paraPProps.Indent.Value);
@@ -1837,8 +2263,29 @@ public partial class PowerPointHandler
                     // AddParagraph/Set list= re-applies the per-paragraph marker.
                     if (paraPProps != null)
                     {
+<<<<<<< HEAD
                         var paraList = ReadListStyleFromPProps(paraPProps);
                         if (paraList != null) paraNode.Format["list"] = paraList;
+=======
+                        // bulletRaw carries the full bullet group verbatim
+                        // (buFont/buClr/buSzPct/buChar/…) so colored/sized/
+                        // Wingdings bullets round-trip; the lossy `list` keyword
+                        // is emitted only as a fallback when there's no raw block.
+                        var paraBulletRaw = ReadBulletRawFromPProps(paraPProps);
+                        if (paraBulletRaw != null)
+                        {
+                            paraNode.Format["bulletRaw"] = paraBulletRaw;
+                            // R7-10: re-feedable `list` companion when canonical (suppressed
+                            // for raw-char passthroughs). Mirrors R4-7 background.src companion.
+                            var paraListCanon = ReadCanonicalListKeyword(paraPProps);
+                            if (paraListCanon != null) paraNode.Format["list"] = paraListCanon;
+                        }
+                        else
+                        {
+                            var paraList = ReadListStyleFromPProps(paraPProps);
+                            if (paraList != null) paraNode.Format["list"] = paraList;
+                        }
+>>>>>>> upstream/main
                         // R65 bt-2: <a:tabLst>/<a:tab pos algn/> — custom tab
                         // stops were silently dropped on Get / dump, collapsing
                         // tab-aligned paragraphs after batch replay. Surface as
@@ -1847,10 +2294,26 @@ public partial class PowerPointHandler
                         // (CONSISTENCY(pptx-bare-as-points) for pos units).
                         var paraTabs = ReadTabsFromPProps(paraPProps);
                         if (paraTabs != null) paraNode.Format["tabs"] = paraTabs;
+<<<<<<< HEAD
                     }
                     if (paraPProps?.RightToLeft?.HasValue == true)
                         paraNode.Format["direction"] = paraPProps.RightToLeft.Value ? "rtl" : "ltr";
                     var pLsPct = paraPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+=======
+                        // Paragraph-level <a:defRPr> verbatim. Runs without their
+                        // own rPr inherit size/bold/font/color from here before
+                        // the layout/master bodyStyle cascade; the granular para
+                        // keys never captured it, so a bare-run paragraph rebuilt
+                        // at the master body size/weight instead of the authored
+                        // default (e.g. 40pt-bold-Helvetica → 52pt-regular).
+                        var paraDefRPr = paraPProps.GetFirstChild<Drawing.DefaultRunProperties>();
+                        if (paraDefRPr != null) paraNode.Format["defRPrRaw"] = paraDefRPr.OuterXml;
+                    }
+                    if (paraPProps?.RightToLeft?.HasValue == true)
+                        paraNode.Format["direction"] = paraPProps.RightToLeft.Value ? "rtl" : "ltr";
+                    EmitParagraphBreakProps(paraPProps, paraNode);
+                    var pLsPct = paraPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
+>>>>>>> upstream/main
                     if (pLsPct.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPercent(pLsPct.Value);
                     var pLsPts = paraPProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
                     if (pLsPts.HasValue) paraNode.Format["lineSpacing"] = SpacingConverter.FormatPptLineSpacingPoints(pLsPts.Value);
@@ -1908,6 +2371,17 @@ public partial class PowerPointHandler
                                     Type = "linebreak",
                                     Text = string.Empty,
                                 };
+<<<<<<< HEAD
+=======
+                                // <a:br><a:rPr sz=…/></a:br>: the break's run
+                                // properties set the empty line's height. A bare
+                                // replayed <a:br/> inherits the paragraph size
+                                // instead (sample19: 14pt breaks came back 24pt,
+                                // shifting everything below by 10pt per break).
+                                var brRPr = brChild.GetFirstChild<Drawing.RunProperties>();
+                                if (brRPr != null)
+                                    brNode.Format["rPrRaw"] = brRPr.OuterXml;
+>>>>>>> upstream/main
                                 paraNode.Children.Add(brNode);
                             }
                         }
@@ -1953,7 +2427,11 @@ public partial class PowerPointHandler
             // canonicalizes the readback to per-script keys
             // (font.latin / font.ea / font.cs). Emitting both bare `font`
             // and `font.latin` violates the no-duplicate-alias rule in the
+<<<<<<< HEAD
             // root CLAUDE.md "Canonical DocumentNode.Format Rules".
+=======
+            // the project conventions "Canonical DocumentNode.Format Rules".
+>>>>>>> upstream/main
             if (fLatin != null) node.Format["font.latin"] = fLatin;
             // CONSISTENCY(per-script-round-trip): emit font.ea / font.cs
             // unconditionally when the source <a:ea>/<a:cs> element is
@@ -2039,6 +2517,13 @@ public partial class PowerPointHandler
             if (runFillColor != null) node.Format["color"] = runFillColor;
             var runGrad = run.RunProperties.GetFirstChild<Drawing.GradientFill>();
             if (runGrad != null) node.Format["textFill"] = ReadGradientString(runGrad);
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(highlight): a:highlight readback — Add/Set write it
+            // via SetRunOrShapeProperties; Get must surface it for round-trip.
+            var runHighlight = ReadColorFromHighlight(run.RunProperties.GetFirstChild<Drawing.Highlight>());
+            if (runHighlight != null) node.Format["highlight"] = runHighlight;
+>>>>>>> upstream/main
             // Hyperlink (link + tooltip — round-trips Add/Set 'tooltip=…').
             if (part != null)
             {
@@ -2141,8 +2626,31 @@ public partial class PowerPointHandler
                     node.Format["textOutline"] = toColor;
                 else
                     node.Format["textOutline"] = "true";
+<<<<<<< HEAD
             }
 
+=======
+                // The width:color compound can't represent dash patterns,
+                // gradient strokes, caps/joins etc. (sample10: a sysDot
+                // WordArt outline replayed solid). Carry the verbatim <a:ln>
+                // whenever it holds anything beyond width + solidFill; the
+                // emitter suppresses the semantic keys in favour of the raw.
+                bool outlineBeyondCompound =
+                    runOutline.ChildElements.Any(c => c is not Drawing.SolidFill)
+                    || runOutline.GetAttributes().Any(a => a.LocalName != "w");
+                if (outlineBeyondCompound)
+                    node.Format["textOutlineRaw"] = runOutline.OuterXml;
+            }
+
+            // Bitmap text fill: <a:rPr><a:blipFill> paints the glyphs with an
+            // image (WordArt picture fill, sample10). No semantic key can
+            // express it — carry verbatim; the emitter also re-creates the
+            // referenced ImagePart with the pinned rId.
+            var runBlipFill = run.RunProperties.GetFirstChild<Drawing.BlipFill>();
+            if (runBlipFill != null)
+                node.Format["textFillRaw"] = runBlipFill.OuterXml;
+
+>>>>>>> upstream/main
             // Long-tail OOXML fallback. drawingML rPr carries most properties
             // as attributes on rPr itself (kern, spc, lang, dirty, smtClean,
             // normalizeH, baseline, ...), with sub-elements for fills/fonts/
@@ -2286,19 +2794,48 @@ public partial class PowerPointHandler
         if (!string.IsNullOrEmpty(alt)) node.Format["alt"] = alt;
         else node.Format["alt"] = "(missing)";
 
+<<<<<<< HEAD
+=======
+        // A picture rendered from mermaid (render=image) stamps `mermaid:<source>`
+        // into its alt-text as the regeneration carrier. Surface the bare source as
+        // a first-class Format["mermaid"] so dump/get/agents read it directly
+        // instead of string-slicing the accessibility text. Storage stays in alt
+        // (round-trips for free); this is a read-side convenience only.
+        if (!string.IsNullOrEmpty(alt)
+            && alt.StartsWith(Core.Diagram.MermaidImageRenderer.SourceTag, StringComparison.Ordinal))
+            node.Format["mermaid"] = alt.Substring(Core.Diagram.MermaidImageRenderer.SourceTag.Length);
+
+>>>>>>> upstream/main
         // CONSISTENCY(picture-relid): mirror docx (WordHandler.ImageHelpers
         // emits Format["relId"] on the run-picture) and xlsx. Without this
         // key, TryExtractBinary refuses to extract the image — `get --save`
         // would fail on every pptx picture. contentType/fileSize follow the
         // same pattern as the Query picture branch so Get and Query agree.
         var embedRel = pic.BlipFill?.Blip?.Embed?.Value;
+<<<<<<< HEAD
         if (!string.IsNullOrEmpty(embedRel))
         {
             node.Format["relId"] = embedRel!;
+=======
+        // For video/audio nodes, BlipFill.Blip.Embed points to the poster
+        // thumbnail image (PNG), not the media itself — reading its
+        // contentType/fileSize would surface "image/png" + ~70 bytes for a
+        // 100MB mp4. Prefer the media rel (VideoFromFile.Link /
+        // AudioFromFile.Link) on the nvPr so the readback reflects the
+        // actual media part. Fall back to the embed rel for plain pictures.
+        string? mediaRel = null;
+        if (isVideo) mediaRel = nvPr?.GetFirstChild<Drawing.VideoFromFile>()?.Link?.Value;
+        else if (isAudio) mediaRel = nvPr?.GetFirstChild<Drawing.AudioFromFile>()?.Link?.Value;
+        var sourceRel = mediaRel ?? embedRel;
+        if (!string.IsNullOrEmpty(sourceRel))
+        {
+            node.Format["relId"] = sourceRel!;
+>>>>>>> upstream/main
             if (slidePart != null)
             {
                 try
                 {
+<<<<<<< HEAD
                     var imgPart = slidePart.GetPartById(embedRel!);
                     if (imgPart != null)
                     {
@@ -2309,6 +2846,39 @@ public partial class PowerPointHandler
                         // entry currently open for writing".
                         using var s = imgPart.GetStream();
                         node.Format["fileSize"] = s.Length;
+=======
+                    // Media rels (video/audio) live in the
+                    // DataPartReferenceRelationships collection and resolve
+                    // to a MediaDataPart, not a regular OpenXmlPart — the
+                    // standard GetPartById throws on them. Try the media
+                    // relationship surface first; fall back to the part-by-id
+                    // path for picture embeds.
+                    if (mediaRel != null)
+                    {
+                        var dpRel = slidePart.DataPartReferenceRelationships
+                            .FirstOrDefault(r => r.Id == mediaRel);
+                        var dataPart = dpRel?.DataPart;
+                        if (dataPart != null)
+                        {
+                            node.Format["contentType"] = dataPart.ContentType;
+                            using var s = dataPart.GetStream();
+                            node.Format["fileSize"] = s.Length;
+                        }
+                    }
+                    else
+                    {
+                        var srcPart = slidePart.GetPartById(sourceRel!);
+                        if (srcPart != null)
+                        {
+                            node.Format["contentType"] = srcPart.ContentType;
+                            // Dispose the stream so the underlying ZipArchiveEntry is
+                            // released — otherwise a subsequent DeletePart (e.g. when
+                            // Set replaces a picture's source) throws "Cannot delete an
+                            // entry currently open for writing".
+                            using var s = srcPart.GetStream();
+                            node.Format["fileSize"] = s.Length;
+                        }
+>>>>>>> upstream/main
                     }
                 }
                 catch { /* rel may not resolve on the slide part — leave as relId-only */ }
@@ -2347,6 +2917,71 @@ public partial class PowerPointHandler
         if (picXfrm?.Rotation != null && picXfrm.Rotation.Value != 0)
             node.Format["rotation"] = $"{picXfrm.Rotation.Value / 60000.0:0.######}";
 
+<<<<<<< HEAD
+=======
+        // Flip — CONSISTENCY(shape-picture-parity): mirror ShapeToNode.
+        if (picXfrm?.HorizontalFlip?.Value == true) node.Format["flipH"] = true;
+        if (picXfrm?.VerticalFlip?.Value == true) node.Format["flipV"] = true;
+
+        // CONSISTENCY(picture-geometry): a picture can be "cropped to shape" via a
+        // non-rectangle <a:prstGeom> on its spPr (e.g. prst="ellipse"). AddPicture
+        // stamps a default rect, so without surfacing the preset the crop-to-shape
+        // is lost on dump→replay — the picture renders as a plain rectangle. Emit
+        // the preset name; AddPicture accepts it via the `geometry`/`shape` prop.
+        // Skip "rect" — it is AddPicture's default, so emitting it on every plain
+        // picture would only add noise.
+        var picPresetName = pic.ShapeProperties?
+            .GetFirstChild<Drawing.PresetGeometry>()?.Preset?.InnerText;
+        if (!string.IsNullOrEmpty(picPresetName) && picPresetName != "rect")
+        {
+            node.Format["geometry"] = picPresetName;
+            // Preset adjust handles on the crop shape — mirror ShapeToNode's
+            // adj readback (round2DiagRect corner radius etc.); dropping them
+            // reverts the crop to default proportions (custom-shape-bitmap-fill).
+            var picAvLst = pic.ShapeProperties?
+                .GetFirstChild<Drawing.PresetGeometry>()?.GetFirstChild<Drawing.AdjustValueList>();
+            if (picAvLst != null)
+            {
+                var picGuides = picAvLst.Elements<Drawing.ShapeGuide>()
+                    .Where(g => g.Name?.HasValue == true && g.Formula?.HasValue == true)
+                    .Select(g => $"{g.Name!.Value}:{g.Formula!.Value}")
+                    .ToList();
+                if (picGuides.Count > 0)
+                    node.Format["adj"] = string.Join(",", picGuides);
+            }
+        }
+
+        // Crop-to-CUSTOM-shape: a picture cropped to a freeform carries
+        // <a:custGeom> instead of prstGeom (sample11). Surface the verbatim
+        // XML — AddPicture consumes customGeometryXml the same way AddShape
+        // does, so the crop path replays byte-faithfully instead of falling
+        // back to the default rect.
+        var picCustGeom = pic.ShapeProperties?.GetFirstChild<Drawing.CustomGeometry>();
+        if (picCustGeom != null)
+            node.Format["customGeometryXml"] = picCustGeom.OuterXml;
+
+        // Shape fill ON the picture's spPr — visible wherever the image
+        // doesn't cover the frame (e.g. a negative srcRect outset leaves a
+        // border that the spPr fill paints; sample17's black surround).
+        // `fill` on picture Add is taken by the fit-mode alias, so use a
+        // dedicated key.
+        var picSpFill = ReadColorFromFill(pic.ShapeProperties?.GetFirstChild<Drawing.SolidFill>());
+        if (picSpFill != null)
+            node.Format["frameFill"] = picSpFill;
+
+        // 3D on a picture: <a:scene3d>/<a:sp3d> on the pic's spPr (camera
+        // rotation + extrusion/bevel). ShapeToNode reads these semantically
+        // for shapes, but pictures had no readback at all — a 3D-rotated
+        // picture replayed flat (Scene3d_pureImage). Verbatim carriers,
+        // spliced back by AddPicture.
+        var picScene3d = pic.ShapeProperties?.GetFirstChild<Drawing.Scene3DType>();
+        if (picScene3d != null)
+            node.Format["scene3dRaw"] = picScene3d.OuterXml;
+        var picSp3d = pic.ShapeProperties?.GetFirstChild<Drawing.Shape3DType>();
+        if (picSp3d != null)
+            node.Format["sp3dRaw"] = picSp3d.OuterXml;
+
+>>>>>>> upstream/main
         // CONSISTENCY(zorder): mirror shape/connector — emit for any
         // ShapeTree-rooted picture so Add(picture, zorder=N) round-trips.
         if (pic.Parent is ShapeTree picZTree)
@@ -2410,6 +3045,17 @@ public partial class PowerPointHandler
                 node.Format["duotone"] = string.Join(",", duoStops);
         }
 
+<<<<<<< HEAD
+=======
+        // R31 bt: surface <a:grayscl/> blip recolor as `recolor=grayscale`.
+        // Set.Media writes a bare <a:grayscl/> from `recolor=grayscale`, so the
+        // readback key/value must mirror that to round-trip. Without this the
+        // grayscale recolor (Picture Format → Color → Recolor → Grayscale) was
+        // silently dropped on Get / dump→replay and the image came back full-color.
+        if (picBlip?.GetFirstChild<Drawing.Grayscale>() != null)
+            node.Format["recolor"] = "grayscale";
+
+>>>>>>> upstream/main
         // Click-hyperlink on the picture (nvPicPr/cNvPr/a:hlinkClick).
         // CONSISTENCY(shape-picture-parity): pictures share the cNvPr
         // hyperlink slot with shapes; reuse the same reader.
@@ -2481,8 +3127,25 @@ public partial class PowerPointHandler
                 var glowOpacity = glowAlpha?.Val?.HasValue == true ? $"{glowAlpha.Val.Value / 1000.0:0.##}" : "75";
                 node.Format["glow"] = $"{glowColor}-{radiusPt}-{glowOpacity}";
             }
+<<<<<<< HEAD
         }
 
+=======
+            // Semantic shadow= backfills defaults for absent dist/dir (a
+            // source outerShdw with only blurRad+algn replays with dist=3pt
+            // dir=45° added). Carry the verbatim effectLst so replay is
+            // byte-faithful; the emitter suppresses the semantic keys.
+            node.Format["effectsRaw"] = picEffectList.OuterXml;
+        }
+
+        // Picture border: <a:ln> on the pic's spPr (the white frame around a
+        // crop-to-shape picture, custom-shape-bitmap-fill). No readback
+        // existed — carry verbatim.
+        var picLn = pic.ShapeProperties?.GetFirstChild<Drawing.Outline>();
+        if (picLn != null)
+            node.Format["lineRaw"] = picLn.OuterXml;
+
+>>>>>>> upstream/main
         // Crop
         var srcRect = pic.BlipFill?.GetFirstChild<Drawing.SourceRectangle>();
         if (srcRect != null)
@@ -2548,6 +3211,17 @@ public partial class PowerPointHandler
                 if (fl.HasValue || ft.HasValue || frVal.HasValue || fb.HasValue)
                     node.Format["fillRect"] = $"{fl ?? 0},{ft ?? 0},{frVal ?? 0},{fb ?? 0}";
             }
+<<<<<<< HEAD
+=======
+            else
+            {
+                // Bare <a:stretch/> — real PowerPoint renders a negative
+                // srcRect differently with vs without an explicit
+                // <a:fillRect/> (sample17). Flag it so AddPicture writes
+                // the same bare form back.
+                node.Format["stretchBare"] = "true";
+            }
+>>>>>>> upstream/main
         }
 
         return node;
@@ -2627,20 +3301,25 @@ public partial class PowerPointHandler
         var spPr = new ShapeProperties();
         if (isTitle)
         {
-            // Default title position: top-center area of standard 16:9 slide
+            // Default title position: top-center area of standard 16:9 slide.
+            // EMU values picked to round-trip exactly through FormatEmu in pt
+            // (12700 EMU/pt) so Get readback is unit-qualified, not raw emu.
             spPr.Transform2D = new Drawing.Transform2D
             {
-                Offset = new Drawing.Offset { X = 838200, Y = 365125 },    // ~2.33cm, ~1.01cm
-                Extents = new Drawing.Extents { Cx = 10515600, Cy = 1325563 } // ~29.21cm, ~3.68cm
+                Offset = new Drawing.Offset { X = 838200, Y = 365125 },    // 66pt, 28.75pt
+                Extents = new Drawing.Extents { Cx = 10515600, Cy = 1320800 } // 828pt, 104pt
             };
         }
         else
         {
-            // Default body/content position: below title
+            // Default body/content position: below title.
+            // Cx=10515600=828pt, Cy=4349750=342.5pt, Y=1825625=143.75pt — all
+            // pt-exact so FormatEmu emits clean readback (was Cy=4351338 →
+            // 342.625pt, which fell back to raw emu).
             spPr.Transform2D = new Drawing.Transform2D
             {
-                Offset = new Drawing.Offset { X = 838200, Y = 1825625 },   // ~2.33cm, ~5.07cm
-                Extents = new Drawing.Extents { Cx = 10515600, Cy = 4351338 } // ~29.21cm, ~12.09cm
+                Offset = new Drawing.Offset { X = 838200, Y = 1825625 },   // 66pt, 143.75pt
+                Extents = new Drawing.Extents { Cx = 10515600, Cy = 4349750 } // 828pt, 342.5pt
             };
         }
         shape.ShapeProperties = spPr;
@@ -2827,6 +3506,16 @@ public partial class PowerPointHandler
         if (xfrm?.Rotation?.HasValue == true && xfrm.Rotation.Value != 0)
             node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.######}";
 
+<<<<<<< HEAD
+=======
+        // Flip — a bent/elbow connector's actual routing depends on flipH/flipV
+        // (they mirror the path within its bounding box). AddConnector already
+        // honors both; ConnectorToNode previously read only rotation, so a
+        // flipped connector round-tripped with mirrored routing (wrong bends).
+        if (xfrm?.HorizontalFlip?.Value == true) node.Format["flipH"] = true;
+        if (xfrm?.VerticalFlip?.Value == true) node.Format["flipV"] = true;
+
+>>>>>>> upstream/main
         // Z-order (1-based position among content elements: 1 = back, N = front).
         // CONSISTENCY(zorder): shape/picture/group all emit zorder when parent is a
         // ShapeTree; connector belongs to the same set and was previously omitted —
@@ -2904,12 +3593,18 @@ public partial class PowerPointHandler
                     var paraPProps = para.ParagraphProperties;
                     if (paraPProps?.Alignment?.HasValue == true)
                     {
+<<<<<<< HEAD
                         var av = paraPProps.Alignment.Value;
                         paraNode.Format["align"] = av == Drawing.TextAlignmentTypeValues.Center ? "center"
                             : av == Drawing.TextAlignmentTypeValues.Right ? "right"
                             : av == Drawing.TextAlignmentTypeValues.Justified ? "justify"
                             : "left";
                     }
+=======
+                        paraNode.Format["align"] = MapTextAlignToFriendly(paraPProps.Alignment);
+                    }
+                    EmitParagraphBreakProps(paraPProps, paraNode);
+>>>>>>> upstream/main
                     if (depth > 1)
                     {
                         int runIdx = 0;

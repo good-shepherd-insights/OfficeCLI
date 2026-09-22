@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
@@ -375,5 +379,9 @@ internal sealed class FormatHandlerSession : IDisposable
     }
 
     private static string Truncate(string s, int max) =>
+<<<<<<< HEAD
         s.Length <= max ? s : s.Substring(0, max) + "...";
+=======
+        DisplayText.Truncate(s, max, "...");
+>>>>>>> upstream/main
 }

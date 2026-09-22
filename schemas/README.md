@@ -24,5 +24,9 @@ Any PR that changes `Add`, `Set`, or `Get` behavior for an element **must** upda
 ## Not here
 
 - Narrative / tutorials / best practices → wiki (generated or hand-written at release time).
+<<<<<<< HEAD
 - Internal implementation notes → CLAUDE.md and code comments.
+=======
+- Internal implementation notes → the project conventions and code comments.
+>>>>>>> upstream/main
 - Ephemeral release notes → CHANGELOG.

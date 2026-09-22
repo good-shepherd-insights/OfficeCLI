@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -21,16 +25,65 @@ internal static partial class ChartHelper
         var (kind, is3D, stacked, percentStacked) = ParseChartType(chartType);
 
         var chartSpace = new C.ChartSpace();
+<<<<<<< HEAD
         var chart = new C.Chart();
 
         if (!string.IsNullOrEmpty(title))
+=======
+        // Always write an explicit <c:date1904> (first CT_ChartSpace child).
+        // When absent, real PowerPoint may fall back to 1904-epoch date
+        // interpretation — date-axis serials render four years off.
+        chartSpace.AppendChild(new C.Date1904
+        {
+            Val = properties.TryGetValue("date1904", out var d1904)
+                  && OfficeCli.Core.ParseHelpers.IsTruthy(d1904)
+        });
+        var chart = new C.Chart();
+
+        // BUG-001: `title=none` (case-insensitive) or empty string means "no
+        // title" — do not render the literal text "none". Mirrors the Setter's
+        // `title` handling in ChartHelper.Setter.cs.
+        if (!string.IsNullOrEmpty(title) && !title.Equals("none", StringComparison.OrdinalIgnoreCase))
+>>>>>>> upstream/main
         {
             // R53 tester-2: forward an explicit title.lang (defaults to en-US
             // inside BuildChartTitle when absent) so dump→replay preserves the
             // source locale on the chart-title run.
             properties.TryGetValue("title.lang", out var titleLangBuild);
+<<<<<<< HEAD
             chart.AppendChild(BuildChartTitle(title, titleLangBuild));
         }
+=======
+            OfficeCli.Core.ParseHelpers.ValidateXmlText(title, "title");
+            chart.AppendChild(BuildChartTitle(title, titleLangBuild));
+        }
+        else if (properties.TryGetValue("autoTitle", out var autoTitleVal)
+                 && OfficeCli.Core.ParseHelpers.IsTruthy(autoTitleVal))
+        {
+            // Empty <c:title/> + autoTitleDeleted=0 → real PowerPoint renders
+            // its localized "Chart Title" placeholder (multi-series source
+            // charts authored with an automatic title). The captured
+            // title.pPr (font size/color) rides in c:title/c:txPr so the
+            // placeholder keeps the authored styling.
+            var autoTitleEl = new C.Title();
+            if (properties.TryGetValue("title.pPr", out var autoTitlePPr)
+                && !string.IsNullOrWhiteSpace(autoTitlePPr))
+            {
+                try
+                {
+                    var autoTitlePara = new Drawing.Paragraph();
+                    autoTitlePara.AppendChild(new Drawing.ParagraphProperties(autoTitlePPr));
+                    var autoTitleTxPr = new C.TextProperties(
+                        new Drawing.BodyProperties(), new Drawing.ListStyle());
+                    autoTitleTxPr.AppendChild(autoTitlePara);
+                    autoTitleEl.AppendChild(autoTitleTxPr);
+                }
+                catch { /* malformed captured pPr — placeholder stays unstyled */ }
+            }
+            chart.AppendChild(autoTitleEl);
+            chart.AppendChild(new C.AutoTitleDeleted { Val = false });
+        }
+>>>>>>> upstream/main
 
         var originalCategories = categories;
 
@@ -236,7 +289,11 @@ internal static partial class ChartHelper
                 chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId, scatterStyle, colors);
                 break;
             case "bubble":
+<<<<<<< HEAD
                 chartElement = BuildBubbleChart(categories, seriesData, catAxisId, valAxisId, colors);
+=======
+                chartElement = BuildBubbleChart(categories, seriesData, catAxisId, valAxisId, colors, properties);
+>>>>>>> upstream/main
                 break;
             case "radar":
             {
@@ -277,6 +334,21 @@ internal static partial class ChartHelper
                 var totColor = properties.GetValueOrDefault("totalColor");
                 var wfChartSpace = BuildWaterfallChart(title, wfCategories, wfValues,
                     incColor, decColor, totColor, properties);
+<<<<<<< HEAD
+=======
+                // BuildWaterfallChart builds its own chart with a default
+                // legend and never consumed the `legend` prop, so legend= was
+                // reported unsupported on a waterfall Add (every other type
+                // accepts it). Drop the default legend and re-apply from the
+                // prop (position, or none) — remove-first avoids a duplicate
+                // <c:legend> that would make Excel refuse the file.
+                var wfChart = wfChartSpace.GetFirstChild<C.Chart>();
+                if (wfChart != null)
+                {
+                    wfChart.RemoveAllChildren<C.Legend>();
+                    ApplyLegendFromProps(wfChart, properties);
+                }
+>>>>>>> upstream/main
                 return wfChartSpace;
             }
             case "combo":
@@ -290,11 +362,25 @@ internal static partial class ChartHelper
                 string[]? comboTypes = null;
                 if (properties.TryGetValue("comboTypes", out var ctList))
                     comboTypes = ctList.Split(',').Select(t => t.Trim().ToLowerInvariant()).ToArray();
+<<<<<<< HEAD
                 if (comboTypes == null || comboTypes.Length == 0)
                 {
                     int splitAt = 1;
                     if (properties.TryGetValue("combosplit", out var splitStr))
                         splitAt = ParseHelpers.SafeParseInt(splitStr, "combosplit");
+=======
+                // Probe combosplit unconditionally: it is a legitimately
+                // accepted prop (dump emits it alongside comboTypes), and the
+                // TrackingPropertyDictionary reports any never-read key as
+                // unsupported_property — reading it only inside the fallback
+                // branch produced a false warning on every combo-chart replay.
+                var hasComboSplit = properties.TryGetValue("combosplit", out var splitStr);
+                if (comboTypes == null || comboTypes.Length == 0)
+                {
+                    int splitAt = 1;
+                    if (hasComboSplit)
+                        splitAt = ParseHelpers.SafeParseInt(splitStr!, "combosplit");
+>>>>>>> upstream/main
                     splitAt = Math.Min(splitAt, seriesData.Count);
                     comboTypes = new string[seriesData.Count];
                     for (int i = 0; i < seriesData.Count; i++)
@@ -349,6 +435,7 @@ internal static partial class ChartHelper
 
         chart.AppendChild(plotArea);
 
+<<<<<<< HEAD
         var showLegend = properties.GetValueOrDefault("legend", "true");
         // CONSISTENCY(legend-hide-alias / R34-1): accept hide=true / hidden=true
         // as aliases for legend=none so users with a "hide it" mental model
@@ -372,15 +459,70 @@ internal static partial class ChartHelper
                 new C.Overlay { Val = false }
             ));
         }
+=======
+        ApplyLegendFromProps(chart, properties);
+>>>>>>> upstream/main
 
         chart.AppendChild(new C.PlotVisibleOnly { Val = true });
         chart.AppendChild(new C.DisplayBlanksAs { Val = C.DisplayBlanksAsValues.Gap });
 
+<<<<<<< HEAD
         chartSpace.AppendChild(chart);
 
         // Apply cell references for dotted syntax (series1.values=Sheet1!B2:B13)
         ApplySeriesReferences(plotArea, properties);
 
+=======
+        // Chart style number — <c:style> precedes <c:chart> in CT_ChartSpace.
+        // Drives gridline tint / effect defaults in real PowerPoint; without
+        // it a round-tripped chart falls back to the app default style.
+        if (properties.TryGetValue("chartStyle", out var chartStyleStr)
+            && byte.TryParse(chartStyleStr, out var chartStyleVal)
+            && chartStyleVal >= 1 && chartStyleVal <= 48)
+        {
+            chartSpace.AppendChild(new C.Style { Val = chartStyleVal });
+        }
+
+        chartSpace.AppendChild(chart);
+
+        // chartSpace-level default text properties (captured verbatim by the
+        // Reader as chartTxPrRaw) — <c:txPr> follows <c:chart> (and c:spPr)
+        // in CT_ChartSpace. Sets the base font for every chart element.
+        if (properties.TryGetValue("chartTxPrRaw", out var chartTxPrRaw)
+            && !string.IsNullOrWhiteSpace(chartTxPrRaw))
+        {
+            try { chartSpace.AppendChild(new C.TextProperties(chartTxPrRaw)); }
+            catch { /* malformed captured XML — keep the chart without it */ }
+        }
+
+        // Apply cell references for dotted syntax (series1.values=Sheet1!B2:B13)
+        ApplySeriesReferences(plotArea, properties);
+
+        // Restore source c:idx / c:order (series{N}.seriesIdx / .seriesOrder).
+        // PowerPoint keys the theme accent cycle and stack order off these —
+        // a combo dump reorders series by chart-group, so the positional idx
+        // the builders assign recolors every series.
+        {
+            var allSerForIdx = plotArea.Descendants<OpenXmlCompositeElement>()
+                .Where(e => e.LocalName == "ser").ToList();
+            for (int i = 0; i < allSerForIdx.Count; i++)
+            {
+                if (properties.TryGetValue($"series{i + 1}.seriesIdx", out var sIdxStr)
+                    && uint.TryParse(sIdxStr, out var sIdxVal))
+                {
+                    var idxEl = allSerForIdx[i].Elements<C.Index>().FirstOrDefault();
+                    if (idxEl != null) idxEl.Val = sIdxVal;
+                }
+                if (properties.TryGetValue($"series{i + 1}.seriesOrder", out var sOrdStr)
+                    && uint.TryParse(sOrdStr, out var sOrdVal))
+                {
+                    var ordEl = allSerForIdx[i].Elements<C.Order>().FirstOrDefault();
+                    if (ordEl != null) ordEl.Val = sOrdVal;
+                }
+            }
+        }
+
+>>>>>>> upstream/main
         // Defensive invariant (R26): a built chart must never declare an axis
         // that no chart group references. Orphaned axes (e.g. a secondary
         // axId 3/4 left over from a dump→rebuild with mismatched series
@@ -478,6 +620,18 @@ internal static partial class ChartHelper
                 {
                     var numCache = BuildNumberingCacheFromLiteral(
                         valEl.GetFirstChild<C.NumberLiteral>(), blanks);
+<<<<<<< HEAD
+=======
+                    // Source cache formatCode (series{N}.valuesNumFmt, e.g.
+                    // #,##0) — sourceLinked data labels render this format.
+                    if (numCache != null
+                        && properties.TryGetValue($"series{i + 1}.valuesNumFmt", out var vnf)
+                        && !string.IsNullOrWhiteSpace(vnf))
+                    {
+                        var fcEl = numCache.GetFirstChild<C.FormatCode>();
+                        if (fcEl != null) fcEl.Text = vnf;
+                    }
+>>>>>>> upstream/main
                     valEl.RemoveAllChildren();
                     var numRef = new C.NumberReference(new C.Formula(info.ValuesRef));
                     if (numCache != null)
@@ -518,12 +672,56 @@ internal static partial class ChartHelper
                     var catEl = ser.GetFirstChild<C.CategoryAxisData>();
                     if (catEl != null)
                     {
+<<<<<<< HEAD
                         var strCache = BuildStringCacheFromLiteral(catEl.GetFirstChild<C.StringLiteral>());
                         catEl.RemoveAllChildren();
                         var strRef = new C.StringReference(new C.Formula(catRef));
                         if (strCache != null)
                             strRef.AppendChild(strCache);
                         catEl.AppendChild(strRef);
+=======
+                        // A date axis needs NUMERIC categories: rewriting to a
+                        // strRef/strCache degrades the dateAx to a text axis in
+                        // real PowerPoint (raw serials, no date scaling, no
+                        // min/max windowing). When catAxisType=date and every
+                        // literal label parses as a number, build numRef +
+                        // numCache instead.
+                        var catStrLit = catEl.GetFirstChild<C.StringLiteral>();
+                        bool dateCats = properties.TryGetValue("catAxisType", out var catTypeStr)
+                            && string.Equals(catTypeStr?.Trim(), "date", StringComparison.OrdinalIgnoreCase);
+                        if (dateCats && catStrLit != null
+                            && catStrLit.Elements<C.StringPoint>().Any()
+                            && catStrLit.Elements<C.StringPoint>().All(p =>
+                                double.TryParse(p.GetFirstChild<C.NumericValue>()?.Text,
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture, out _)))
+                        {
+                            var catNumCache = new C.NumberingCache();
+                            catNumCache.AppendChild(new C.FormatCode("General"));
+                            var catPtCount = catStrLit.GetFirstChild<C.PointCount>();
+                            if (catPtCount != null)
+                                catNumCache.AppendChild(new C.PointCount { Val = catPtCount.Val });
+                            foreach (var sp in catStrLit.Elements<C.StringPoint>())
+                            {
+                                var np = new C.NumericPoint { Index = sp.Index };
+                                np.AppendChild(new C.NumericValue(sp.GetFirstChild<C.NumericValue>()?.Text ?? ""));
+                                catNumCache.AppendChild(np);
+                            }
+                            catEl.RemoveAllChildren();
+                            var catNumRef = new C.NumberReference(new C.Formula(catRef));
+                            catNumRef.AppendChild(catNumCache);
+                            catEl.AppendChild(catNumRef);
+                        }
+                        else
+                        {
+                            var strCache = BuildStringCacheFromLiteral(catStrLit);
+                            catEl.RemoveAllChildren();
+                            var strRef = new C.StringReference(new C.Formula(catRef));
+                            if (strCache != null)
+                                strRef.AppendChild(strCache);
+                            catEl.AppendChild(strRef);
+                        }
+>>>>>>> upstream/main
                     }
                     else
                     {
@@ -589,6 +787,10 @@ internal static partial class ChartHelper
         "combotypes", "combo.types",
         "preset", "style.preset", "theme",
         "view3d", "camera", "perspective",
+<<<<<<< HEAD
+=======
+        "floorraw", "sidewallraw", "backwallraw",
+>>>>>>> upstream/main
         "holesize", "firstsliceangle", "sliceangle",
         "axisvisible", "axis.visible", "axis.delete",
         "cataxisvisible", "valaxisvisible",
@@ -605,7 +807,14 @@ internal static partial class ChartHelper
         // injected post-build by SetChartProperties at the schema-correct
         // position inside CT_ValAx / CT_CatAx / CT_PlotArea. (plotarea.sppr
         // also matches the "plotarea." deferred prefix; listed for symmetry.)
+<<<<<<< HEAD
         "valax.sppr", "catax.sppr", "plotarea.sppr",
+=======
+        "valax.sppr", "catax.sppr", "plotarea.sppr", "chartarea.sppr",
+        // verbatim gridline outline spPr (tx1+lumMod tint, cap/cmpd/join) that
+        // the granular gridlineColor/Width/Dash keys cannot represent.
+        "gridline.sppr", "minorgridline.sppr",
+>>>>>>> upstream/main
         // BUG-DUMP-R35-1: verbatim per-axis text properties + title paragraph
         // properties, injected post-build at the schema-correct position inside
         // CT_CatAx / CT_ValAx (txPr after spPr, before crossAx) and the title's
@@ -679,14 +888,62 @@ internal static partial class ChartHelper
     private static readonly string[] DeferredPrefixes =
     [
         "title.", "plotarea.", "legend.", "datalabel",
+<<<<<<< HEAD
         "datatable.", "displayunitslabel.", "trendlinelabel.",
         "labelfont.",
+=======
+        // legendEntry{N}.delete hides a specific legend entry; the Setter's
+        // TryParseLegendEntryKey applies it post-build, so it must defer (the
+        // "legend." prefix above does not match "legendentry...").
+        "legendentry",
+        "datatable.", "displayunitslabel.", "trendlinelabel.",
+        "labelfont.",
+        // axisTitle.pPr / catTitle.pPr — restore the source axis-title paragraph
+        // styling post-build (the axis title element must exist first).
+        "axistitle.", "cattitle.",
+>>>>>>> upstream/main
     ];
 
     /// <summary>
     /// Check if a property key should be deferred from BuildChartSpace to SetChartProperties.
     /// Matches exact keys in <see cref="DeferredAddKeys"/> plus dynamic prefix patterns.
     /// </summary>
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Apply the `legend` prop (position, or none via legend=none/false or
+    /// hide/hidden) to a chart, inserting the &lt;c:legend&gt; at the correct
+    /// CT_Chart position (after plotArea, before plotVisibleOnly/dispBlanksAs).
+    /// Shared by the generic build path and the waterfall path (which builds
+    /// its own chart and otherwise never consumed `legend`, so legend= was
+    /// reported unsupported on waterfall Add).
+    /// </summary>
+    internal static void ApplyLegendFromProps(C.Chart chart, Dictionary<string, string> properties)
+    {
+        var showLegend = properties.GetValueOrDefault("legend", "true");
+        // CONSISTENCY(legend-hide-alias / R34-1): hide/hidden == legend=none.
+        if ((properties.TryGetValue("hide", out var hideVal) && ParseHelpers.IsTruthy(hideVal)) ||
+            (properties.TryGetValue("hidden", out var hiddenVal) && ParseHelpers.IsTruthy(hiddenVal)))
+            showLegend = "none";
+        if (showLegend.Equals("true", StringComparison.OrdinalIgnoreCase))
+            showLegend = "bottom";
+        if (showLegend.Equals("false", StringComparison.OrdinalIgnoreCase)
+            || showLegend.Equals("none", StringComparison.OrdinalIgnoreCase))
+            return;
+        var legendPos = ParseLegendPosition(showLegend);
+        var legend = new C.Legend(
+            new C.LegendPosition { Val = legendPos },
+            new C.Overlay { Val = false });
+        // Schema order: legend precedes plotVisibleOnly/dispBlanksAs. On the
+        // generic path those don't exist yet (append == correct); on a
+        // pre-built chart (waterfall) insert before them.
+        var anchor = (OpenXmlElement?)chart.GetFirstChild<C.PlotVisibleOnly>()
+            ?? chart.GetFirstChild<C.DisplayBlanksAs>();
+        if (anchor != null) chart.InsertBefore(legend, anchor);
+        else chart.AppendChild(legend);
+    }
+
+>>>>>>> upstream/main
     internal static bool IsDeferredKey(string key)
     {
         if (DeferredAddKeys.Contains(key)) return true;
@@ -757,10 +1014,34 @@ internal static partial class ChartHelper
         string[]? colors,
         HashSet<int>? noFillSeries = null)
     {
+<<<<<<< HEAD
+=======
+        // Grouping-qualified tokens (columnstacked / areapercentstacked …)
+        // from the Reader's comboTypes emit — parse the suffix so a stacked
+        // combo group doesn't rebuild as clustered/standard.
+        string grpSuffix = "";
+        if (typeLabel.EndsWith("percentstacked", StringComparison.Ordinal))
+        { grpSuffix = "percentstacked"; typeLabel = typeLabel[..^14]; }
+        else if (typeLabel.EndsWith("stacked", StringComparison.Ordinal))
+        { grpSuffix = "stacked"; typeLabel = typeLabel[..^7]; }
+        var barGrp = grpSuffix switch
+        {
+            "percentstacked" => C.BarGroupingValues.PercentStacked,
+            "stacked" => C.BarGroupingValues.Stacked,
+            _ => C.BarGroupingValues.Clustered,
+        };
+        var stdGrp = grpSuffix switch
+        {
+            "percentstacked" => C.GroupingValues.PercentStacked,
+            "stacked" => C.GroupingValues.Stacked,
+            _ => C.GroupingValues.Standard,
+        };
+>>>>>>> upstream/main
         OpenXmlCompositeElement container = typeLabel switch
         {
             "bar" => new C.BarChart(
                 new C.BarDirection { Val = C.BarDirectionValues.Bar },
+<<<<<<< HEAD
                 new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
                 new C.VaryColors { Val = false }),
             "column" => new C.BarChart(
@@ -775,6 +1056,22 @@ internal static partial class ChartHelper
                 new C.VaryColors { Val = false }),
             _ => new C.LineChart(
                 new C.Grouping { Val = C.GroupingValues.Standard },
+=======
+                new C.BarGrouping { Val = barGrp },
+                new C.VaryColors { Val = false }),
+            "column" => new C.BarChart(
+                new C.BarDirection { Val = C.BarDirectionValues.Column },
+                new C.BarGrouping { Val = barGrp },
+                new C.VaryColors { Val = false }),
+            "area" => new C.AreaChart(
+                new C.Grouping { Val = stdGrp },
+                new C.VaryColors { Val = false }),
+            "line" => new C.LineChart(
+                new C.Grouping { Val = stdGrp },
+                new C.VaryColors { Val = false }),
+            _ => new C.LineChart(
+                new C.Grouping { Val = stdGrp },
+>>>>>>> upstream/main
                 new C.VaryColors { Val = false }),
         };
 
@@ -939,11 +1236,24 @@ internal static partial class ChartHelper
         string[]? colors = null)
     {
         var chart = new C.DoughnutChart(new C.VaryColors { Val = true });
+<<<<<<< HEAD
         if (seriesData.Count > 0)
         {
             var series = BuildPieSeries(0, seriesData[0].name,
                 categories, seriesData[0].values);
             ApplyDataPointColors(series, seriesData[0].values.Length, colors);
+=======
+        // Unlike pie, a doughnut legitimately supports multiple series —
+        // PowerPoint renders one concentric ring per series. Emit one
+        // <c:ser> per series (was previously hardcoded to seriesData[0],
+        // silently dropping inner rings). Per-data-point colors apply to
+        // each series' slices (PowerPoint colors every ring by category).
+        for (int s = 0; s < seriesData.Count; s++)
+        {
+            var series = BuildPieSeries((uint)s, seriesData[s].name,
+                categories, seriesData[s].values);
+            ApplyDataPointColors(series, seriesData[s].values.Length, colors);
+>>>>>>> upstream/main
             chart.AppendChild(series);
         }
         chart.AppendChild(new C.HoleSize { Val = 50 });
@@ -1021,10 +1331,24 @@ internal static partial class ChartHelper
 
     internal static C.BubbleChart BuildBubbleChart(
         string[]? categories, List<(string name, double[] values)> seriesData,
+<<<<<<< HEAD
         uint catAxisId, uint valAxisId, string[]? colors = null)
     {
         var bubbleChart = new C.BubbleChart(new C.VaryColors { Val = false });
 
+=======
+        uint catAxisId, uint valAxisId, string[]? colors = null,
+        Dictionary<string, string>? properties = null)
+    {
+        var bubbleChart = new C.BubbleChart(new C.VaryColors { Val = false });
+
+        // R16-7: per-series literal bubble sizes (series{N}.bubbleSize=...). The
+        // default path below seeds size = y-values; consume the user-supplied
+        // literal sizes here so they're written verbatim, mirroring how the
+        // ref form (series{N}.bubbleSizeRef) is applied in PostProcessSeriesRefs.
+        var extSeries = properties != null ? ParseSeriesDataExtended(properties) : null;
+
+>>>>>>> upstream/main
         double[]? xValues = null;
         if (categories != null)
             xValues = categories.Select(c => double.TryParse(c, out var v) ? v : 0).ToArray();
@@ -1086,7 +1410,11 @@ internal static partial class ChartHelper
             var series = new C.BubbleChartSeries(
                 new C.Index { Val = (uint)i },
                 new C.Order { Val = (uint)i },
+<<<<<<< HEAD
                 new C.SeriesText(new C.NumericValue(name))
+=======
+                BuildSeriesText(name)
+>>>>>>> upstream/main
             );
             ApplySeriesColor(series, color);
 
@@ -1103,10 +1431,21 @@ internal static partial class ChartHelper
                 yLit.AppendChild(new C.NumericPoint(new C.NumericValue(values[j].ToString("G"))) { Index = (uint)j });
             series.AppendChild(new C.YValues(yLit));
 
+<<<<<<< HEAD
             // Bubble sizes — use the values as sizes by default, or a third series if provided
             var sizeLit = new C.NumberLiteral(new C.PointCount { Val = (uint)values.Length });
             for (int j = 0; j < values.Length; j++)
                 sizeLit.AppendChild(new C.NumericPoint(new C.NumericValue(values[j].ToString("G"))) { Index = (uint)j });
+=======
+            // Bubble sizes — user-supplied literal sizes (R16-7) when present,
+            // otherwise default to the y-values.
+            var sizes = (extSeries != null && i < extSeries.Count && extSeries[i].BubbleSizeValues != null)
+                ? extSeries[i].BubbleSizeValues!
+                : values;
+            var sizeLit = new C.NumberLiteral(new C.PointCount { Val = (uint)sizes.Length });
+            for (int j = 0; j < sizes.Length; j++)
+                sizeLit.AppendChild(new C.NumericPoint(new C.NumericValue(sizes[j].ToString("G"))) { Index = (uint)j });
+>>>>>>> upstream/main
             series.AppendChild(new C.BubbleSize(sizeLit));
 
             bubbleChart.AppendChild(series);
@@ -1142,7 +1481,11 @@ internal static partial class ChartHelper
             var series = new C.RadarChartSeries(
                 new C.Index { Val = (uint)i },
                 new C.Order { Val = (uint)i },
+<<<<<<< HEAD
                 new C.SeriesText(new C.NumericValue(seriesData[i].name))
+=======
+                BuildSeriesText(seriesData[i].name)
+>>>>>>> upstream/main
             );
             ApplySeriesColor(series, color);
             if (categories != null) series.AppendChild(BuildCategoryData(categories));
@@ -1178,7 +1521,11 @@ internal static partial class ChartHelper
             var series = new C.LineChartSeries(
                 new C.Index { Val = (uint)i },
                 new C.Order { Val = (uint)i },
+<<<<<<< HEAD
                 new C.SeriesText(new C.NumericValue(seriesData[i].name))
+=======
+                BuildSeriesText(seriesData[i].name)
+>>>>>>> upstream/main
             );
 
             // Hide individual series lines — stock chart visuals come from
@@ -1274,6 +1621,7 @@ internal static partial class ChartHelper
             else series.PrependChild(spPr);
             return;
         }
+<<<<<<< HEAD
         var solidFill = new Drawing.SolidFill();
         solidFill.AppendChild(BuildChartColorElement(color));
         spPr.AppendChild(solidFill);
@@ -1281,6 +1629,20 @@ internal static partial class ChartHelper
         // For line/scatter series, also set a:ln so Excel uses the correct stroke color
         var parentName = series.Parent?.LocalName;
         if (parentName is "lineChart" or "scatterChart" or "radarChart")
+=======
+        // Line-based series (line/scatter/radar) carry their color on the
+        // line stroke (<a:ln><a:solidFill>); real PowerPoint IGNORES a bare
+        // <a:solidFill> for the stroke and falls back to the theme color.
+        // Area-based series (bar/column/pie/area/doughnut) use the bare
+        // <a:solidFill> as an area fill. All series share LocalName "ser", so
+        // detect by the strongly-typed element class (works pre-append when
+        // Parent is still null) and fall back to the parent chart type for
+        // loosely-typed elements obtained from an already-parsed tree.
+        bool isLineBased = series is C.LineChartSeries or C.ScatterChartSeries or C.RadarChartSeries
+            || series.Parent?.LocalName is "lineChart" or "scatterChart" or "radarChart";
+
+        if (isLineBased)
+>>>>>>> upstream/main
         {
             const int defaultStrokeWidthEmu = 25400; // 2pt × 12700 EMU/pt
             var outline = new Drawing.Outline { Width = defaultStrokeWidthEmu };
@@ -1289,6 +1651,15 @@ internal static partial class ChartHelper
             outline.AppendChild(lnFill);
             spPr.AppendChild(outline);
         }
+<<<<<<< HEAD
+=======
+        else
+        {
+            var solidFill = new Drawing.SolidFill();
+            solidFill.AppendChild(BuildChartColorElement(color));
+            spPr.AppendChild(solidFill);
+        }
+>>>>>>> upstream/main
 
         var serText = series.GetFirstChild<C.SeriesText>();
         if (serText != null)
@@ -1300,8 +1671,15 @@ internal static partial class ChartHelper
     /// <summary>
     /// Build a fill element: solid if single color, gradient if contains '-'.
     /// Gradient format: "color1-color2[:angle]" or "color1-color2-color3[:angle]"
+<<<<<<< HEAD
     /// </summary>
     private static OpenXmlElement BuildFillElement(string value)
+=======
+    /// Internal so the cx (ExtendedChart) builder can share the exact same fill
+    /// vocabulary (solid / gradient / pattern / none) as regular cCharts.
+    /// </summary>
+    internal static OpenXmlElement BuildFillElement(string value)
+>>>>>>> upstream/main
     {
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
             return new Drawing.NoFill();
@@ -1357,7 +1735,11 @@ internal static partial class ChartHelper
                 gsLst.AppendChild(gs);
             }
             gradFill.AppendChild(gsLst);
+<<<<<<< HEAD
             gradFill.AppendChild(new Drawing.LinearGradientFill { Angle = anglePart * 60000, Scaled = scaledFlag });
+=======
+            gradFill.AppendChild(new Drawing.LinearGradientFill { Angle = ParseHelpers.GradientAngleToOoxmlUnits(anglePart), Scaled = scaledFlag });
+>>>>>>> upstream/main
             return gradFill;
         }
 
@@ -1490,7 +1872,11 @@ internal static partial class ChartHelper
         // CONSISTENCY(pt-suffix): accept the unit-qualified form (`18pt`,
         // `10.5pt`) on input — without this, `int.TryParse("18pt")` failed
         // and silently defaulted to 1000 (10pt), so `axisFont=18pt:…` ignored
+<<<<<<< HEAD
         // the size. Mirrors the root CLAUDE.md "Font size input is lenient:
+=======
+        // the size. Mirrors the project conventions "Font size input is lenient:
+>>>>>>> upstream/main
         // accepts `14`, `14pt`, `10.5pt`" rule.
         var sizeStr = parts.Length > 0
             ? (parts[0].EndsWith("pt", System.StringComparison.OrdinalIgnoreCase) ? parts[0][..^2] : parts[0])
@@ -1717,9 +2103,19 @@ internal static partial class ChartHelper
         var series = new C.BarChartSeries(
             new C.Index { Val = idx },
             new C.Order { Val = idx },
+<<<<<<< HEAD
             new C.SeriesText(new C.NumericValue(name))
         );
         if (color != null) ApplySeriesColor(series, color);
+=======
+            BuildSeriesText(name)
+        );
+        if (color != null) ApplySeriesColor(series, color);
+        // Real PowerPoint renders a MISSING invertIfNegative as true —
+        // negative bars come out white with an outline. Write the explicit
+        // spec default so negatives keep the series fill.
+        series.AppendChild(new C.InvertIfNegative { Val = false });
+>>>>>>> upstream/main
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
         series.AppendChild(BuildValues(values));
         return series;
@@ -1731,7 +2127,11 @@ internal static partial class ChartHelper
         var series = new C.LineChartSeries(
             new C.Index { Val = idx },
             new C.Order { Val = idx },
+<<<<<<< HEAD
             new C.SeriesText(new C.NumericValue(name))
+=======
+            BuildSeriesText(name)
+>>>>>>> upstream/main
         );
         if (color != null) ApplySeriesColor(series, color);
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
@@ -1745,7 +2145,11 @@ internal static partial class ChartHelper
         var series = new C.AreaChartSeries(
             new C.Index { Val = idx },
             new C.Order { Val = idx },
+<<<<<<< HEAD
             new C.SeriesText(new C.NumericValue(name))
+=======
+            BuildSeriesText(name)
+>>>>>>> upstream/main
         );
         if (color != null) ApplySeriesColor(series, color);
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
@@ -1759,7 +2163,11 @@ internal static partial class ChartHelper
         var series = new C.PieChartSeries(
             new C.Index { Val = idx },
             new C.Order { Val = idx },
+<<<<<<< HEAD
             new C.SeriesText(new C.NumericValue(name))
+=======
+            BuildSeriesText(name)
+>>>>>>> upstream/main
         );
         if (color != null) ApplySeriesColor(series, color);
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
@@ -1773,7 +2181,11 @@ internal static partial class ChartHelper
         var series = new C.ScatterChartSeries(
             new C.Index { Val = idx },
             new C.Order { Val = idx },
+<<<<<<< HEAD
             new C.SeriesText(new C.NumericValue(name))
+=======
+            BuildSeriesText(name)
+>>>>>>> upstream/main
         );
 
         if (xValues != null)
@@ -1960,6 +2372,19 @@ internal static partial class ChartHelper
         );
     }
 
+<<<<<<< HEAD
+=======
+    // Shared helper for chart series text: validate XML-illegal chars up-front
+    // so callers don't have to remember (every `BuildSeriesText(name)`
+    // call site was previously a leak point — R32). Returns the SeriesText
+    // wrapping a NumericValue, ready to AppendChild.
+    internal static C.SeriesText BuildSeriesText(string name)
+    {
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(name, "series name");
+        return new C.SeriesText(new C.NumericValue(name));
+    }
+
+>>>>>>> upstream/main
     // ==================== Title Builder ====================
 
     internal static C.Title BuildChartTitle(string titleText, string? titleLang = null)
@@ -1968,9 +2393,20 @@ internal static partial class ChartHelper
         // reference (e.g. "Sheet1!A1"), emit <c:tx><c:strRef> so Excel resolves
         // the cell on open. Same fix family as R17-B1 (series name strRef).
         // Applies to chart title and cat/val axis titles (R18-B1/B2).
+<<<<<<< HEAD
         if (IsCellReference(titleText))
         {
             var formula = NormalizeCellReference(titleText);
+=======
+        // Accept the natural Excel spelling with a leading '=' (=Sheet1!A1);
+        // without the strip it fell through to the literal-text branch and
+        // the chart displayed the formula string verbatim.
+        var titleRef = titleText.TrimStart();
+        if (titleRef.StartsWith('=')) titleRef = titleRef[1..];
+        if (IsCellReference(titleRef))
+        {
+            var formula = NormalizeCellReference(titleRef);
+>>>>>>> upstream/main
             return new C.Title(
                 new C.ChartText(
                     new C.StringReference(new C.Formula(formula))

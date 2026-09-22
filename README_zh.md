@@ -6,7 +6,11 @@
 
 开源免费。单一可执行文件。无需安装 Office。零依赖。全平台运行。
 
+<<<<<<< HEAD
 **内置 agent 友好渲染引擎** —— 智能体可以"看见"自己创建的内容，无需 Office。把 `.docx` / `.xlsx` / `.pptx` 渲染为 HTML 或 PNG，"渲染 → 看 → 改" 循环在二进制能跑的任何地方都成立。
+=======
+**OfficeCLI 的内置 HTML 渲染引擎，高度还原文档原貌 —— 这正是让 AI 拥有"眼睛"的关键。** 它把 `.docx` / `.xlsx` / `.pptx` 渲染为 HTML 或 PNG，闭合"渲染 → 看 → 改"的循环。
+>>>>>>> upstream/main
 
 [![GitHub Release](https://img.shields.io/github/v/release/iOfficeAI/OfficeCLI)](https://github.com/iOfficeAI/OfficeCLI/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -14,7 +18,11 @@
 [English](README.md) | **中文** | [日本語](README_ja.md) | [한국어](README_ko.md)
 
 <p align="center">
+<<<<<<< HEAD
   <strong>💬 社区:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord</a>
+=======
+  <strong>🌐 官方网站:</strong> <a href="https://officecli.ai" target="_blank">officecli.ai</a> &nbsp;|&nbsp; <strong>💬 社区:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord</a>
+>>>>>>> upstream/main
 </p>
 
 <p align="center">
@@ -87,7 +95,7 @@ officecli install
 ## 开发者 — 30 秒亲眼看到效果
 
 ```bash
-# 1. 安装（macOS / Linux）
+# 1. 安装（macOS / Linux）— 也可以：brew install officecli / npm install -g @officecli/officecli
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 # Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 
@@ -175,7 +183,11 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 **Word** — 完整的 [i18n 与 RTL 支持](https://github.com/iOfficeAI/OfficeCLI/wiki/i18n)（按脚本字体槽位、按脚本 BCP-47 语言标签 `lang.latin/ea/cs`、复杂脚本粗体/斜体/字号、`direction=rtl` 在段落/文本片段/节/表格/样式/页眉/页脚/docDefaults 间级联、`rtlGutter` + `pgBorders` 简写、印地语/阿拉伯语/泰语/中日韩本地化页码）、[段落](https://github.com/iOfficeAI/OfficeCLI/wiki/word-paragraph)、[文本片段](https://github.com/iOfficeAI/OfficeCLI/wiki/word-run)、[表格](https://github.com/iOfficeAI/OfficeCLI/wiki/word-table)、[样式](https://github.com/iOfficeAI/OfficeCLI/wiki/word-style)、[页眉/页脚](https://github.com/iOfficeAI/OfficeCLI/wiki/word-header-footer)、[图片](https://github.com/iOfficeAI/OfficeCLI/wiki/word-picture)（PNG/JPG/GIF/SVG）、[公式](https://github.com/iOfficeAI/OfficeCLI/wiki/word-equation)、[批注](https://github.com/iOfficeAI/OfficeCLI/wiki/word-comment)、[脚注](https://github.com/iOfficeAI/OfficeCLI/wiki/word-footnote)、[水印](https://github.com/iOfficeAI/OfficeCLI/wiki/word-watermark)、[书签](https://github.com/iOfficeAI/OfficeCLI/wiki/word-bookmark)、[目录](https://github.com/iOfficeAI/OfficeCLI/wiki/word-toc)、[图表](https://github.com/iOfficeAI/OfficeCLI/wiki/word-chart)、[超链接](https://github.com/iOfficeAI/OfficeCLI/wiki/word-hyperlink)、[节](https://github.com/iOfficeAI/OfficeCLI/wiki/word-section)、[表单域](https://github.com/iOfficeAI/OfficeCLI/wiki/word-formfield)、[内容控件 (SDT)](https://github.com/iOfficeAI/OfficeCLI/wiki/word-sdt)、[域](https://github.com/iOfficeAI/OfficeCLI/wiki/word-field)（22 种零参数 + MERGEFIELD / REF / PAGEREF / SEQ / STYLEREF / DOCPROPERTY / IF）、[OLE 对象](https://github.com/iOfficeAI/OfficeCLI/wiki/word-ole)、[文档属性](https://github.com/iOfficeAI/OfficeCLI/wiki/word-document)
 
+<<<<<<< HEAD
 **Excel** — [单元格](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-cell)（添加时支持音标/振假名）、公式（内置 150+ 函数自动求值，动态数组函数自动加 `_xlfn.` 前缀）、[工作表](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sheet)（visible/hidden/veryHidden、打印边距、printTitleRows/Cols、RTL `sheetView`、级联感知的工作表重命名）、[表格](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-table)、[排序](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sort)（工作表/区域、多键、附属感知）、[条件格式](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-conditionalformatting)、[图表](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-chart)（含箱线图、[帕累托图](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-chart-add) 自动排序 + 累计百分比、对数轴）、[数据透视表](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-pivottable)（多字段、日期分组、showDataAs、排序、总计、分类汇总、紧凑/大纲/表格布局、重复项目标签、空白行、计算字段）、[切片器](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-slicer)、[命名范围](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-namedrange)、[数据验证](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-validation)、[图片](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-picture)（PNG/JPG/GIF/SVG，双重表示回退）、[迷你图](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sparkline)、[批注](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-comment)（RTL）、[自动筛选](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-autofilter)、[形状](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-shape)、[OLE 对象](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-ole)、CSV/TSV 导入、`$Sheet:A1` 单元格寻址
+=======
+**Excel** — [单元格](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-cell)（添加时支持音标/振假名）、公式（内置 350+ 函数自动求值，可溢出的动态数组自动加 `_xlfn.` 前缀，含财务/债券与统计函数族）、[工作表](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sheet)（visible/hidden/veryHidden、打印边距、printTitleRows/Cols、RTL `sheetView`、级联感知的工作表重命名）、[表格](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-table)、[排序](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sort)（工作表/区域、多键、附属感知）、[条件格式](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-conditionalformatting)、[图表](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-chart)（含箱线图、[帕累托图](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-chart-add) 自动排序 + 累计百分比、对数轴）、[数据透视表](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-pivottable)（多字段、日期分组、showDataAs、排序、总计、分类汇总、紧凑/大纲/表格布局、重复项目标签、空白行、计算字段）、[切片器](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-slicer)、[命名范围](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-namedrange)、[数据验证](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-validation)、[图片](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-picture)（PNG/JPG/GIF/SVG，双重表示回退）、[迷你图](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sparkline)、[批注](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-comment)（RTL）、[自动筛选](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-autofilter)、[形状](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-shape)、[OLE 对象](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-ole)、CSV/TSV 导入、`$Sheet:A1` 单元格寻址
+>>>>>>> upstream/main
 
 **PowerPoint** — [幻灯片](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-slide)（页眉/页脚/日期/页码切换、隐藏）、[形状](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-shape)（图案填充、模糊效果、超链接提示 + 跳转幻灯片链接）、[图片](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-picture)（PNG/JPG/GIF/SVG，填充模式：stretch/contain/cover/tile，亮度/对比度/发光/阴影）、[表格](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-table)、[图表](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-chart)、[动画](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-slide)、[morph 过渡](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-morph-check)、[3D 模型（.glb）](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-3dmodel)、[幻灯片缩放](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-zoom)、[公式](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-equation)、[主题](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-theme)、[连接线](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-connector)、[视频/音频](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-video)、[组合](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-group)、[备注](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-notes)（RTL、lang）、[批注](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-comment)（RTL）、[OLE 对象](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-ole)、[占位符](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-placeholder)（按 phType 添加/设置）
 
@@ -210,6 +222,19 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 ```
 
+**或通过包管理器安装：**
+
+```bash
+# Homebrew（macOS / Linux）
+brew install officecli
+
+# Scoop（Windows）
+scoop install officecli
+
+# npm（全平台 — 安装时自动拉取对应平台的原生二进制）
+npm install -g @officecli/officecli
+```
+
 **或手动下载** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases)：
 
 | 平台 | 文件名 |
@@ -238,9 +263,15 @@ OfficeCLI 会在后台自动检查更新。通过 `officecli config autoUpdate f
 
 OfficeCLI 是自包含的。下列能力全部内置在二进制中——**无需 Office**。
 
+<<<<<<< HEAD
 #### 渲染引擎
 
 从零实现的 agent 友好渲染引擎内置在二进制中，覆盖形状、图表（趋势线、误差线、瀑布、K 线、sparkline）、公式（OMML → MathJax 兼容）、通过 Three.js 渲染的 3D `.glb` 模型、morph 过渡、幻灯片缩放、形状效果。按页 PNG 截图是把渲染出的 HTML 通过无头浏览器截出来的。三种模式：
+=======
+#### 渲染引擎 —— 高保真、内置
+
+OfficeCLI 的基石：一个从零实现、高保真的 HTML 渲染引擎，让 AI 智能体能"看见"渲染后的文档，而不是凭 DOM 瞎猜。它覆盖形状、图表（趋势线、误差线、瀑布、K 线、sparkline）、公式（OMML → LaTeX，KaTeX 渲染）、通过 Three.js 渲染的 3D `.glb` 模型、morph 过渡、幻灯片缩放、形状效果。按页 PNG 截图是把渲染出的 HTML 通过无头浏览器截出来的。三种模式：
+>>>>>>> upstream/main
 
 - **`view html`** —— 独立 HTML 文件，资源内联。任何浏览器打开即可看。
 - **`view screenshot`** —— 按页 PNG，供多模态智能体读图检查。
@@ -256,7 +287,11 @@ officecli watch deck.pptx                            # http://localhost:26315
 
 #### 公式与透视引擎
 
+<<<<<<< HEAD
 150+ Excel 函数写入即自动求值——写 `=SUM(A1:A2)`，`get` 单元格，值已经在那。不需要回到 Office 重算。覆盖动态数组函数（`FILTER` / `UNIQUE` / `SORT` / `SEQUENCE`，`_xlfn.` 自动加前缀）、`VLOOKUP` / `INDEX` / `MATCH`、日期与文本函数等。
+=======
+350+ Excel 函数写入即自动求值——写 `=SUM(A1:A2)`，`get` 单元格，值已经在那。不需要回到 Office 重算。覆盖可溢出的动态数组（`FILTER` / `SORT` / `UNIQUE` / `SEQUENCE` / `LET` / `LAMBDA` / `MAP`，`_xlfn.` 自动加前缀）、`VLOOKUP` / `XLOOKUP` / `INDEX` / `MATCH`、财务与债券函数（`XIRR` / `PRICE` / `YIELD` / `DURATION` / `COUPNUM`）、统计分布/检验/回归（`NORM.DIST` / `T.TEST` / `LINEST`）、日期与文本函数等。
+>>>>>>> upstream/main
 
 外加从源数据范围一条命令生成原生 OOXML 数据透视表——多字段行/列/筛选器、10 种聚合方式、`showDataAs` 多种模式、日期分组、计算字段、Top-N、布局选项。透视表缓存和定义都写入 OOXML，Excel 打开即看到聚合后的结果：
 
@@ -272,17 +307,30 @@ officecli add sales.xlsx '/Sheet1' --type pivottable \
 `merge` 把任意 `.docx` / `.xlsx` / `.pptx` 中的 `{{key}}` 占位符替换为 JSON 数据——段落、表格单元格、形状、页眉页脚、图表标题都支持。智能体一次性设计版式（昂贵），生产代码填充 N 次（廉价、确定、零 token 成本）。避免了"每份报告都从头重生成、产出 N 份版式不一致"的失败模式。
 
 ```bash
+<<<<<<< HEAD
 officecli merge invoice-template.docx out-001.docx '{"client":"Acme","total":"$5,200"}'
 officecli merge q4-template.pptx q4-acme.pptx data.json
+=======
+officecli merge invoice-template.docx out-001.docx --data '{"client":"Acme","total":"$5,200"}'
+officecli merge q4-template.pptx q4-acme.pptx --data data.json
+>>>>>>> upstream/main
 ```
 
 #### Dump 往返 —— 从现有文档学习
 
+<<<<<<< HEAD
 `dump` 把任意 `.docx` —— 整个文档**或任意子树**（单段、单表、styles、numbering、theme、settings）——序列化为可重放的 batch JSON，`batch` 重放回去。给一份用户想模仿的范本，智能体读结构化规格而不是原始 OOXML XML，修改后重放。打通"我有一份现成模板"和"给我生成 100 份变体"之间的链路。
+=======
+`dump` 把任意 `.docx`、`.pptx`、`.xlsx` —— 整个文档**或任意子树**（单段、单表、单页幻灯片、单个工作表、styles、numbering、theme、settings）——序列化为可重放的 batch JSON，`batch` 重放回去。给一份用户想模仿的范本，智能体读结构化规格而不是原始 OOXML XML，修改后重放。打通"我有一份现成模板"和"给我生成 100 份变体"之间的链路。
+>>>>>>> upstream/main
 
 ```bash
 officecli dump existing.docx -o blueprint.json                  # 整个文档
 officecli dump existing.docx /body/tbl[1] -o table.json         # 任意子树
+<<<<<<< HEAD
+=======
+officecli dump existing.xlsx /Sheet1 -o sheet.json              # 单个工作表
+>>>>>>> upstream/main
 officecli batch new.docx --input blueprint.json
 ```
 
@@ -297,7 +345,11 @@ officecli set report.docx /body/p[1]/r[1] --prop bold=true
 officecli set report.docx /body/p[2]/r[1] --prop color=FF0000
 officecli close report.docx
 
+<<<<<<< HEAD
 # 批量模式 — 原子化多命令执行（默认遇到第一个错误即停止）
+=======
+# 批量模式 — 多命令执行，默认原子化：只要有一条失败，整批全部回滚
+>>>>>>> upstream/main
 echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
       {"command":"set","path":"/slide[1]/shape[2]","props":{"fill":"FF0000"}}]' \
   | officecli batch deck.pptx --json
@@ -305,9 +357,26 @@ echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
 # 内联 batch，无需标准输入
 officecli batch deck.pptx --commands '[{"op":"set","path":"/slide[1]/shape[1]","props":{"text":"Hi"}}]'
 
+<<<<<<< HEAD
 # 使用 --force 跳过错误继续执行
 officecli batch deck.pptx --input updates.json --force --json
+=======
+# 使用 --best-effort 保留已成功的部分，即使其他条目失败（v1.0.137 前的旧行为）
+officecli batch deck.pptx --input updates.json --best-effort --json
+
+# 遇到第一个失败就停止执行（默认原子模式下仍会整体回滚；需搭配 --best-effort 才会保留已成功部分）
+officecli batch deck.pptx --input updates.json --stop-on-error --json
+>>>>>>> upstream/main
 ```
+
+> **要用其他工具读这个文件?先落盘。**
+> OfficeCLI 自己的读(`get`/`query`/`view`)永远能看到最新改动,所以在 officecli 内部无需操心保存。但常驻进程会延迟写盘,因此**在非-officecli 程序读取该文件之前**——python-docx/openpyxl、Microsoft Word、渲染器、交付/上传——先落盘:
+> ```bash
+> officecli set report.docx /body/p[1] --prop bold=true
+> officecli save report.docx           # 落盘, 保留常驻进程(或 `close` = 落盘 + 释放)
+> python my_reader.py report.docx      # 此时才能看到改动
+> ```
+> 常驻进程闲置约 10s 后也会自动落盘一次。完整落盘模型(auto-save / auto-close / save / close、环境变量调节):[wiki → open / close](https://github.com/iOfficeAI/OfficeCLI/wiki/command-open#when-the-file-on-disk-is-refreshed)。
 
 ### 三层架构
 
@@ -387,9 +456,15 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 - **渐进式复杂度（L1 → L2 → L3）** —— 智能体从只读视图入手，升级到 DOM 操作，仅在必要时降到 raw XML。最大限度节省 token。
 - **自愈式工作流** —— `validate`、`view issues`、以及结构化错误码（`not_found`、`invalid_value`、`unsupported_property`）会返回 suggestion 和有效范围。智能体无需人工介入即可自纠错。
 - **内置 agent 友好渲染引擎** —— `view html` / `view screenshot` / `watch` 原生输出 HTML 和 PNG。无需 Office。智能体能"看见"自己的产出，并在 CI / Docker / 无头环境里修复排版问题。
+<<<<<<< HEAD
 - **内置公式与透视引擎** —— 150+ Excel 函数写入即自动求值；从源数据范围一条命令生成原生 OOXML 数据透视表。智能体立刻读到计算值和聚合结果，不需要回到 Office 重算。
 - **模板合并** —— 智能体一次性设计版式，下游代码把 `{{key}}` 占位符填充 N 次。避免每份报告都烧 token 重生成。
 - **Dump 往返** —— `dump` 把任意 `.docx` 转成可重放的 batch JSON。智能体通过读结构化规格学习人类范本，而不是从原始 OOXML XML 反推。
+=======
+- **内置公式与透视引擎** —— 350+ Excel 函数写入即自动求值（含可溢出动态数组、财务/债券与统计函数族）；从源数据范围一条命令生成原生 OOXML 数据透视表。智能体立刻读到计算值和聚合结果，不需要回到 Office 重算。
+- **模板合并** —— 智能体一次性设计版式，下游代码把 `{{key}}` 占位符填充 N 次。避免每份报告都烧 token 重生成。
+- **Dump 往返** —— `dump` 把任意 `.docx`、`.pptx`、`.xlsx` 转成可重放的 batch JSON。智能体通过读结构化规格学习人类范本，而不是从原始 OOXML XML 反推。
+>>>>>>> upstream/main
 - **内置帮助** —— 属性名或取值格式不确定时，智能体跑 `officecli <format> set <element>`，不靠猜。
 - **自动安装** —— OfficeCLI 自动识别您的 AI 工具（Claude Code、Cursor、VS Code…）并完成配置。无需手动放 skill 文件。
 
@@ -398,10 +473,9 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 不确定属性名时，用分层帮助查询：
 
 ```bash
-officecli pptx set              # 全部可设置元素与属性
-officecli pptx set shape        # 某一类元素的详细说明
-officecli pptx set shape.fill   # 单个属性格式与示例
-officecli docx query            # 选择器说明：属性匹配、:contains、:has() 等
+officecli help pptx set              # 全部可设置元素与属性
+officecli help pptx set shape        # 某一类元素的详细说明
+officecli help docx query            # 选择器说明：属性匹配、:contains、:has() 等
 ```
 
 将 `pptx` 换成 `docx` 或 `xlsx`；动词包括 `view`、`get`、`query`、`set`、`add`、`raw`。
@@ -495,7 +569,11 @@ officecli get report.docx /body --depth 1 --json
 | [`move`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-move) | 移动元素（`--to <parent>`、`--index N`、`--after <path>`、`--before <path>`） |
 | [`swap`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-swap) | 交换两个元素 |
 | [`validate`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-validate) | OpenXML 模式校验 |
+<<<<<<< HEAD
 | [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | 单次打开/保存周期内执行多条操作（stdin、`--input` 或 `--commands`；默认遇到第一个错误停止，`--force` 跳过错误继续） |
+=======
+| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | 单次打开/保存周期内执行多条操作（stdin、`--input` 或 `--commands`；默认原子化——只要有一条失败整批回滚，`--best-effort` 保留已成功部分，`--stop-on-error` 提前中止） |
+>>>>>>> upstream/main
 | [`merge`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-merge) | 模板合并 — 用 JSON 数据替换 `{{key}}` 占位符 |
 | [`watch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-watch) | 在浏览器中实时 HTML 预览，自动刷新 |
 | [`mcp`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-mcp) | 启动 MCP 服务器，用于 AI 工具集成 |
@@ -506,7 +584,7 @@ officecli get report.docx /body --depth 1 --json
 | `close` | 保存并关闭驻留模式 |
 | [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | 安装二进制文件 + 技能文件 + MCP（`all`、`claude`、`cursor` 等） |
 | `config` | 获取或设置配置 |
-| `<format> <command>` | [内置帮助](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（如 `officecli pptx set shape`） |
+| `help <format> <command>` | [内置帮助](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（如 `officecli help pptx set shape`） |
 
 ## 端到端工作流示例
 
@@ -559,10 +637,11 @@ officecli get deck.pptx / --depth 2 --json
 officecli batch budget.xlsx --input updates.json --json
 
 # 导入 CSV 数据到 Excel 工作表
-officecli add budget.xlsx / --type sheet --prop name="Q1 Data" --prop csv=sales.csv
+officecli add budget.xlsx / --type sheet --prop name="Q1 Data"
+officecli import budget.xlsx "/Q1 Data" sales.csv --header
 
 # 模板合并批量生成报告
-officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total":"$5,200"}'
+officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme","total":"$5,200"}'
 
 # 交付前检查文档质量
 officecli validate report.docx && officecli view report.docx issues --json

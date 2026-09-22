@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -32,7 +36,14 @@ public partial class PowerPointHandler
     private static string FormatPptIndentPoints(long emu)
     {
         var pt = emu / EmuConverter.EmuPerPointF;
+<<<<<<< HEAD
         return pt.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
+=======
+        // 4 decimals: 2-decimal output rounded 216000 EMU → "17.01pt" → 216027
+        // EMU on replay, drifting indents by ~2 EMU per round trip. 0.0001pt
+        // = 1.27 EMU, so four decimals re-parse to the exact source EMU.
+        return pt.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + "pt";
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -122,6 +133,58 @@ public partial class PowerPointHandler
     /// plain text. The canonical value can be re-fed to AddParagraph /
     /// Set paragraph via the existing `list` setter.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // Bullet child local-names (the CT_TextParagraphProperties bullet group).
+    // The lossy `list` keyword only captures buChar/buNone/buAutoNum and maps to
+    // a single token; it drops the bullet font/color/size and the exact char. To
+    // round-trip them faithfully, dump emits the whole bullet group verbatim as a
+    // `bulletRaw` prop and the apply path splices it back in schema order.
+    private static readonly string[] BulletChildLocalNames =
+    {
+        "buClrTx", "buClr", "buSzTx", "buSzPct", "buSzPts",
+        "buFontTx", "buFont", "buNone", "buAutoNum", "buChar", "buBlip",
+    };
+
+    /// <summary>
+    /// Capture the full bullet element group (buClr/buFont/buSzPct/buChar/…) from
+    /// a paragraph's properties as a concatenated raw-XML string, or null when the
+    /// paragraph declares no bullet. Used by the dump readback so Wingdings/colored/
+    /// sized bullets survive round-trip instead of degrading to the lossy keyword.
+    /// </summary>
+    private static string? ReadBulletRawFromPProps(Drawing.ParagraphProperties pProps)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var child in pProps.Elements())
+        {
+            // Canonicalize attribute order: the SDK preserves lexical attribute
+            // order, so a buAutoNum built by ApplyListStyle (type first) and one
+            // re-parsed from bulletRaw by ApplyBulletRaw (xmlns first) emitted
+            // byte-different bulletRaw for the same bullet, breaking dump
+            // idempotency. Same fix as the xlsx OLE anchor slices.
+            if (Array.IndexOf(BulletChildLocalNames, child.LocalName) >= 0)
+                sb.Append(ExcelHandler.CanonicalizeXmlAttributeOrder(child.OuterXml));
+        }
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
+    /// <summary>
+    /// R7-10: returns the re-feedable `list` companion value for a paragraph's bullet,
+    /// or null when the bullet only round-trips via bulletRaw. A char bullet bound to a
+    /// symbol font (buFont, e.g. Wingdings "l") is font-dependent and NOT re-feedable, so
+    /// it is suppressed (preserving B5's bulletRaw-only contract for custom symbol bullets);
+    /// a plain Unicode char bullet (e.g. "→") or a recognized keyword/auto-number IS emitted.
+    /// </summary>
+    private static string? ReadCanonicalListKeyword(Drawing.ParagraphProperties pProps)
+    {
+        // Char bullet with an explicit symbol font is not portable as list=.
+        if (pProps.GetFirstChild<Drawing.CharacterBullet>() != null
+            && pProps.GetFirstChild<Drawing.BulletFont>() != null)
+            return null;
+        return ReadListStyleFromPProps(pProps);
+    }
+
+>>>>>>> upstream/main
     private static string? ReadListStyleFromPProps(Drawing.ParagraphProperties pProps)
     {
         var noBullet = pProps.GetFirstChild<Drawing.NoBullet>();
@@ -291,6 +354,23 @@ public partial class PowerPointHandler
     {
         if (gradFill.Flip?.HasValue == true) return true;
         if (gradFill.GetFirstChild<Drawing.TileRectangle>() != null) return true;
+<<<<<<< HEAD
+=======
+        // A path (radial/shape) gradient's <a:fillToRect> focus is only coarsely
+        // represented by the semantic focus keyword (tl/tr/bl/br/center). An
+        // off-center rect (e.g. t=150000 b=-50000, focus pushed below centre)
+        // collapses to "center" and the focus is lost on replay (sample01).
+        // Preserve the gradient verbatim whenever the fillToRect is not the
+        // centred default (50000 on all four sides).
+        var pathGrad = gradFill.GetFirstChild<Drawing.PathGradientFill>();
+        var ftr = pathGrad?.GetFirstChild<Drawing.FillToRectangle>();
+        if (ftr != null)
+        {
+            long l = ftr.Left?.Value ?? 50000, t = ftr.Top?.Value ?? 50000,
+                 r = ftr.Right?.Value ?? 50000, b = ftr.Bottom?.Value ?? 50000;
+            if (!(l == 50000 && t == 50000 && r == 50000 && b == 50000)) return true;
+        }
+>>>>>>> upstream/main
         return false;
     }
 
@@ -452,6 +532,14 @@ public partial class PowerPointHandler
                     var hl = new Drawing.Highlight();
                     hl.AppendChild(BuildSolidFillColor(value));
                     rPr.AppendChild(hl);
+<<<<<<< HEAD
+=======
+                    // CONSISTENCY(highlight): pin the CT_TextCharacterProperties
+                    // slot (after effectLst, before uLn/uFill/latin) — same as
+                    // the Set path in ShapeProperties.cs; PowerPoint silently
+                    // drops out-of-order rPr children.
+                    ReorderDrawingRunProperties(rPr);
+>>>>>>> upstream/main
                 }
                 break;
         }
@@ -488,6 +576,151 @@ public partial class PowerPointHandler
     /// the order in which properties were set. Caller is responsible for
     /// removing any pre-existing same-typed child first.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // Apply the simple-valued CT_TextParagraphProperties attributes
+    // (line-break / punctuation / font-alignment / default-tab-size). These are
+    // plain pPr attributes, not child elements, so they're set directly on the
+    // ParagraphProperties object (no schema-order insertion needed). Returns the
+    // set of keys it consumed so callers can skip them in their own dispatch.
+    // Shared by AddParagraph and SetParagraphOnShape for symmetric round-trip of
+    // CJK line-break controls (eaLnBrk etc.).
+    private static bool ApplyParagraphBreakProp(Drawing.ParagraphProperties pProps, string key, string value)
+    {
+        switch (key.ToLowerInvariant())
+        {
+            case "ealnbrk" or "ealinebreak":
+                pProps.EastAsianLineBreak = IsTruthy(value);
+                return true;
+            case "latinlnbrk" or "latinlinebreak":
+                pProps.LatinLineBreak = IsTruthy(value);
+                return true;
+            case "fontalgn" or "fontalignment":
+                pProps.FontAlignment = value.Trim().ToLowerInvariant() switch
+                {
+                    "auto" => Drawing.TextFontAlignmentValues.Automatic,
+                    "t" or "top" => Drawing.TextFontAlignmentValues.Top,
+                    "ctr" or "center" => Drawing.TextFontAlignmentValues.Center,
+                    "base" or "baseline" => Drawing.TextFontAlignmentValues.Baseline,
+                    "b" or "bottom" => Drawing.TextFontAlignmentValues.Bottom,
+                    _ => throw new ArgumentException($"Invalid fontAlgn value: '{value}'. Valid: auto, t, ctr, base, b.")
+                };
+                return true;
+            case "deftabsz" or "defaulttabsize":
+                pProps.DefaultTabSize = (int)Core.EmuConverter.ParseEmu(value);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Apply a verbatim bullet-group XML string (buClr/buFont/buSzPct/buChar/…)
+    /// captured by ReadBulletRawFromPProps. Removes any existing bullet children
+    /// first, then parses the concatenated fragment and inserts each child in
+    /// CT_TextParagraphProperties schema order (InsertPPrChild). This preserves
+    /// colored/sized/Wingdings bullets that the lossy `list` keyword drops.
+    /// </summary>
+    private static void ApplyBulletRaw(Drawing.ParagraphProperties pProps, string rawXml)
+    {
+        // Validate and parse FIRST — every throw must happen before any
+        // mutation, or the invalid_value error leaves a pPr stripped of its
+        // bullet group behind it (the single-command path autosaves the dirty
+        // DOM on Dispose). Same order contract as ApplyListStyle.
+        List<OpenXmlElement>? newChildren = null;
+        if (!string.IsNullOrWhiteSpace(rawXml))
+        {
+            // Reject non-XML input up front: a free-form string ("buFont=Wingdings")
+            // survived the wrap-parse as TEXT CONTENT of <a:pPr> — an element with
+            // no text model — producing a file schema validation passes but real
+            // PowerPoint refuses to open (0x80070570).
+            if (!rawXml.TrimStart().StartsWith("<"))
+                throw new ArgumentException(
+                    $"Invalid 'bulletRaw' value: '{rawXml}'. Expected verbatim bullet-group XML " +
+                    "(e.g. <a:buChar char=\"•\"/> or <a:buAutoNum type=\"arabicPeriod\"/>) " +
+                    "as emitted by Get; use list= for keyword bullets.");
+            // Wrap in a throwaway pPr that declares the a: namespace so each child
+            // fragment parses with its prefix bound; then lift the parsed children.
+            const string aNs = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            var wrapped = $"<a:pPr xmlns:a=\"{aNs}\">{rawXml}</a:pPr>";
+            // Materialize the children INSIDE the try: the SDK parses the
+            // outer-XML constructor lazily, so a malformed fragment throws
+            // XmlException only when ChildElements is first enumerated —
+            // outside a constructor-only try it escaped the ArgumentException
+            // wrap and surfaced as internal_error with a misleading
+            // "corrupted OOXML part" message.
+            try
+            {
+                newChildren = new Drawing.ParagraphProperties(wrapped).ChildElements.ToList();
+            }
+            catch (Exception ex)
+            {
+                throw new ArgumentException($"Invalid 'bulletRaw' XML: '{rawXml}' ({ex.Message}).", ex);
+            }
+            foreach (var child in newChildren)
+            {
+                if (child is OpenXmlUnknownElement || child is OpenXmlMiscNode)
+                    throw new ArgumentException(
+                        $"Invalid 'bulletRaw' XML: unrecognized fragment '{child.OuterXml}'. " +
+                        "Expected a:bu* bullet-group elements.");
+            }
+        }
+
+        // Strip the prior bullet group so a re-apply is idempotent.
+        pProps.RemoveAllChildren<Drawing.BulletColorText>();
+        pProps.RemoveAllChildren<Drawing.BulletColor>();
+        pProps.RemoveAllChildren<Drawing.BulletSizeText>();
+        pProps.RemoveAllChildren<Drawing.BulletSizePercentage>();
+        pProps.RemoveAllChildren<Drawing.BulletSizePoints>();
+        pProps.RemoveAllChildren<Drawing.BulletFontText>();
+        pProps.RemoveAllChildren<Drawing.BulletFont>();
+        pProps.RemoveAllChildren<Drawing.NoBullet>();
+        pProps.RemoveAllChildren<Drawing.AutoNumberedBullet>();
+        pProps.RemoveAllChildren<Drawing.CharacterBullet>();
+        pProps.RemoveAllChildren<Drawing.PictureBullet>();
+
+        if (newChildren == null) return;
+        foreach (var child in newChildren)
+        {
+            child.Remove();
+            InsertPPrChild(pProps, child);
+        }
+    }
+
+    // Round-trip a paragraph's <a:pPr><a:defRPr> verbatim. The defRPr is the
+    // paragraph-level default run property: every run WITHOUT its own rPr (or
+    // whose rPr omits a slot) inherits size/bold/font/color from here, BEFORE
+    // falling back to the layout/master bodyStyle cascade. The granular
+    // paragraph keys (align/lineSpacing/…) never captured it, so a paragraph
+    // whose runs are bare <a:r> rendered at the master body size/weight instead
+    // of the authored defRPr (e.g. a 40pt-bold-Helvetica body collapsing to the
+    // master's 52pt-regular). Verbatim mirrors bulletRaw / lstStyleRaw.
+    private static void ApplyDefRPrRaw(Drawing.ParagraphProperties pProps, string rawXml)
+    {
+        pProps.RemoveAllChildren<Drawing.DefaultRunProperties>();
+        if (string.IsNullOrWhiteSpace(rawXml)) return;
+        // Mirror ApplyBulletRaw: reject non-XML input instead of silently
+        // no-opping (silent-accept hides the caller's mistake).
+        if (!rawXml.TrimStart().StartsWith("<"))
+            throw new ArgumentException(
+                $"Invalid 'defRPrRaw' value: '{rawXml}'. Expected verbatim <a:defRPr .../> XML as emitted by Get.");
+        const string aNs = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        var wrapped = $"<a:pPr xmlns:a=\"{aNs}\">{rawXml}</a:pPr>";
+        Drawing.ParagraphProperties parsed;
+        try { parsed = new Drawing.ParagraphProperties(wrapped); }
+        catch (Exception ex)
+        {
+            throw new ArgumentException($"Invalid 'defRPrRaw' XML: '{rawXml}' ({ex.Message}).", ex);
+        }
+        var defRPr = parsed.GetFirstChild<Drawing.DefaultRunProperties>();
+        if (defRPr == null)
+            throw new ArgumentException(
+                $"Invalid 'defRPrRaw' value: '{rawXml}'. No <a:defRPr> element found in the fragment.");
+        defRPr.Remove();
+        InsertPPrChild(pProps, defRPr);
+    }
+
+>>>>>>> upstream/main
     internal static void InsertPPrChild(Drawing.ParagraphProperties pProps, OpenXmlElement child)
     {
         var newRank = PPrChildRank(child);

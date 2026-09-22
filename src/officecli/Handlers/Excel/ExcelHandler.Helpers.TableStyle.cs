@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -46,6 +50,26 @@ public partial class ExcelHandler
             if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^[Tt][Bb][Ll]\d+$"))
                 throw new ArgumentException(
                     $"Table name '{name}' matches Excel's internal Tbl{{N}} naming pattern and is rejected by Mac Excel. Use 'Table{{N}}' (default) or a descriptive name like 'SalesData'.");
+<<<<<<< HEAD
+=======
+            // Excel enforces defined-name grammar on table names: identifier
+            // chars only (no spaces), must not parse as an A1/R1C1 cell
+            // reference. Violations pass schema validation but real Excel
+            // refuses the whole file (0x800A03EC) — reject up front, same
+            // rule set as the namedrange validator.
+            // "Letter" is any Unicode letter (\p{L}) — Excel accepts CJK/
+            // Cyrillic table names (same identifier grammar as defined
+            // names, whose validator was widened the same way).
+            if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[\p{L}_\\][\p{L}\p{N}._\\]*$"))
+                throw new ArgumentException(
+                    $"Table name '{name}' is not a valid Excel name: use letters, digits, '.' or '_' only, starting with a letter or '_' (no spaces). Excel refuses to open files with other table names.");
+            if (LooksLikeCellReference(name)
+                || System.Text.RegularExpressions.Regex.IsMatch(name, @"^[Rr]\d+[Cc]\d+$")
+                || name.Equals("R", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("C", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException(
+                    $"Table name '{name}' looks like a cell reference; Excel refuses to open files with such table names. Choose a name like '{name}_'.");
+>>>>>>> upstream/main
             return name;
         }
         var looksLikeRef = LooksLikeCellReference(name)

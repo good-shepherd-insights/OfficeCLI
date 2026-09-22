@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -15,8 +19,16 @@ namespace OfficeCli.Handlers;
 public partial class PowerPointHandler
 {
     public string Add(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+<<<<<<< HEAD
     {
         Modified = true;
+=======
+        => MarkModified(() => AddCore(parentPath, type, position, properties));
+
+    private string AddCore(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+    {
+        LastUnrecognizedLatex = new List<string>();
+>>>>>>> upstream/main
         // CONSISTENCY(prop-key-case): property keys are case-insensitive
         // ("SRC"/"src"/"Src" all resolve the same). Normalize once at the
         // dispatch entry so every AddXxx helper can rely on TryGetValue("src").
@@ -63,9 +75,16 @@ public partial class PowerPointHandler
             "picture" or "image" or "img" => AddPicture(parentPath, index, properties),
             "ole" or "oleobject" or "object" or "embed" => AddOle(parentPath, index, properties ?? new()),
             "chart" => AddChart(parentPath, index, properties),
+<<<<<<< HEAD
             "series" => AddChartSeries(parentPath, properties ?? new()),
+=======
+            // CONSISTENCY(chart-series-alias): schema element name is
+            // "chart-series" (elementAliases: ["series"]) — accept both.
+            "series" or "chart-series" or "chartseries" => AddChartSeries(parentPath, properties ?? new()),
+>>>>>>> upstream/main
             "table" => AddTable(parentPath, index, properties),
             "equation" or "formula" or "math" => AddEquation(parentPath, index, properties),
+            "diagram" or "flowchart" => AddDiagram(parentPath, index, properties ?? new()),
             "notes" or "note" => AddNotes(parentPath, index, properties),
             "video" or "audio" or "media" => AddMedia(parentPath, index, properties, type),
             "connector" or "connection" => AddConnector(parentPath, index, properties),

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml.Packaging;
@@ -366,14 +370,18 @@ public partial class WordHandler
             var spacing = pPr.GetFirstChild<SpacingBetweenLines>();
             if (spacing != null)
             {
-                if (spacing.Before?.Value != null)
-                    node.Format["docDefaults.spaceBefore"] = FormatTwipsToPt(uint.Parse(spacing.Before.Value));
-                if (spacing.After?.Value != null)
-                    node.Format["docDefaults.spaceAfter"] = FormatTwipsToPt(uint.Parse(spacing.After.Value));
-                if (spacing.Line?.Value != null)
+                // Tolerate schema-invalid raws: real-world docDefaults carry
+                // w:before/after="-1" (legacy "auto" sentinel) which Word accepts
+                // but uint.Parse overflows on — that crashed the whole dump. These
+                // keys are informational only (docDefaults round-trip verbatim via
+                // EmitDocDefaultsRaw), so skip an unparseable value instead.
+                if (spacing.Before?.Value != null && uint.TryParse(spacing.Before.Value, out var ddBefore))
+                    node.Format["docDefaults.spaceBefore"] = FormatTwipsToPt(ddBefore);
+                if (spacing.After?.Value != null && uint.TryParse(spacing.After.Value, out var ddAfter))
+                    node.Format["docDefaults.spaceAfter"] = FormatTwipsToPt(ddAfter);
+                if (spacing.Line?.Value != null && int.TryParse(spacing.Line.Value, out var lineVal))
                 {
                     var lineRule = spacing.LineRule?.InnerText ?? "auto";
-                    var lineVal = int.Parse(spacing.Line.Value);
                     node.Format["docDefaults.lineSpacing"] = lineRule == "auto"
                         ? $"{lineVal / 240.0:0.##}x"
                         : $"{lineVal / 20.0:0.##}pt";

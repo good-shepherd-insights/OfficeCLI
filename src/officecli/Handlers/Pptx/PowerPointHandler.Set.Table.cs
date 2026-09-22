@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -24,11 +28,19 @@ public partial class PowerPointHandler
         var tableRows = table.Elements<Drawing.TableRow>().ToList();
         if (rowIdx < 1 || rowIdx > tableRows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (table has {tableRows.Count} rows)");
+<<<<<<< HEAD
         var cells = tableRows[rowIdx - 1].Elements<Drawing.TableCell>().ToList();
         if (cellIdx < 1 || cellIdx > cells.Count)
             throw new ArgumentException($"Cell {cellIdx} not found (row has {cells.Count} cells)");
 
         var cell = cells[cellIdx - 1];
+=======
+        var cells = tableRows[PathIndex.ToArrayIndex(rowIdx)].Elements<Drawing.TableCell>().ToList();
+        if (cellIdx < 1 || cellIdx > cells.Count)
+            throw new ArgumentException($"Cell {cellIdx} not found (row has {cells.Count} cells)");
+
+        var cell = cells[PathIndex.ToArrayIndex(cellIdx)];
+>>>>>>> upstream/main
         // Clone cell for rollback on failure (atomic: no partial modifications)
         var cellBackup = cell.CloneNode(true);
         try
@@ -54,7 +66,11 @@ public partial class PowerPointHandler
         if (rowIdx < 1 || rowIdx > tableRows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (table has {tableRows.Count} rows)");
 
+<<<<<<< HEAD
         var row = tableRows[rowIdx - 1];
+=======
+        var row = tableRows[PathIndex.ToArrayIndex(rowIdx)];
+>>>>>>> upstream/main
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
@@ -87,7 +103,11 @@ public partial class PowerPointHandler
                 }
                 case "text":
                 {
+<<<<<<< HEAD
                     XmlTextValidator.ValidateOrThrow(value, "text");
+=======
+                    XmlTextValidator.ValidateOrThrow(value, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                     // Two behaviors based on presence of tab:
                     //  - No tab: broadcast the same text to all cells in the row
                     //  - Tab-delimited: distribute tokens across cells by position
@@ -161,7 +181,11 @@ public partial class PowerPointHandler
         if (gridCols == null || colIdx < 1 || colIdx > gridCols.Count)
             throw new ArgumentException($"Column {colIdx} not found (total: {gridCols?.Count ?? 0})");
 
+<<<<<<< HEAD
         var gc = gridCols[colIdx - 1];
+=======
+        var gc = gridCols[PathIndex.ToArrayIndex(colIdx)];
+>>>>>>> upstream/main
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
@@ -208,7 +232,11 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts2.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts2.Count})");
 
+<<<<<<< HEAD
         var slidePart = slideParts2[slideIdx - 1];
+=======
+        var slidePart = slideParts2[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var graphicFrames = shapeTree.Elements<GraphicFrame>()
@@ -217,6 +245,19 @@ public partial class PowerPointHandler
             throw new ArgumentException($"Table {tblIdx} not found (total: {graphicFrames.Count})");
 
         var gf = graphicFrames[tblIdx - 1];
+<<<<<<< HEAD
+=======
+        return SetTablePropsCore(slidePart, gf, properties);
+    }
+
+    /// <summary>
+    /// Apply table-level properties to a resolved table GraphicFrame. Shared by the
+    /// top-level table path and the grouped-table path (R14-5
+    /// /slide[N]/group[M]/table[K]) so both routes accept the same props.
+    /// </summary>
+    private List<string> SetTablePropsCore(DocumentFormat.OpenXml.Packaging.SlidePart slidePart, GraphicFrame gf, Dictionary<string, string> properties)
+    {
+>>>>>>> upstream/main
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
@@ -306,6 +347,39 @@ public partial class PowerPointHandler
                     }
                     break;
                 }
+<<<<<<< HEAD
+=======
+                case "rowheight":
+                {
+                    // Uniform row height applied to EVERY row — the table-level
+                    // counterpart of setting each `tr`'s height individually, and
+                    // the settable mirror of the add-time `rowHeight`. Mirrors the
+                    // colWidths case (iterate the structure, then sync the frame).
+                    var table = gf.Descendants<Drawing.Table>().FirstOrDefault();
+                    if (table != null)
+                    {
+                        var rows = table.Elements<Drawing.TableRow>().ToList();
+                        if (rows.Count > 0)
+                        {
+                            var h = ParseEmu(value);
+                            if (h < 0)
+                                throw new ArgumentException(
+                                    $"Invalid rowHeight value '{value}': table row height cannot be negative.");
+                            foreach (var r in rows) r.Height = h;
+                            // CONSISTENCY(table-frame-sync): keep frame Cy aligned with grid.
+                            if (gf.Transform?.Extents != null)
+                                gf.Transform.Extents.Cy = h * rows.Count;
+                        }
+                    }
+                    break;
+                }
+                case "zorder" or "z-order" or "order":
+                    // Re-stack the table (a GraphicFrame) within the slide shape
+                    // tree. Same engine as shape/picture/chart z-order: accepts
+                    // front/back/forward/backward/±1 or a 1-based absolute index.
+                    ApplyZOrder(slidePart, gf, value);
+                    break;
+>>>>>>> upstream/main
                 case "autofit" or "autowidth":
                 {
                     // Heuristic auto column width: measure max text length per column
@@ -355,7 +429,11 @@ public partial class PowerPointHandler
                             if (effectList == null) effectList = tblPr.AppendChild(new Drawing.EffectList());
                             effectList.RemoveAllChildren<Drawing.OuterShadow>();
                             var shadow = OfficeCli.Core.DrawingEffectsHelper.BuildOuterShadow(value, BuildColorElement);
+<<<<<<< HEAD
                             InsertEffectInOrder(effectList, shadow);
+=======
+                            DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, shadow);
+>>>>>>> upstream/main
                         }
                     }
                     break;
@@ -378,7 +456,11 @@ public partial class PowerPointHandler
                             if (effectList == null) effectList = tblPr.AppendChild(new Drawing.EffectList());
                             effectList.RemoveAllChildren<Drawing.Glow>();
                             var glow = OfficeCli.Core.DrawingEffectsHelper.BuildGlow(value, BuildColorElement);
+<<<<<<< HEAD
                             InsertEffectInOrder(effectList, glow);
+=======
+                            DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, glow);
+>>>>>>> upstream/main
                         }
                     }
                     break;
@@ -433,7 +515,11 @@ public partial class PowerPointHandler
                     if (!GenericXmlQuery.SetGenericAttribute(gf, key, value))
                     {
                         if (unsupported.Count == 0)
+<<<<<<< HEAD
                             unsupported.Add($"{key} (valid table props: x, y, width, height, name, style, firstRow, lastRow, firstCol, lastCol, bandedRows, bandedCols, colWidths)");
+=======
+                            unsupported.Add($"{key} (valid table props: x, y, width, height, name, style, firstRow, lastRow, firstCol, lastCol, bandedRows, bandedCols, colWidths, rowHeight, zorder)");
+>>>>>>> upstream/main
                         else
                             unsupported.Add(key);
                     }

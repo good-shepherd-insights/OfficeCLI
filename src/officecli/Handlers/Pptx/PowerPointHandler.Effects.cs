@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -34,7 +38,7 @@ public partial class PowerPointHandler
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("Shadow value cannot be empty. Use 'none' to remove shadow.");
 
-        InsertEffectInOrder(effectList, BuildOuterShadow(value));
+        DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, BuildOuterShadow(value));
     }
 
     /// <summary>
@@ -56,7 +60,7 @@ public partial class PowerPointHandler
             return;
         }
 
-        InsertEffectInOrder(effectList, BuildGlow(value));
+        DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, BuildGlow(value));
     }
 
     /// <summary>
@@ -93,7 +97,11 @@ public partial class PowerPointHandler
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("innerShadow value cannot be empty. Use 'none' to remove inner shadow.");
 
+<<<<<<< HEAD
         InsertEffectInOrder(effectList, BuildInnerShadow(value));
+=======
+        DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, BuildInnerShadow(value));
+>>>>>>> upstream/main
     }
 
     private static Drawing.InnerShadow BuildInnerShadow(string value)
@@ -307,7 +315,11 @@ public partial class PowerPointHandler
         if (!string.IsNullOrWhiteSpace(value))
         {
             var overlay = BuildFillOverlayFromRaw(value);
+<<<<<<< HEAD
             InsertEffectInOrder(effectList, overlay);
+=======
+            DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, overlay);
+>>>>>>> upstream/main
         }
         else if (!effectList.HasChildren)
         {
@@ -347,7 +359,7 @@ public partial class PowerPointHandler
             Alignment       = Drawing.RectangleAlignmentValues.BottomLeft,
             RotateWithShape = false
         };
-        InsertEffectInOrder(effectList, reflection);
+        DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, reflection);
     }
 
     /// <summary>
@@ -368,7 +380,11 @@ public partial class PowerPointHandler
         var numStr = value.EndsWith("pt", StringComparison.OrdinalIgnoreCase) ? value[..^2].Trim() : value;
         if (!double.TryParse(numStr, System.Globalization.CultureInfo.InvariantCulture, out var radiusPt) || double.IsNaN(radiusPt) || double.IsInfinity(radiusPt) || radiusPt < 0)
             throw new ArgumentException($"Invalid 'softedge' value '{value}'. Expected a finite non-negative numeric radius in points.");
+<<<<<<< HEAD
         InsertEffectInOrder(effectList, new Drawing.SoftEdge { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint) });
+=======
+        DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, new Drawing.SoftEdge { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint) });
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -407,7 +423,11 @@ public partial class PowerPointHandler
             || double.IsNaN(radiusPt) || double.IsInfinity(radiusPt) || radiusPt < 0)
             throw new ArgumentException($"Invalid 'blur' value '{value}'. Expected a finite non-negative numeric radius in points (optionally `<rad>pt:<grow>`).");
 
+<<<<<<< HEAD
         InsertEffectInOrder(effectList, new Drawing.Blur { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint), Grow = grow });
+=======
+        DrawingEffectsHelper.InsertEffectInSchemaOrder(effectList, new Drawing.Blur { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint), Grow = grow });
+>>>>>>> upstream/main
     }
 
     private static void ApplyTextReflection(Drawing.Run run, string value)
@@ -564,7 +584,11 @@ public partial class PowerPointHandler
         }
 
         var sp3dEl = EnsureShape3D(spPr);
+<<<<<<< HEAD
         // Canonical length input contract (CLAUDE.md): bare number = points,
+=======
+        // Canonical length input contract (the project conventions): bare number = points,
+>>>>>>> upstream/main
         // and pt/cm/in/px/emu suffixes are all accepted. Mirror lineWidth's
         // bare-int-as-points behaviour via EmuConverter.ParseLineWidth, which
         // returns EMU.
@@ -599,6 +623,7 @@ public partial class PowerPointHandler
         scene3d.LightRig!.Rig = ParseLightRig(value);
     }
 
+<<<<<<< HEAD
     /// <summary>
     /// Apply lightRig @dir (t/tl/tr/l/r/b/bl/br) to scene3d's lightRig.
     /// R55 bt-4: NodeBuilder surfaces this as Format["lightingDir"]; without
@@ -639,40 +664,47 @@ public partial class PowerPointHandler
 
     // --- Helper methods ---
 
+=======
+>>>>>>> upstream/main
     /// <summary>
-    /// Schema order for CT_EffectList children:
-    /// blur → fillOverlay → glow → innerShdw → outerShdw → prstShdw → reflection → softEdge
+    /// Apply lightRig @dir (t/tl/tr/l/r/b/bl/br) to scene3d's lightRig.
+    /// R55 bt-4: NodeBuilder surfaces this as Format["lightingDir"]; without
+    /// a Set hook the source direction was dropped on every dump-replay.
     /// </summary>
-    private static readonly Type[] EffectListChildOrder =
-    [
-        typeof(Drawing.Blur),
-        typeof(Drawing.FillOverlay),
-        typeof(Drawing.Glow),
-        typeof(Drawing.InnerShadow),
-        typeof(Drawing.OuterShadow),
-        typeof(Drawing.PresetShadow),
-        typeof(Drawing.Reflection),
-        typeof(Drawing.SoftEdge),
-    ];
+    private static void ApplyLightRigDirection(ShapeProperties spPr, string value)
+    {
+        var scene3d = EnsureScene3D(spPr);
+        scene3d.LightRig!.Direction = new Drawing.LightRigDirectionValues(value);
+    }
 
     /// <summary>
-    /// Insert an effect element into EffectList at the correct schema position.
+    /// Apply &lt;a:rot lat="..." lon="..." rev="..."/&gt; under &lt;a:lightRig&gt;.
+    /// Input form mirrors the NodeBuilder Get key: "lat:lon:rev" (60000ths of
+    /// a degree, the raw OOXML unit). R55 bt-4: this child was previously
+    /// unrepresented in the Set vocabulary, so dump captured lightingRot but
+    /// replay rebuilt the lightRig with no rot child.
     /// </summary>
-    private static void InsertEffectInOrder(Drawing.EffectList effectList, DocumentFormat.OpenXml.OpenXmlElement element)
+    private static void ApplyLightRigRotation(ShapeProperties spPr, string value)
     {
-        var targetIdx = Array.IndexOf(EffectListChildOrder, element.GetType());
-        // Find the first existing child that should come after this element
-        foreach (var child in effectList.ChildElements)
+        var scene3d = EnsureScene3D(spPr);
+        var parts = value.Split(':');
+        if (parts.Length != 3
+            || !int.TryParse(parts[0], System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var lat)
+            || !int.TryParse(parts[1], System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var lon)
+            || !int.TryParse(parts[2], System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var rev))
         {
-            var childIdx = Array.IndexOf(EffectListChildOrder, child.GetType());
-            if (childIdx > targetIdx)
-            {
-                effectList.InsertBefore(element, child);
-                return;
-            }
+            throw new ArgumentException(
+                $"Invalid lightingRot: '{value}'. Expected 'lat:lon:rev' in 60000ths of a degree (e.g. '0:0:1200000').");
         }
-        effectList.AppendChild(element);
+        var rot = new Drawing.Rotation { Latitude = lat, Longitude = lon, Revolution = rev };
+        scene3d.LightRig!.RemoveAllChildren<Drawing.Rotation>();
+        scene3d.LightRig.AppendChild(rot);
     }
+
+    // --- Helper methods ---
 
     /// <summary>
     /// Get or create EffectList in correct schema position.
@@ -750,6 +782,32 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Ensure an outline has a fill child element. PowerPoint silently
+    /// drops a bare <a:ln w="N"/> with no fill descendant (no SolidFill /
+    /// NoFill / GradientFill / PatternFill), rendering the shape borderless
+    /// despite the width attribute. Called by callers that set width without
+    /// also setting an explicit line color, so the user's intent ("draw a
+    /// 2pt border") survives to a visible stroke.
+    /// </summary>
+    private static void EnsureOutlineHasFill(Drawing.Outline outline)
+    {
+        if (outline.GetFirstChild<Drawing.SolidFill>() != null
+            || outline.GetFirstChild<Drawing.NoFill>() != null
+            || outline.GetFirstChild<Drawing.GradientFill>() != null
+            || outline.GetFirstChild<Drawing.PatternFill>() != null)
+            return;
+        // Default to black — matches PowerPoint UI behavior when a user
+        // sets "Weight" but not "Color" on Format Shape > Line.
+        var solid = new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = "000000" });
+        // SolidFill must appear before PresetDash/CustomDash/LineJoin/etc.
+        // per CT_LineProperties schema order. Insert at the head of outline.
+        outline.InsertAt(solid, 0);
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Set the extrusion color (<a:extrusionClr>) or contour color
     /// (<a:contourClr>) on the shape's sp3d child. Accepts the same
     /// color forms the rest of the handler accepts (hex with or without
@@ -873,13 +931,19 @@ public partial class PowerPointHandler
             "dkedge" or "darkedge" => Drawing.PresetMaterialTypeValues.DarkEdge,
             "softedge" => Drawing.PresetMaterialTypeValues.SoftEdge,
             "flat" => Drawing.PresetMaterialTypeValues.Flat,
-            "wire" or "wireframe" => Drawing.PresetMaterialTypeValues.LegacyWireframe,
+            "wire" or "wireframe" or "legacywireframe" => Drawing.PresetMaterialTypeValues.LegacyWireframe,
             "powder" => Drawing.PresetMaterialTypeValues.Powder,
             "translucentpowder" => Drawing.PresetMaterialTypeValues.TranslucentPowder,
             "clear" => Drawing.PresetMaterialTypeValues.Clear,
             "softmetal" => Drawing.PresetMaterialTypeValues.SoftMetal,
             "matte" => Drawing.PresetMaterialTypeValues.Matte,
-            _ => throw new ArgumentException($"Invalid material value: '{value}'. Valid values: warmmatte, plastic, metal, darkedge, flat, wire, powder, translucentpowder, clear, softmetal, matte.")
+            // Legacy 3D presets (ST_PresetMaterialType, the legacy* tokens). Get
+            // emits sp3d.PresetMaterial.InnerText verbatim, so these raw OOXML
+            // tokens must round-trip back through Set/Add.
+            "legacymatte" => Drawing.PresetMaterialTypeValues.LegacyMatte,
+            "legacyplastic" => Drawing.PresetMaterialTypeValues.LegacyPlastic,
+            "legacymetal" => Drawing.PresetMaterialTypeValues.LegacyMetal,
+            _ => throw new ArgumentException($"Invalid material value: '{value}'. Valid values: warmmatte, plastic, metal, darkedge, flat, wire, powder, translucentpowder, clear, softmetal, matte, legacymatte, legacyplastic, legacymetal, legacywireframe.")
         };
     }
 
@@ -902,7 +966,22 @@ public partial class PowerPointHandler
             "twopt" or "2pt" => Drawing.LightRigValues.TwoPoints,
             "glow" => Drawing.LightRigValues.Glow,
             "brightroom" => Drawing.LightRigValues.BrightRoom,
-            _ => throw new ArgumentException($"Invalid lighting value: '{value}'. Valid values: threept, balanced, soft, harsh, flood, contrasting, morning, sunrise, sunset, chilly, freezing, flat, twopt, glow, brightroom.")
+            // Legacy 3D light rigs (ST_LightRigType, the legacy* tokens). Get
+            // emits lightRig.Light.InnerText verbatim, so these raw OOXML tokens
+            // must round-trip back through Set/Add.
+            "legacyflat1" => Drawing.LightRigValues.LegacyFlat1,
+            "legacyflat2" => Drawing.LightRigValues.LegacyFlat2,
+            "legacyflat3" => Drawing.LightRigValues.LegacyFlat3,
+            "legacyflat4" => Drawing.LightRigValues.LegacyFlat4,
+            "legacynormal1" => Drawing.LightRigValues.LegacyNormal1,
+            "legacynormal2" => Drawing.LightRigValues.LegacyNormal2,
+            "legacynormal3" => Drawing.LightRigValues.LegacyNormal3,
+            "legacynormal4" => Drawing.LightRigValues.LegacyNormal4,
+            "legacyharsh1" => Drawing.LightRigValues.LegacyHarsh1,
+            "legacyharsh2" => Drawing.LightRigValues.LegacyHarsh2,
+            "legacyharsh3" => Drawing.LightRigValues.LegacyHarsh3,
+            "legacyharsh4" => Drawing.LightRigValues.LegacyHarsh4,
+            _ => throw new ArgumentException($"Invalid lighting value: '{value}'. Valid values: threept, balanced, soft, harsh, flood, contrasting, morning, sunrise, sunset, chilly, freezing, flat, twopt, glow, brightroom, legacyflat1-4, legacynormal1-4, legacyharsh1-4.")
         };
     }
 

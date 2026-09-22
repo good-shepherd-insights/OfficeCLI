@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -295,6 +299,31 @@ public partial class PowerPointHandler
     ///   advanceclick=false  disable click-to-advance
     /// Examples: "fade", "fade-thru-black", "wipe-left", "push-right", "split-horizontal-in", "zoom-out-slow", "none"
     /// </summary>
+    // Standalone transitionSpeed Set: mutate the Speed attribute on the
+    // existing <p:transition>. Mirrors the speed token parsing in
+    // ApplyTransition. If no transition exists yet, create a bare one so the
+    // speed has a host element (matches Get, which reads trans.Speed).
+    private static void ApplyTransitionSpeed(SlidePart slidePart, string value)
+    {
+        var slide = slidePart.Slide ?? throw new InvalidOperationException("Corrupt file");
+        var p = value.Trim().ToLowerInvariant();
+        TransitionSpeedValues speed = p switch
+        {
+            "slow" => TransitionSpeedValues.Slow,
+            "fast" => TransitionSpeedValues.Fast,
+            "medium" or "med" => TransitionSpeedValues.Medium,
+            _ => throw new ArgumentException(
+                $"Invalid transitionSpeed: '{value}'. Expected slow, medium, or fast.")
+        };
+        var trans = slide.Transition;
+        if (trans == null)
+        {
+            trans = new Transition();
+            slide.Transition = trans;
+        }
+        trans.Speed = speed;
+    }
+
     private static void ApplyTransition(SlidePart slidePart, string value)
     {
         var slide = slidePart.Slide ?? throw new InvalidOperationException("Corrupt file");
@@ -759,7 +788,11 @@ public partial class PowerPointHandler
     /// Examples: "fade", "fly-entrance", "zoom-exit-800", "fade-in-500-after",
     ///           "wipe-entrance-1000-with", "fade-entrance-500-click", "none"
     /// </summary>
+<<<<<<< HEAD
     private static void ApplyShapeAnimation(SlidePart slidePart, OpenXmlElement target, string value)
+=======
+    private static void ApplyShapeAnimation(SlidePart slidePart, OpenXmlElement target, string value, bool replaceExisting = false)
+>>>>>>> upstream/main
     {
         var slide = slidePart.Slide ?? throw new InvalidOperationException("Corrupt file");
         var shapeId = GetAnimationTargetSpId(target)
@@ -897,6 +930,43 @@ public partial class PowerPointHandler
             Console.Error.WriteLine($"Warning: unrecognized animation segments: {string.Join(", ", unrecognized)}. "
                 + "Format: EFFECT[-CLASS][-DIRECTION][-DURATION][-TRIGGER][-delay=N][-easein=N][-easeout=N] "
                 + "e.g. fly-entrance-left-400");
+<<<<<<< HEAD
+=======
+
+        // Template-based effects (Boomerang, Pinwheel, ...) live in
+        // _templateRegistry and bypass the simple filter-based path. Look up
+        // first so the standard preset/filter path doesn't reject them as
+        // unknown.
+        // CONSISTENCY(validate-before-mutate): this lookup THROWS on unknown
+        // effects, so it must run before replaceExisting's removal below —
+        // set animation=badeffect used to strip the shape's existing animation
+        // and then throw, leaving empty bldLst/childTnLst containers that
+        // validate red.
+        var effectTemplate = TryGetEffectTemplate(effectName, presetClass);
+
+        // Get filter string, preset ID, and subtype from effect name.
+        // Template effects keep the lookup so the schema-described
+        // preset/subtype is reported, but the actual XML comes from the template.
+        int presetId; string? filter; int presetSubtype;
+        if (effectTemplate != null)
+        {
+            presetId = effectTemplate.PresetId;
+            presetSubtype = effectTemplate.PresetSubtype;
+            filter = null;
+        }
+        else
+        {
+            (presetId, filter) = GetAnimPreset(effectName, presetClass);
+            presetSubtype = GetAnimPresetSubtype(effectName, direction);
+        }
+
+        // Replace semantics (set animation=): drop the shape's existing chain
+        // only after the new effect is known-valid, and before the trigger
+        // auto-detection below so "first animation on slide" reflects the
+        // post-removal state.
+        if (replaceExisting)
+            RemoveShapeAnimations(slide, shapeId);
+>>>>>>> upstream/main
 
         // Resolve trigger
         AnimTrigger trigger;
@@ -916,6 +986,7 @@ public partial class PowerPointHandler
             trigger = (hasExistingAnimations || hasMorphTransition)
                 ? AnimTrigger.AfterPrevious : AnimTrigger.OnClick;
         }
+<<<<<<< HEAD
 
         // Template-based effects (Boomerang, Pinwheel, ...) live in
         // _templateRegistry and bypass the simple filter-based path. Look up
@@ -938,6 +1009,8 @@ public partial class PowerPointHandler
             (presetId, filter) = GetAnimPreset(effectName, presetClass);
             presetSubtype = GetAnimPresetSubtype(effectName, direction);
         }
+=======
+>>>>>>> upstream/main
         var nodeType = trigger switch
         {
             AnimTrigger.AfterPrevious => TimeNodeValues.AfterEffect,
@@ -1816,6 +1889,7 @@ public partial class PowerPointHandler
     {
         if (string.IsNullOrEmpty(path)) return (null, null);
         var canon = System.Text.RegularExpressions.Regex.Replace(path.Trim(), @"\s+", " ");
+<<<<<<< HEAD
         foreach (var (key, val) in _motionPresetPaths)
         {
             if (val == canon)
@@ -1824,6 +1898,24 @@ public partial class PowerPointHandler
                 if (dash < 0) return (key, null);
                 return (key[..dash], key[(dash + 1)..]);
             }
+=======
+        // Prefer the direction-qualified key: the bare "line"/"arc" entries
+        // share their path with "-right", so a first-match walk returned
+        // ("line", null) and direction=right was the ONLY direction that
+        // vanished on readback. Directional presets now always surface their
+        // direction (an add without direction= reads back as right — the
+        // documented default — keeping the enum symmetric).
+        foreach (var (key, val) in _motionPresetPaths)
+        {
+            var dash = key.IndexOf('-');
+            if (dash >= 0 && val == canon)
+                return (key[..dash], key[(dash + 1)..]);
+        }
+        foreach (var (key, val) in _motionPresetPaths)
+        {
+            if (key.IndexOf('-') < 0 && val == canon)
+                return (key, null);
+>>>>>>> upstream/main
         }
         return (null, null);
     }
@@ -1848,6 +1940,14 @@ public partial class PowerPointHandler
         var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value
             ?? throw new ArgumentException("Shape has no ID");
 
+<<<<<<< HEAD
+=======
+        // CONSISTENCY(validate-before-mutate): NormaliseMotionPath throws on
+        // garbage paths — run it before EnsureTimingTree so a rejected d=
+        // doesn't leave an empty timing skeleton that fails schema validation.
+        var normalisedPath = NormaliseMotionPath(pathString);
+
+>>>>>>> upstream/main
         EnsureTimingTree(slide, out var mainSeqCTn, out var bldLst);
         var timing = slide.GetFirstChild<Timing>()!;
         var nextId = GetMaxTimingId(timing) + 1;
@@ -1863,7 +1963,11 @@ public partial class PowerPointHandler
 
         var motionGroup = BuildMotionPathGroup(
             shapeId.ToString(), durationMs, nodeType, grpId, outerDelay,
+<<<<<<< HEAD
             NormaliseMotionPath(pathString), ref nextId,
+=======
+            normalisedPath, ref nextId,
+>>>>>>> upstream/main
             delayMs, easingAccel, easingDecel);
 
         if (trigger == AnimTrigger.WithPrevious)
@@ -1905,6 +2009,35 @@ public partial class PowerPointHandler
         }
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Parse-only validation of an animation value string (effect name +
+    /// class tokens) — throws the same "Unknown animation effect" error
+    /// ApplyShapeAnimation would, WITHOUT touching the timing tree. Used by
+    /// the snapshot-replay set path to reject a bad edit before the existing
+    /// chain is wiped (CONSISTENCY(validate-before-mutate)).
+    /// </summary>
+    internal static void ValidateAnimEffectName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("false", StringComparison.OrdinalIgnoreCase)) return;
+        var parts = value.Split('-');
+        var effectName = parts[0].ToLowerInvariant();
+        var presetClass = TimeNodePresetClassValues.Entrance;
+        foreach (var raw in parts.Skip(1))
+        {
+            var seg = raw.ToLowerInvariant();
+            if (seg is "entrance" or "in" or "entr") presetClass = TimeNodePresetClassValues.Entrance;
+            else if (seg is "exit" or "out") presetClass = TimeNodePresetClassValues.Exit;
+            else if (seg is "emphasis" or "emph") presetClass = TimeNodePresetClassValues.Emphasis;
+        }
+        if (TryGetEffectTemplate(effectName, presetClass) == null)
+            GetAnimPreset(effectName, presetClass); // throws on unknown effect
+    }
+
+>>>>>>> upstream/main
     private static string NormaliseMotionPath(string path)
     {
         // "M0,0 L0.5,-0.3 E" → "M 0 0 L 0.5 -0.3 E"
@@ -1919,7 +2052,23 @@ public partial class PowerPointHandler
                 sb.Append(' ');
         }
         // Collapse multiple spaces
-        return System.Text.RegularExpressions.Regex.Replace(sb.ToString().Trim(), @" {2,}", " ");
+        var normalized = System.Text.RegularExpressions.Regex.Replace(sb.ToString().Trim(), @" {2,}", " ");
+        // Validate the mini-language: animMotion paths are an SVG-path subset
+        // (M/L/C/Z/E commands + decimal coordinates). Free text used to pass
+        // straight through into path= — validate-green nonsense baked into the
+        // OOXML. Same reject-garbage rule as bulletRaw.
+        foreach (var token in normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var isCommand = token.Length == 1 && "MLCZEmlcze".Contains(token[0]);
+            var isNumber = double.TryParse(token,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out _);
+            if (!isCommand && !isNumber)
+                throw new ArgumentException(
+                    $"Invalid motion path token '{token}' in '{path}'. Expected SVG-style " +
+                    "commands (M/L/C/Z/E) and decimal coordinates, e.g. 'M 0 0 L 0.5 -0.3 E'.");
+        }
+        return normalized;
     }
 
     private static ParallelTimeNode BuildMotionPathGroup(
@@ -2205,11 +2354,48 @@ public partial class PowerPointHandler
                 _ => (string?)null
             };
 
+            // L2 props (repeat / delay / autoReverse) ride the same dash-key
+            // grammar Set accepts ("-repeat=N", "-delay=N", "-autoreverse").
+            // repeat/autoReverse live on the effect cTn; delay lives on the
+            // parent (wrapper) cTn's start condition. Emit only when present so
+            // the common case stays the compact "effect-cls-[dir-]dur" form and
+            // Set→Get round-trips without silent data loss.
+            var l2Suffix = "";
+            var repeatVal = effectCTn.RepeatCount?.Value;
+            if (!string.IsNullOrEmpty(repeatVal) && repeatVal != "1000")
+            {
+                // OOXML repeatCount is 1000ths of a count; "indefinite" passes through.
+                if (repeatVal == "indefinite")
+                    l2Suffix += "-repeat=indefinite";
+                else if (int.TryParse(repeatVal, out var rc))
+                    l2Suffix += $"-repeat={rc / 1000}";
+            }
+            // Delay: nearest ancestor cTn whose start condition carries a
+            // non-zero delay (the wrapper cTn built around the effect).
+            OpenXmlElement? walk = effectCTn.Parent;
+            while (walk != null)
+            {
+                if (walk is CommonTimeNode wctn)
+                {
+                    var delayStr = wctn.StartConditionList?
+                        .Elements<Condition>().FirstOrDefault()?.Delay?.Value;
+                    if (!string.IsNullOrEmpty(delayStr) && delayStr != "0"
+                        && int.TryParse(delayStr, out var dl) && dl > 0)
+                    {
+                        l2Suffix += $"-delay={dl}";
+                        break;
+                    }
+                }
+                walk = walk.Parent;
+            }
+            if (effectCTn.AutoReverse?.Value == true)
+                l2Suffix += "-autoreverse";
+
             animIdx++;
             var key = animIdx == 1 ? "animation" : $"animation{animIdx}";
-            node.Format[key] = dirStr != null
+            node.Format[key] = (dirStr != null
                 ? $"{effectName}-{cls}-{dirStr}-{dur}"
-                : $"{effectName}-{cls}-{dur}";
+                : $"{effectName}-{cls}-{dur}") + l2Suffix;
         }
 
         // Read motion path animations (presetClass="motion" — skipped above, handled separately)
@@ -2349,7 +2535,104 @@ public partial class PowerPointHandler
                     ? $"morph-{option}"
                     : "morph";
 
-                // Also extract speed/advance from the transition element inside mc:Choice
+                // Also extract speed/duration/advance from the transition element
+                // inside mc:Choice. Duration is the p14:dur attribute (the typed
+                // SDK getter only sees the bare <p:transition> child, so for the
+                // mc-wrapped morph variant it must be read from the XML here).
+                var transInMc = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p:transition([^>]*?)(?:/>|>)");
+                if (transInMc.Success)
+                {
+                    var transAttrs = transInMc.Groups[1].Value;
+                    var spdM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"spd=""(\w+)""");
+                    if (spdM.Success) node.Format["transitionSpeed"] = spdM.Groups[1].Value;
+                    var durM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"(?:p14:)?dur=""(\d+)""");
+                    if (durM.Success) node.Format["transitionDuration"] = durM.Groups[1].Value;
+                    var advM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advTm=""(\d+)""");
+                    if (advM.Success) node.Format["advanceTime"] = advM.Groups[1].Value;
+                    var clickM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advClick=""(\d+)""");
+                    if (clickM.Success) node.Format["advanceClick"] = clickM.Groups[1].Value == "1";
+                }
+                return;
+            }
+
+            // Look for p15 preset transitions: <p15:prstTrans prst="box" [invX="1"] [invY="1"]/>
+            // PowerPoint 2013+ stores box (and a wider gallery of "modern"
+            // transitions not yet routed by officecli) through this element.
+            // invX + invY together flip the box-in direction to box-out.
+            var p15Match = System.Text.RegularExpressions.Regex.Match(
+                mcInner, @"<p15:prstTrans(?:\s+([^/]*))?/?>");
+            if (p15Match.Success)
+            {
+                var p15Attrs = p15Match.Groups[1].Value;
+                var prstMatch = System.Text.RegularExpressions.Regex.Match(p15Attrs, @"prst=""(\w+)""");
+                if (prstMatch.Success)
+                {
+                    // Preserve the OOXML lowerCamelCase token (pageCurlDouble,
+                    // fallOver, etc.) on readback — the CLI accepts case-insensitive
+                    // input but Get's canonical form matches the spec spelling.
+                    var prst = prstMatch.Groups[1].Value;
+                    var invX = System.Text.RegularExpressions.Regex.IsMatch(p15Attrs, @"invX=""(1|true)""");
+                    // -out = invX flipped (the Left/Right direction toggle for
+                    // direction-sensitive p15 presets). invY exists in the
+                    // schema but PowerPoint's Effect Options never writes it
+                    // alongside invX, so we don't either.
+                    var canonical = invX ? $"{prst}-out" : prst;
+                    node.Format["transition"] = canonical;
+
+                    var transInMc = System.Text.RegularExpressions.Regex.Match(
+                        mcInner, @"<p:transition([^>]*?)(?:/>|>)");
+                    if (transInMc.Success)
+                    {
+                        var transAttrs = transInMc.Groups[1].Value;
+                        var spdM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"spd=""(\w+)""");
+                        if (spdM.Success) node.Format["transitionSpeed"] = spdM.Groups[1].Value;
+                        var durM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"(?:p14:)?dur=""(\d+)""");
+                        if (durM.Success) node.Format["transitionDuration"] = durM.Groups[1].Value;
+                        var advM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advTm=""(\d+)""");
+                        if (advM.Success) node.Format["advanceTime"] = advM.Groups[1].Value;
+                        var clickM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advClick=""(\d+)""");
+                        if (clickM.Success) node.Format["advanceClick"] = clickM.Groups[1].Value == "1";
+                    }
+                    return;
+                }
+            }
+
+            // Look for p14 transitions (vortex, switch, flip, etc.) with dir attribute
+            var p14Match = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p14:(\w+)(?:\s+([^/]*))?/?>");
+            if (p14Match.Success)
+            {
+                var typeName = p14Match.Groups[1].Value.ToLowerInvariant();
+                var p14Attrs = p14Match.Groups[2].Value;
+
+                // p14:prism is reused for three UI tiles: bare = Cube,
+                // isContent=1 = Rotate, isContent=1 isInverted=1 = Orbit.
+                // Surface each on readback as its UI-name token so set
+                // transition=rotate/orbit round-trips.
+                if (typeName == "prism")
+                {
+                    var isC = System.Text.RegularExpressions.Regex.IsMatch(p14Attrs, @"isContent=""(1|true)""");
+                    var isI = System.Text.RegularExpressions.Regex.IsMatch(p14Attrs, @"isInverted=""(1|true)""");
+                    if (isC && isI) typeName = "orbit";
+                    else if (isC) typeName = "rotate";
+                    // bare prism stays as "prism" (canonical) — `cube` is an
+                    // input alias only, doesn't replace the readback.
+                }
+                else
+                {
+                    var dirMatch = System.Text.RegularExpressions.Regex.Match(p14Attrs, @"dir=""(\w+)""");
+                    if (dirMatch.Success && !IsDefaultP14Direction(typeName, dirMatch.Groups[1].Value.ToLowerInvariant()))
+                    {
+                        var rawDir = dirMatch.Groups[1].Value.ToLowerInvariant();
+                        // Expand single-letter slide-direction abbreviations so pan-u
+                        // reads back as pan-up and reveal-r as reveal-right. The raw
+                        // OOXML attribute uses single letters; the canonical readback
+                        // surface speaks full words (matches Get's contract for
+                        // wipe/push/cover via MapSlideDirection).
+                        typeName = $"{typeName}-{ExpandDirectionAbbreviation(rawDir) ?? rawDir}";
+                    }
+                }
+                node.Format["transition"] = typeName;
+
                 var transInMc = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p:transition([^>]*?)(?:/>|>)");
                 if (transInMc.Success)
                 {
@@ -2363,6 +2646,7 @@ public partial class PowerPointHandler
                 }
                 return;
             }
+<<<<<<< HEAD
 
             // Look for p15 preset transitions: <p15:prstTrans prst="box" [invX="1"] [invY="1"]/>
             // PowerPoint 2013+ stores box (and a wider gallery of "modern"
@@ -2453,6 +2737,8 @@ public partial class PowerPointHandler
                 }
                 return;
             }
+=======
+>>>>>>> upstream/main
         }
 
         var typeMatch = System.Text.RegularExpressions.Regex.Match(
@@ -2972,7 +3258,7 @@ public partial class PowerPointHandler
             if (hasMorphSelf) continue;
 
             // Don't strip if the next slide has morph (this slide is a morph source)
-            var nextIdx = slideParts.IndexOf(sp) + 1;
+            var nextIdx = PathIndex.FromArrayIndex(slideParts.IndexOf(sp));
             if (nextIdx < slideParts.Count)
             {
                 var nextSlide = GetSlide(slideParts[nextIdx]);

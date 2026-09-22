@@ -13,6 +13,7 @@ the exact same effect. One uniform verb instead of dozens of per-element named
 methods: same power, nothing extra to memorize, and new officecli features work
 the day they ship without an SDK update.
 
+<<<<<<< HEAD
 ## Requirement: the officecli CLI must be installed
 
 `pip install officecli-sdk` installs **only this SDK** (the Python library). It
@@ -21,16 +22,41 @@ your `PATH`. If `officecli --version` works in your shell you're set; otherwise
 the SDK raises a clear error pointing here (never a cryptic `FileNotFoundError`).
 
 Install the CLI once:
+=======
+## The officecli CLI (auto-installed if missing)
+
+`pip install officecli-sdk` installs **only this SDK** (the Python library); the
+real work is done by the `officecli` binary. You don't have to install it
+yourself — if `officecli` isn't found on your `PATH` (or in the default install
+location), the SDK **provisions it on first use**: it runs officecli's official
+installer (`install.sh` on macOS/Linux, `install.ps1` on Windows), fetching from
+the `d.officecli.ai` mirror with GitHub as a fallback. A one-line notice is
+printed before it installs — it never does so silently. Pass `auto_install=False`
+to `open()`/`create()` to disable this and require a pre-installed CLI instead.
+
+To install the CLI ahead of time (or to control where it lands):
+>>>>>>> upstream/main
 
 ```bash
 python -m officecli install      # runs officecli's official installer
 # …or directly:
+<<<<<<< HEAD
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 ```
 
 `officecli.install()` does the same from Python. Installation is always
 **explicit** — the SDK never auto-downloads the binary behind your back. (Not on
 Windows: grab it from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases).)
+=======
+curl -fsSL https://d.officecli.ai/install.sh | bash
+# Windows (PowerShell):
+irm https://d.officecli.ai/install.ps1 | iex
+```
+
+`officecli.install()` does the same from Python. If the CLI can't be found or
+installed, the SDK raises a clear error pointing here (never a cryptic
+`FileNotFoundError`).
+>>>>>>> upstream/main
 
 ## Install
 

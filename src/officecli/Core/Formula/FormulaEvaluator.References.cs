@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -109,6 +113,15 @@ internal partial class FormulaEvaluator
     /// </summary>
     private FormulaResult? ResolveRef(RefArg r)
     {
+<<<<<<< HEAD
+=======
+        var rangeMemoKey = r.Height * r.Width > 1
+            ? $"{r.Sheet ?? _sheetKey}|{r.Col},{r.Row},{r.Width},{r.Height}"
+            : null;
+        if (rangeMemoKey != null && _session.RangeMemo.TryGetValue(rangeMemoKey, out var memoRange))
+            return FormulaResult.Area(memoRange);
+        var circularBefore = _session.CircularHits;
+>>>>>>> upstream/main
         var cells = new FormulaResult?[r.Height, r.Width];
         for (int dr = 0; dr < r.Height; dr++)
             for (int dc = 0; dc < r.Width; dc++)
@@ -131,7 +144,16 @@ internal partial class FormulaEvaluator
         // preserves the origin row/col so ROW(OFFSET(...)) / COLUMN(OFFSET(...)) /
         // ADDRESS can answer correctly. Single-cell consumers (AsNumber, AsString)
         // transparently peek the lone cell via FirstCell() in FormulaResult.
+<<<<<<< HEAD
         return FormulaResult.Area(new RangeData(cells) { BaseRow = r.Row, BaseCol = r.Col, BaseSheet = r.Sheet });
+=======
+        var range = new RangeData(cells) { BaseRow = r.Row, BaseCol = r.Col, BaseSheet = r.Sheet };
+        // Same cycle-taint rule as CellMemo: a rect whose materialization tripped
+        // the circular-ref fallback holds entry-point-dependent seed values.
+        if (rangeMemoKey != null && circularBefore == _session.CircularHits)
+            _session.RangeMemo[rangeMemoKey] = range;
+        return FormulaResult.Area(range);
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -147,7 +169,11 @@ internal partial class FormulaEvaluator
     private static double CoerceToNumber(FormulaResult? r)
     {
         if (r == null) return 0;
+<<<<<<< HEAD
         if (r.IsString && double.TryParse(r.StringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var v))
+=======
+        if (r.IsString && NumericText.TryParse(r.StringValue, out var v))
+>>>>>>> upstream/main
             return v;
         return r.AsNumber();
     }
@@ -206,6 +232,19 @@ internal partial class FormulaEvaluator
         if (args[0] is FormulaResult { IsError: true } e) return e;
         var s = (args[0] as FormulaResult)?.AsString();
         if (string.IsNullOrEmpty(s)) return FormulaResult.Error("#REF!");
+<<<<<<< HEAD
+=======
+        // a1 = FALSE selects absolute R1C1 (R{row}C{col}); relative R[..]C[..]
+        // needs the evaluating cell and is not supported.
+        bool a1 = !(args.Count > 1 && args[1] is FormulaResult a && a.AsNumber() == 0);
+        if (!a1)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(s.Trim(), @"^R(\d+)C(\d+)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success) return FormulaResult.Error("#REF!");
+            return ResolveRef(new RefArg(null, int.Parse(m.Groups[2].Value), int.Parse(m.Groups[1].Value), 1, 1));
+        }
+>>>>>>> upstream/main
         var refArg = ParseRefString(s);
         if (refArg == null) return FormulaResult.Error("#REF!");
         return ResolveRef(refArg);

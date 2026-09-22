@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -115,6 +119,22 @@ public partial class WordHandler
     private static bool IsTruthy(string? value) =>
         ParseHelpers.IsTruthy(value);
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// BUG #334: true when a run carries non-text content — a drawing
+    /// (<c>w:drawing</c>), a VML picture (<c>w:pict</c>), an
+    /// <c>mc:AlternateContent</c> shape wrapper, an embedded object
+    /// (<c>w:object</c>), or a field (<c>w:fldChar</c> / <c>w:instrText</c>).
+    /// Paragraph-level <c>set --prop text=</c> must preserve such runs instead
+    /// of wiping them, or it silently deletes every graphic in the paragraph.
+    /// </summary>
+    private static bool RunCarriesNonText(Run run) =>
+        run.ChildElements.Any(c =>
+            c is Drawing or Picture or EmbeddedObject or FieldChar or FieldCode
+            || c is AlternateContent);
+
+>>>>>>> upstream/main
     /// <summary>
     /// BUG-R7-07: a value the user explicitly typed as "false"/"0"/"off" — not
     /// just any non-truthy input (null/empty count as "no override"). Used by
@@ -163,6 +183,7 @@ public partial class WordHandler
         if (body == null) return 0;
         foreach (var para in body.Descendants<Paragraph>())
         {
+<<<<<<< HEAD
             var rs = para.Descendants<CommentRangeStart>()
                 .FirstOrDefault(r => r.Id?.Value == commentId);
             if (rs == null) continue;
@@ -172,6 +193,24 @@ public partial class WordHandler
             foreach (var el in para.Descendants())
             {
                 if (ReferenceEquals(el, rs)) break;
+=======
+            // A ranged comment anchors at its CommentRangeStart; a point
+            // (reference-only) comment has no range markers and anchors at the
+            // run that carries its CommentReference. The latter used to be
+            // ignored, so every point comment dumped as runStart=0 and replay
+            // appended its reference run at the paragraph end.
+            OpenXmlElement? anchor = para.Descendants<CommentRangeStart>()
+                .FirstOrDefault(r => r.Id?.Value == commentId);
+            anchor ??= para.Descendants<CommentReference>()
+                .FirstOrDefault(r => r.Id?.Value == commentId)?.Parent;
+            if (anchor == null) continue;
+            // Count Run elements that appear before the anchor in document
+            // order within the same paragraph.
+            int runCount = 0;
+            foreach (var el in para.Descendants())
+            {
+                if (ReferenceEquals(el, anchor)) break;
+>>>>>>> upstream/main
                 if (el is Run r && r.GetFirstChild<CommentReference>() == null) runCount++;
             }
             return runCount; // 0 = before any run; N = after run N (1-based)
@@ -330,7 +369,11 @@ public partial class WordHandler
         }
 
         var paraIdx = cursor.Elements<Paragraph>().TakeWhile(p => p != para).Count() + 1;
+<<<<<<< HEAD
         if (!ReferenceEquals(cursor.Elements<Paragraph>().ElementAtOrDefault(paraIdx - 1), para))
+=======
+        if (!ReferenceEquals(cursor.Elements<Paragraph>().ElementAtOrDefault(PathIndex.ToArrayIndex(paraIdx)), para))
+>>>>>>> upstream/main
             return null; // paragraph not a direct child of the resolved cursor
         // Top-level body paragraphs use the paraId form so EmitComments can map
         // the source paraId -> target index via paraIdToTargetIdx. Cell paragraphs
@@ -384,9 +427,16 @@ public partial class WordHandler
     /// </summary>
     private bool IsSdtEditable(SdtProperties? sdtProps)
     {
+        // A content-locked control is read-only regardless of document
+        // protection: <w:lock w:val="contentLocked"|"sdtContentLocked"> both
+        // mark the control's content as not editable. (sdtLocked only blocks
+        // deletion of the control, leaving content editable.)
+        if (IsSdtContentLocked(sdtProps))
+            return false;
+
         var (mode, enforced) = GetDocumentProtection();
 
-        // No protection or not enforced → all SDTs are editable
+        // No protection or not enforced → editable (content not locked above)
         if (!enforced || mode == "none")
             return true;
 
@@ -394,15 +444,26 @@ public partial class WordHandler
         if (mode == "readOnly")
             return false;
 
-        // forms protection → SDTs are editable unless content-locked
+        // forms protection → editable (content-lock already handled above)
         if (mode == "forms")
-        {
-            var lockEl = sdtProps?.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Lock>();
-            var lockVal = lockEl?.Val?.Value;
-            return lockVal != LockingValues.ContentLocked && lockVal != LockingValues.SdtContentLocked;
-        }
+            return true;
 
         // comments/trackedChanges → not typically editable
         return false;
     }
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// True when the SDT's content is locked read-only
+    /// (<w:lock w:val="contentLocked"> or "sdtContentLocked").
+    /// </summary>
+    private static bool IsSdtContentLocked(SdtProperties? sdtProps)
+    {
+        var lockEl = sdtProps?.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Lock>();
+        var lockVal = lockEl?.Val?.Value;
+        return lockVal == LockingValues.ContentLocked
+            || lockVal == LockingValues.SdtContentLocked;
+    }
+>>>>>>> upstream/main
 }

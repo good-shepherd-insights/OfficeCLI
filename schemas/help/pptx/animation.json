@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "animation",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["animate"],
+>>>>>>> upstream/main
   "parent": ["shape", "chart"],
   "operations": {
     "add": true,

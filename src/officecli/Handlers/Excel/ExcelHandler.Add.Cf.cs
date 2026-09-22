@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -131,6 +135,17 @@ public partial class ExcelHandler
         var sqref = ValidateSqref(properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", cfPathRange), "ref");
         var minVal = properties.ContainsKey("min") ? properties["min"] : (string?)null;
         var maxVal = properties.ContainsKey("max") ? properties["max"] : (string?)null;
+<<<<<<< HEAD
+=======
+        // The schema documents min/max as "numeric or 'auto'". 'auto' is the
+        // automatic-bound sentinel, NOT a literal value: emitting it as a
+        // numeric cfvo (<cfvo type="num" val="auto"/>) is malformed and Excel
+        // silently drops the whole data bar. Map it back to null so the cfvo
+        // builders below pick the type="min"/type="max" (and x14 AutoMin/AutoMax)
+        // branches — identical to the user omitting the bound entirely.
+        if (string.Equals(minVal, "auto", StringComparison.OrdinalIgnoreCase)) minVal = null;
+        if (string.Equals(maxVal, "auto", StringComparison.OrdinalIgnoreCase)) maxVal = null;
+>>>>>>> upstream/main
         var cfColor = properties.GetValueOrDefault("color", "638EC6");
         var normalizedColor = ParseHelpers.NormalizeArgbColor(cfColor);
 
@@ -196,7 +211,13 @@ public partial class ExcelHandler
         {
             "middle" => X14.DataBarAxisPositionValues.Middle,
             "none" => X14.DataBarAxisPositionValues.None,
+<<<<<<< HEAD
             _ => X14.DataBarAxisPositionValues.Automatic
+=======
+            "automatic" or "auto" => X14.DataBarAxisPositionValues.Automatic,
+            _ => throw new ArgumentException(
+                $"Unknown dataBar axisPosition '{dbAxisPos}'. Valid: automatic, middle, none.")
+>>>>>>> upstream/main
         };
 
         // CF6 — accept user-supplied bar length bounds (defaults follow Excel's
@@ -224,7 +245,12 @@ public partial class ExcelHandler
                 "lefttoright" or "ltr" => X14.DataBarDirectionValues.LeftToRight,
                 "righttoleft" or "rtl" => X14.DataBarDirectionValues.RightToLeft,
                 "context" => X14.DataBarDirectionValues.Context,
+<<<<<<< HEAD
                 _ => X14.DataBarDirectionValues.Context
+=======
+                _ => throw new ArgumentException(
+                    $"Unknown dataBar direction '{dbDir}'. Valid: leftToRight, rightToLeft, context.")
+>>>>>>> upstream/main
             };
         }
         var x14MinCfvo = new X14.ConditionalFormattingValueObject
@@ -285,6 +311,7 @@ public partial class ExcelHandler
         var normalizedMinColor = ParseHelpers.NormalizeArgbColor(minColor);
         var normalizedMaxColor = ParseHelpers.NormalizeArgbColor(maxColor);
 
+<<<<<<< HEAD
         // CF5 — accept user-supplied midpoint percentile (`midpoint=50`, default 50).
         var midPointStr = properties.GetValueOrDefault("midpoint")
             ?? properties.GetValueOrDefault("midPoint")
@@ -293,6 +320,45 @@ public partial class ExcelHandler
         colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Min });
         if (midColor != null)
             colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Percentile, Val = midPointStr });
+=======
+        // CF5 — accept user-supplied midpoint (`midpoint=50`, default 50).
+        // Lenient forms: "50", "50%" (percent → percentile), and prefixed
+        // "percentile:50" / "percent:50" / "num:50". Anything else must be
+        // rejected: an unparsed value ("50%", "percentile:50") used to land
+        // verbatim in <cfvo val=>, which passes schema validation but real
+        // Excel refuses the whole file (0x800A03EC).
+        var midPointStr = properties.GetValueOrDefault("midpoint")
+            ?? properties.GetValueOrDefault("midPoint")
+            ?? "50";
+        var midType = ConditionalFormatValueObjectValues.Percentile;
+        var midRaw = midPointStr.Trim();
+        var midColon = midRaw.IndexOf(':');
+        if (midColon > 0)
+        {
+            midType = midRaw[..midColon].Trim().ToLowerInvariant() switch
+            {
+                "percentile" => ConditionalFormatValueObjectValues.Percentile,
+                "percent" => ConditionalFormatValueObjectValues.Percent,
+                "num" or "number" => ConditionalFormatValueObjectValues.Number,
+                var badKind => throw new ArgumentException(
+                    $"Unknown midPoint kind '{badKind}'. Valid: percentile:<n>, percent:<n>, num:<n>, or a bare number (percentile).")
+            };
+            midRaw = midRaw[(midColon + 1)..].Trim();
+        }
+        else if (midRaw.EndsWith('%'))
+        {
+            midType = ConditionalFormatValueObjectValues.Percent;
+            midRaw = midRaw[..^1].Trim();
+        }
+        if (!double.TryParse(midRaw, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out _))
+            throw new ArgumentException(
+                $"Invalid midPoint '{midPointStr}': expected a number, optionally as percentile:<n> / percent:<n> / num:<n> or '<n>%'.");
+        var colorScale = new ColorScale();
+        colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Min });
+        if (midColor != null)
+            colorScale.Append(new ConditionalFormatValueObject { Type = midType, Val = midRaw });
+>>>>>>> upstream/main
         colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Max });
         colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMinColor });
         if (midColor != null)
@@ -398,8 +464,23 @@ public partial class ExcelHandler
         // R22-2: path-tail range is the fallback before the hardcoded default.
         var fcfPathRange = fcfSegments.Length > 1 && !string.IsNullOrEmpty(fcfSegments[1]) ? fcfSegments[1] : "A1:A10";
         var fcfSqref = ValidateSqref(properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", fcfPathRange), "ref");
+<<<<<<< HEAD
         var fcfFormula = properties.GetValueOrDefault("formula")
             ?? throw new ArgumentException("Formula-based conditional formatting requires 'formula' property (e.g. formula=$A1>100)");
+=======
+        // CONSISTENCY(cf-value-alias): the help schema documents value/
+        // formula1 as aliases of formula, and the cellIs branch already
+        // accepts them — the formula branch alone rejected the alias.
+        var fcfFormula = properties.GetValueOrDefault("formula")
+            ?? properties.GetValueOrDefault("formula1")
+            ?? properties.GetValueOrDefault("value")
+            ?? throw new ArgumentException("Formula-based conditional formatting requires 'formula' property (e.g. formula=$A1>100)");
+        // The <x:formula> element is A1-only — an R1C1-style reference makes
+        // real Excel refuse the file (0x800A03EC) while schema validation
+        // stays green. Same guard cell formulas already get.
+        ValidateNoR1C1Reference(fcfFormula);
+        ValidateFormulaLength(fcfFormula, "conditional-format formula");
+>>>>>>> upstream/main
 
         // Build DifferentialFormat (dxf) for the formatting.
         // A dxf Font may carry: b, i, u, strike, sz, rFont, color.
@@ -506,6 +587,14 @@ public partial class ExcelHandler
                 $"cellIs operator '{opStr}' requires 'value2' property (e.g. value=10 value2=50).");
         }
 
+<<<<<<< HEAD
+=======
+        // cellIs value/value2 land in <x:formula> (A1-only). Reject R1C1-style
+        // refs so the file doesn't silently become one Excel refuses to open.
+        ValidateNoR1C1Reference(primary);
+        if (secondary != null) ValidateNoR1C1Reference(secondary);
+
+>>>>>>> upstream/main
         // Build DifferentialFormat (dxf)
         var cisDxf = new DifferentialFormat();
         if (properties.TryGetValue("font.color", out var cisFontColor))
@@ -725,7 +814,14 @@ public partial class ExcelHandler
                         "thisMonth" => TimePeriodValues.ThisMonth,
                         "lastMonth" => TimePeriodValues.LastMonth,
                         "nextMonth" => TimePeriodValues.NextMonth,
+<<<<<<< HEAD
                         _ => TimePeriodValues.Today
+=======
+                        // Silent-accept enum-miss family: an unknown period
+                        // must not quietly become "today".
+                        _ => throw new ArgumentException(
+                            $"Unknown timePeriod '{period}'. Valid: today, yesterday, tomorrow, last7Days, thisWeek, lastWeek, nextWeek, thisMonth, lastMonth, nextMonth.")
+>>>>>>> upstream/main
                     })
                 };
                 break;

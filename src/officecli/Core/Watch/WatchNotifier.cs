@@ -1,8 +1,16 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 //
 // CONSISTENCY(watch-isolation): this file does not reference OfficeCli.Handlers, does not open files,
 // does not write to disk. See CLAUDE.md "Watch Server Rules". To relax this red line,
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+// SPDX-License-Identifier: Apache-2.0
+//
+// CONSISTENCY(watch-isolation): this file does not reference OfficeCli.Handlers, does not open files,
+// does not write to disk. See the project conventions "Watch Server Rules". To relax this red line,
+>>>>>>> upstream/main
 // grep "CONSISTENCY(watch-isolation)" and review every file in the watch subsystem project-wide.
 
 using System.IO.Pipes;
@@ -346,7 +354,18 @@ internal class WatchMessage
     public static int ExtractSlideNum(string? path)
     {
         if (string.IsNullOrEmpty(path)) return 0;
+<<<<<<< HEAD
         var match = System.Text.RegularExpressions.Regex.Match(path, @"/slide\[(\d+)\]");
+=======
+        // #330: DOM element types resolve case-insensitively, so `remove
+        // /Slide[2]` succeeds — but this extractor was case-sensitive, returned
+        // 0, and the watch notification took the wrong branch, leaving the live
+        // preview stale (a silent mismatch — the mutation succeeded, only the
+        // preview disagreed). Match case-insensitively so any casing routes the
+        // same way as the canonical lowercase form.
+        var match = System.Text.RegularExpressions.Regex.Match(
+            path, @"/slide\[(\d+)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+>>>>>>> upstream/main
         if (match.Success && int.TryParse(match.Groups[1].Value, out var num))
             return num;
         return 0;
@@ -374,10 +393,22 @@ internal class WatchMessage
     {
         if (string.IsNullOrEmpty(path)) return null;
 
+<<<<<<< HEAD
+=======
+        // #330 (docx side): element types resolve case-insensitively. Match the
+        // same way here and emit the canonical lowercase data-path so a
+        // wrong-cased input still matches the rendered DOM. docx body paths carry
+        // only element types + indices (no case-sensitive identifiers), so
+        // lowercasing the echoed path is safe.
+        const System.Text.RegularExpressions.RegexOptions IC =
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+
+>>>>>>> upstream/main
         // Cell-level: /body/table[N]/tr[R]/tc[C] — must come first so the
         // outer paragraph/table regex doesn't claim the prefix and drop the
         // /tr/tc tail.
         var cellMatch = System.Text.RegularExpressions.Regex.Match(
+<<<<<<< HEAD
             path, @"^/body/table\[\d+\]/tr\[\d+\]/tc\[\d+\]$");
         if (cellMatch.Success) return $"[data-path=\"{path}\"]";
 
@@ -385,6 +416,15 @@ internal class WatchMessage
         var rowMatch = System.Text.RegularExpressions.Regex.Match(
             path, @"^/body/table\[\d+\]/tr\[\d+\]$");
         if (rowMatch.Success) return $"[data-path=\"{path}\"]";
+=======
+            path, @"^/body/table\[\d+\]/tr\[\d+\]/tc\[\d+\]$", IC);
+        if (cellMatch.Success) return $"[data-path=\"{path.ToLowerInvariant()}\"]";
+
+        // Row-level: /body/table[N]/tr[R]
+        var rowMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/body/table\[\d+\]/tr\[\d+\]$", IC);
+        if (rowMatch.Success) return $"[data-path=\"{path.ToLowerInvariant()}\"]";
+>>>>>>> upstream/main
 
         // Paragraph / table — the original anchor-based selector. Anchor
         // the regex to `^/body/...` so a header/footer/cell sub-path that
@@ -393,9 +433,15 @@ internal class WatchMessage
         // BUG-BT-R34-3 follow-up: that regression would scroll the watcher
         // to the wrong location while reporting success.
         var match = System.Text.RegularExpressions.Regex.Match(
+<<<<<<< HEAD
             path, @"^/body/(p|paragraph|table)\[(\d+)\]$");
         if (!match.Success) return null;
         var type = match.Groups[1].Value;
+=======
+            path, @"^/body/(p|paragraph|table)\[(\d+)\]$", IC);
+        if (!match.Success) return null;
+        var type = match.Groups[1].Value.ToLowerInvariant();
+>>>>>>> upstream/main
         if (type == "paragraph") type = "p";
         return $"#w-{type}-{match.Groups[2].Value}";
     }

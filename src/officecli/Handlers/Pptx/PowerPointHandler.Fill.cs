@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -13,10 +17,16 @@ public partial class PowerPointHandler
 {
     private static void InsertFillElement(ShapeProperties spPr, OpenXmlElement fillElement)
     {
-        // Schema order: xfrm → prstGeom → fill → ln → effectLst
-        var prstGeom = spPr.GetFirstChild<Drawing.PresetGeometry>();
-        if (prstGeom != null)
-            spPr.InsertAfter(fillElement, prstGeom);
+        // Schema order: xfrm → (prstGeom | custGeom) → fill → ln → effectLst.
+        // CT_ShapeProperties' geometry is a choice group: a shape carries EITHER
+        // a:prstGeom OR a:custGeom, never both. Anchoring the fill only after
+        // prstGeom placed the fill BEFORE a custGeom (xfrm → fill → custGeom),
+        // which is out of schema order — PowerPoint refuses the file. Anchor
+        // after whichever geometry element is present.
+        var geom = (OpenXmlElement?)spPr.GetFirstChild<Drawing.PresetGeometry>()
+                   ?? spPr.GetFirstChild<Drawing.CustomGeometry>();
+        if (geom != null)
+            spPr.InsertAfter(fillElement, geom);
         else
         {
             var xfrm = spPr.Transform2D;
@@ -83,9 +93,78 @@ public partial class PowerPointHandler
                 return AppendColorTransforms(name, schemeEl);
             }
         }
+<<<<<<< HEAD
         return null;
     }
 
+=======
+        return ReadSysOrPresetColor(solidFill);
+    }
+
+    /// <summary>
+    /// Read an a:sysClr (system color) or a:prstClr (preset color) child from a
+    /// color parent, returning a canonical hex (with any +lumMod/+shade/… transform
+    /// suffix) or null when neither is present. sysClr resolves to its lastClr —
+    /// the concrete RGB the host app last rendered, which is exactly what we want
+    /// the round-trip to reproduce; prstClr resolves to its named-color hex when
+    /// known, else the raw preset name (Add/Set resolves both forms).
+    ///
+    /// Before this, both element types fell through to a bare `return null`, so a
+    /// shape filled with `sysClr "window"` (white) or `prstClr "black"` lost its
+    /// fill entirely on Get → dump → rebuild and rendered as an INHERIT/no-fill
+    /// transparent box.
+    /// </summary>
+    internal static string? ReadSysOrPresetColor(OpenXmlElement? parent)
+    {
+        if (parent == null) return null;
+        var sysEl = parent.GetFirstChild<Drawing.SystemColor>();
+        if (sysEl != null)
+        {
+            var last = sysEl.LastColor?.Value;
+            string? hex = !string.IsNullOrEmpty(last)
+                ? last
+                : MapSystemColorFallback(sysEl.Val?.InnerText ?? sysEl.GetAttribute("val", "").Value);
+            if (!string.IsNullOrEmpty(hex))
+                return AppendColorTransforms(hex!.ToUpperInvariant(), sysEl);
+        }
+        var prstEl = parent.GetFirstChild<Drawing.PresetColor>();
+        if (prstEl != null)
+        {
+            var name = prstEl.Val?.InnerText;
+            if (string.IsNullOrEmpty(name)) name = prstEl.GetAttribute("val", "").Value;
+            if (!string.IsNullOrEmpty(name))
+                return AppendColorTransforms(ParseHelpers.TryGetNamedColorHex(name) ?? name, prstEl);
+        }
+        return null;
+    }
+
+    // sysClr without a lastClr attribute is rare (PowerPoint always writes one),
+    // but fall back to the two system colors that actually appear in documents so
+    // the fill never silently vanishes. Other ST_SystemColorVal values are
+    // chrome-only and don't occur as shape fills.
+    private static string? MapSystemColorFallback(string? val) => val switch
+    {
+        "window" => "FFFFFF",
+        "windowText" => "000000",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Read a color value from an a:highlight element, returning either hex RGB
+    /// or scheme color name. CONSISTENCY(highlight): the highlight's color child
+    /// has the same shape as a solidFill's (srgbClr / schemeClr), so wrap it in
+    /// a throwaway SolidFill to reuse ReadColorFromFill — same trick as the
+    /// HtmlPreview.Text.cs renderer.
+    /// </summary>
+    internal static string? ReadColorFromHighlight(Drawing.Highlight? highlight)
+    {
+        var colorChild = highlight?.GetFirstChild<Drawing.RgbColorModelHex>()
+            ?? (OpenXmlElement?)highlight?.GetFirstChild<Drawing.SchemeColor>();
+        if (colorChild == null) return null;
+        return ReadColorFromFill(new Drawing.SolidFill(colorChild.CloneNode(true)));
+    }
+
+>>>>>>> upstream/main
     // R8-4: encode a:lumMod / a:lumOff / a:shade / a:tint / a:satMod / a:satOff /
     // a:hueMod / a:hueOff color transforms as a chained "+name<intPercent>"
     // suffix on the canonical color string so they survive Get → Add/Set
@@ -152,7 +231,30 @@ public partial class PowerPointHandler
                 return AppendColorTransforms(name, schemeEl);
             }
         }
+<<<<<<< HEAD
         return null;
+=======
+        return ReadSysOrPresetColor(parent);
+    }
+
+    /// <summary>
+    /// Format srgbClr hex, prefixing an AA byte when an a:alpha child is present and non-opaque.
+    /// Alpha units are 0..100000 (100000 = opaque, matches OOXML ST_PositiveFixedPercentage).
+    /// </summary>
+    private static string FormatHexWithAlpha(Drawing.RgbColorModelHex rgbEl)
+    {
+        var hex = ParseHelpers.FormatHexColor(rgbEl.Val!.Value!);
+        var alphaVal = rgbEl.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
+        if (alphaVal == null || alphaVal >= 100000) return hex;
+        var alphaByte = (int)Math.Round(alphaVal.Value / 100000.0 * 255);
+        alphaByte = Math.Clamp(alphaByte, 0, 255);
+        // CONSISTENCY(color-input-form): emit CSS #RRGGBBAA so re-feeding the
+        // value into Add/Set round-trips correctly (NormalizeArgbColor /
+        // SanitizeColorForOoxml treat #-prefixed 8-hex as RRGGBBAA).
+        return hex.StartsWith('#')
+            ? $"{hex}{alphaByte:X2}"
+            : $"{hex}{alphaByte:X2}";
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -321,6 +423,33 @@ public partial class PowerPointHandler
 
         var parts = value.Split(':');
         var presetName = parts[0].Trim();
+<<<<<<< HEAD
+=======
+
+        // Inherited pattern fill: a bare `<a:pattFill/>` (no preset, no colors)
+        // means "pattern fill, inherit preset + colors from the style/theme
+        // fillRef". NodeBuilder serializes this as "pattern=:" on dump; replay
+        // round-trips it here instead of erroring on an empty preset. Any
+        // explicitly-supplied fg/bg is still honored ("::FFFFFF" etc.).
+        if (string.IsNullOrEmpty(presetName))
+        {
+            var bare = new Drawing.PatternFill();
+            if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
+            {
+                var fgClrInherit = new Drawing.ForegroundColor();
+                fgClrInherit.Append(BuildColorElement(parts[1].Trim()));
+                bare.Append(fgClrInherit);
+            }
+            if (parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]))
+            {
+                var bgClrInherit = new Drawing.BackgroundColor();
+                bgClrInherit.Append(BuildColorElement(parts[2].Trim()));
+                bare.Append(bgClrInherit);
+            }
+            return bare;
+        }
+
+>>>>>>> upstream/main
         var fg = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1].Trim() : "000000";
         var bg = parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2].Trim() : "FFFFFF";
 
@@ -406,7 +535,8 @@ public partial class PowerPointHandler
     /// Apply image (blip) fill to a shape.
     /// Format: file path to image, e.g. "/tmp/bg.png"
     /// </summary>
-    private static void ApplyShapeImageFill(ShapeProperties spPr, string imagePath, SlidePart part)
+    private static void ApplyShapeImageFill(ShapeProperties spPr, string imagePath, SlidePart part,
+        string? fillRectSpec = null, string? srcRectSpec = null)
     {
         var (stream, partType) = OfficeCli.Core.ImageSource.Resolve(imagePath);
         using var streamDispose = stream;
@@ -423,8 +553,35 @@ public partial class PowerPointHandler
 
         var blipFill = new Drawing.BlipFill();
         blipFill.Append(new Drawing.Blip { Embed = relId });
-        blipFill.Append(new Drawing.Stretch(new Drawing.FillRectangle()));
+        // CT_BlipFillProperties order: blip → srcRect → (tile|stretch). srcRect
+        // (crop) and the stretch fillRect carry the image's framing; honor both
+        // so dump→replay reproduces a banner image stretched past its shape
+        // bounds (negative fillRect insets) instead of snapping to exact-fit.
+        var sr = ParsePerMilleRect(srcRectSpec);
+        if (sr.HasValue)
+            blipFill.Append(new Drawing.SourceRectangle { Left = sr.Value.L, Top = sr.Value.T, Right = sr.Value.R, Bottom = sr.Value.B });
+        var fr = new Drawing.FillRectangle();
+        var frp = ParsePerMilleRect(fillRectSpec);
+        if (frp.HasValue)
+        { fr.Left = frp.Value.L; fr.Top = frp.Value.T; fr.Right = frp.Value.R; fr.Bottom = frp.Value.B; }
+        blipFill.Append(new Drawing.Stretch(fr));
         InsertFillElement(spPr, blipFill);
+    }
+
+    /// <summary>
+    /// Parse a "l,t,r,b" perMille rect spec (the form PictureToNode / shape
+    /// blipFill readback emit) into four nullable int insets, or null when the
+    /// spec is absent/malformed. Each component falls back to null (left unset)
+    /// when it doesn't parse, so a partial spec degrades cleanly.
+    /// </summary>
+    private static (int? L, int? T, int? R, int? B)? ParsePerMilleRect(string? spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec)) return null;
+        var parts = spec.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length != 4) return null;
+        static int? P(string s) => int.TryParse(s, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : (int?)null;
+        return (P(parts[0]), P(parts[1]), P(parts[2]), P(parts[3]));
     }
 
     /// <summary>
@@ -433,15 +590,26 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplyTextMargin(Drawing.BodyProperties bodyPr, string value)
     {
-        // Maximum reasonable inset: ~142cm (max slide dimension in OOXML = 51206400 EMU)
+        // Maximum reasonable inset magnitude: ~142cm (max slide dimension in
+        // OOXML = 51206400 EMU). Insets are ST_Coordinate32 (xsd:int) and MAY be
+        // negative — PowerPoint uses a small negative lIns/tIns/rIns/bIns to let
+        // text bleed slightly past the shape box (seen in the wild as lIns="-1").
+        // The prior ParseEmuAsInt rejected any negative inset, which aborted the
+        // whole `add shape` op on round-trip (and, for a grouped shape, threw off
+        // the group's child count → a cascade of "Shape N not found in group").
         const int MaxInsetEmu = 51206400;
+        static int ParseInset(string raw)
+        {
+            var v = Core.EmuConverter.ParseEmu(raw); // long; allows negative
+            if (Math.Abs(v) > MaxInsetEmu)
+                throw new ArgumentException($"Inset value {v} EMU exceeds maximum allowed magnitude ({MaxInsetEmu} EMU / ~142cm).");
+            return (int)v;
+        }
 
         var parts = value.Split(',');
         if (parts.Length == 1)
         {
-            var emu = Core.EmuConverter.ParseEmuAsInt(parts[0]);
-            if (emu > MaxInsetEmu)
-                throw new ArgumentException($"Inset value {emu} EMU exceeds maximum allowed ({MaxInsetEmu} EMU / ~142cm).");
+            var emu = ParseInset(parts[0]);
             bodyPr.LeftInset = emu;
             bodyPr.TopInset = emu;
             bodyPr.RightInset = emu;
@@ -459,9 +627,13 @@ public partial class PowerPointHandler
             {
                 var raw = parts[i].Trim();
                 if (raw == "-" || raw.Length == 0) continue;
+<<<<<<< HEAD
                 var v = Core.EmuConverter.ParseEmuAsInt(raw);
                 if (v > MaxInsetEmu)
                     throw new ArgumentException($"Inset value {v} EMU exceeds maximum allowed ({MaxInsetEmu} EMU / ~142cm).");
+=======
+                var v = ParseInset(raw);
+>>>>>>> upstream/main
                 switch (i)
                 {
                     case 0: bodyPr.LeftInset = v; break;
@@ -481,25 +653,65 @@ public partial class PowerPointHandler
         value.ToLowerInvariant() switch
         {
             "left" or "l" => Drawing.TextAlignmentTypeValues.Left,
-            "center" or "c" => Drawing.TextAlignmentTypeValues.Center,
+            "center" or "c" or "ctr" => Drawing.TextAlignmentTypeValues.Center,
             "right" or "r" => Drawing.TextAlignmentTypeValues.Right,
-            "justify" or "j" => Drawing.TextAlignmentTypeValues.Justified,
-            _ => throw new ArgumentException($"Invalid align: {value}. Use: left, center, right, justify")
+            "justify" or "j" or "just" => Drawing.TextAlignmentTypeValues.Justified,
+            // OOXML ST_TextAlignType also defines justLow (low-justify),
+            // dist (distributed) and thaiDist (Thai distributed). Get emits the
+            // raw token for these (the shape-level readback passes them through),
+            // so accept both the token and a friendly alias to keep round-trip.
+            "justlow" => Drawing.TextAlignmentTypeValues.JustifiedLow,
+            "dist" or "distributed" => Drawing.TextAlignmentTypeValues.Distributed,
+            "thdist" or "thaidist" or "thaidistributed" => Drawing.TextAlignmentTypeValues.ThaiDistributed,
+            _ => throw new ArgumentException($"Invalid align: {value}. Use: left, center, right, justify, justLow, dist, thDist")
         };
 
     /// <summary>
     /// Apply list style (bullet/numbered) to ParagraphProperties.
     /// Values: "bullet" or "•", "numbered" or "1", "alpha" or "a", "roman" or "i", "none"
     /// </summary>
-    private static void ApplyListStyle(Drawing.ParagraphProperties pProps, string value)
+    private static void ApplyListStyle(Drawing.ParagraphProperties pProps, string value,
+                                       bool preserveIndent = false)
     {
+        // Validate and construct FIRST — an invalid value must throw before
+        // any mutation. Stripping the existing bullet group ahead of the
+        // value check left a half-mutated DOM behind the invalid_value error,
+        // and the single-command path autosaves the dirty DOM on Dispose, so
+        // the paragraph's explicit "no bullet" override was silently lost.
+        OpenXmlElement bullet = value.ToLowerInvariant() switch
+        {
+            "bullet" or "•" or "disc" => new Drawing.CharacterBullet { Char = "•" },
+            "dash" or "-" or "–" => new Drawing.CharacterBullet { Char = "–" },
+            "arrow" or ">" or "→" => new Drawing.CharacterBullet { Char = "→" },
+            "check" or "✓" => new Drawing.CharacterBullet { Char = "✓" },
+            "star" or "★" => new Drawing.CharacterBullet { Char = "★" },
+            "numbered" or "number" or "1" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.ArabicPeriod },
+            "alpha" or "a" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.AlphaLowerCharacterPeriod },
+            "alphaupper" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.AlphaUpperCharacterPeriod },
+            "roman" or "i" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.RomanLowerCharacterPeriod },
+            "romanupper" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.RomanUpperCharacterPeriod },
+            "none" or "false" => new Drawing.NoBullet(),
+            _ => value.Length <= 2
+                ? new Drawing.CharacterBullet { Char = value }
+                : throw new ArgumentException($"Invalid list style: {value}. Use: bullet, numbered, alpha, roman, none, or a single character"),
+        };
+
         pProps.RemoveAllChildren<Drawing.CharacterBullet>();
         pProps.RemoveAllChildren<Drawing.AutoNumberedBullet>();
         pProps.RemoveAllChildren<Drawing.NoBullet>();
         pProps.RemoveAllChildren<Drawing.BulletFont>();
 
-        switch (value.ToLowerInvariant())
+        // CONSISTENCY(schema-order-pptx): bu* children rank BEFORE tabLst and
+        // defRPr in CT_TextParagraphProperties — a pPr that already carries
+        // <a:defRPr> (kern/spacing set first) must not get the bullet appended
+        // after it, or PowerPoint silently ignores it and the strict validator
+        // flags the file. Route through InsertPPrChild like every other pPr
+        // child injection.
+        InsertPPrChild(pProps, bullet);
+
+        if (bullet is Drawing.NoBullet)
         {
+<<<<<<< HEAD
             case "bullet" or "•" or "disc":
                 pProps.AppendChild(new Drawing.CharacterBullet { Char = "•" });
                 break;
@@ -541,6 +753,19 @@ public partial class PowerPointHandler
                 else
                     throw new ArgumentException($"Invalid list style: {value}. Use: bullet, numbered, alpha, roman, none, or a single character");
                 break;
+=======
+            // Interactive convenience: removing the bullet also clears the
+            // hanging indent. Skipped when the same property bag carries an
+            // explicit indent/marginLeft — key-iteration order is
+            // undefined, so list=none must not erase a sibling indent=0pt
+            // that was (or will be) applied in the same Set call.
+            if (!preserveIndent)
+            {
+                pProps.LeftMargin = null;
+                pProps.Indent = null;
+            }
+            return;
+>>>>>>> upstream/main
         }
 
         // Apply default hanging indent for bullet/numbered lists (matches PowerPoint defaults)
@@ -592,7 +817,13 @@ public partial class PowerPointHandler
             "moon" => Drawing.ShapeTypeValues.Moon,
             "arc" => Drawing.ShapeTypeValues.Arc,
             "donut" => Drawing.ShapeTypeValues.Donut,
-            "nosmoking" or "blockarc" => Drawing.ShapeTypeValues.NoSmoking,
+            // blockArc is NOT noSmoking: blockArc (ST_ShapeType.blockArc) carries
+            // three adjust handles (adj1/adj2/adj3), noSmoking carries one (adj).
+            // Collapsing blockArc → NoSmoking emitted <a:prstGeom prst="noSmoking">
+            // with three <a:gd> children, which is schema-invalid for noSmoking and
+            // makes PowerPoint refuse the whole file. Let blockArc fall through to
+            // the reflection lookup, which resolves Drawing.ShapeTypeValues.BlockArc.
+            "nosmoking" => Drawing.ShapeTypeValues.NoSmoking,
             "cube" => Drawing.ShapeTypeValues.Cube,
             "can" or "cylinder" => Drawing.ShapeTypeValues.Can,
             "line" => Drawing.ShapeTypeValues.Line,
@@ -657,8 +888,28 @@ public partial class PowerPointHandler
         foreach (var p in props)
         {
             if (p.PropertyType != typeof(Drawing.ShapeTypeValues)) continue;
+<<<<<<< HEAD
             if (string.Equals(p.Name, lower, StringComparison.OrdinalIgnoreCase))
                 return (Drawing.ShapeTypeValues?)p.GetValue(null);
+=======
+            // Match on the C# property name (e.g. "RoundRectangle") first.
+            if (string.Equals(p.Name, lower, StringComparison.OrdinalIgnoreCase))
+                return (Drawing.ShapeTypeValues?)p.GetValue(null);
+            // …then on the OOXML serialized token (e.g. "round2SameRect"),
+            // which is what dump emits and is what the prstGeom@prst attribute
+            // actually uses. The C# property name diverges from the token for
+            // many presets (Round2SameRectangle → round2SameRect, RoundRectangle
+            // → roundRect, …), so matching only the property name dropped every
+            // such preset to the Rectangle degrade. Read the token the same way
+            // NodeBuilder does — via the rendered Preset.InnerText.
+            var value = (Drawing.ShapeTypeValues?)p.GetValue(null);
+            if (value != null)
+            {
+                var token = new Drawing.PresetGeometry { Preset = value }.Preset?.InnerText;
+                if (string.Equals(token, lower, StringComparison.OrdinalIgnoreCase))
+                    return value;
+            }
+>>>>>>> upstream/main
         }
         return null;
     }
@@ -716,6 +967,28 @@ public partial class PowerPointHandler
                 $"Invalid line end type: '{name}'. Valid values: triangle, arrow, stealth, diamond, oval, none.")
         };
 
+<<<<<<< HEAD
+=======
+    // R4-5: map a size token to the @w (width) and @len (length) line-end enums.
+    // CT_LineEndProperties models width and length as SEPARATE enums, so resolve
+    // both. Returns false for an unrecognized token.
+    private static bool TryParseLineEndSize(string value,
+        out Drawing.LineEndWidthValues width, out Drawing.LineEndLengthValues length)
+    {
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "small" or "sm" or "s":
+                width = Drawing.LineEndWidthValues.Small; length = Drawing.LineEndLengthValues.Small; return true;
+            case "medium" or "med" or "m":
+                width = Drawing.LineEndWidthValues.Medium; length = Drawing.LineEndLengthValues.Medium; return true;
+            case "large" or "lg" or "l" or "big":
+                width = Drawing.LineEndWidthValues.Large; length = Drawing.LineEndLengthValues.Large; return true;
+            default:
+                width = Drawing.LineEndWidthValues.Medium; length = Drawing.LineEndLengthValues.Medium; return false;
+        }
+    }
+
+>>>>>>> upstream/main
     // full prstDash enum (was clipped to 6 of 11 values; sysDot/sysDash/
     // sysDashDot/sysDashDotDot/lgDashDotDot threw "Invalid lineDash"). Mirrors
     // ST_PresetLineDashVal (DrawingML §20.1.10.49). Accepts canonical OOXML

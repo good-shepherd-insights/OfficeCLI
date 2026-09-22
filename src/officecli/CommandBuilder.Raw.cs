@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -31,7 +35,7 @@ static partial class CommandBuilder
         rawCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(rawFileArg)!;
-            var partPath = result.GetValue(rawPathArg)!;
+            var partPath = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(rawPathArg)!)!;
             var startRow = result.GetValue(rawStartOpt);
             var endRow = result.GetValue(rawEndOpt);
             var rawColsStr = result.GetValue(rawColsOpt);
@@ -76,7 +80,7 @@ static partial class CommandBuilder
         rawSetCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(rawSetFileArg)!;
-            var partPath = result.GetValue(rawSetPartArg)!;
+            var partPath = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(rawSetPartArg)!)!;
             var xpath = result.GetValue(rawSetXpathOpt)!;
             var action = result.GetValue(rawSetActionOpt)!;
             var xml = result.GetValue(rawSetXmlOpt);
@@ -102,7 +106,13 @@ static partial class CommandBuilder
                 ReportNewErrors(handler, errorsBefore, warnings);
             }
             NotifyWatch(handler, file.FullName, null);
-            return warnings is { Count: > 0 } ? 1 : 0;
+            // The edit IS applied when the SDK validator gains new errors — the
+            // validator is advisory (it flags element order Word itself accepts),
+            // so raw-set stays the escape hatch and never rolls back. Report
+            // "applied with caveats" as exit 2, the same code add/set use for
+            // unsupported_property. Exit 1 read as "failed, retry", and a retry
+            // appended the content a second time (issue #374).
+            return warnings is { Count: > 0 } ? 2 : 0;
         }, json); });
 
         return rawSetCommand;
@@ -122,7 +132,7 @@ static partial class CommandBuilder
         addPartCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(addPartFileArg)!;
-            var parent = result.GetValue(addPartParentArg)!;
+            var parent = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(addPartParentArg)!)!;
             var type = result.GetValue(addPartTypeOpt)!;
 
             if (TryResident(file, req =>
@@ -144,7 +154,8 @@ static partial class CommandBuilder
                 ReportNewErrors(handler, errorsBefore, warnings);
             }
             NotifyWatch(handler, file, null);
-            return 0;
+            // Same contract as raw-set: applied, validator caveats → exit 2.
+            return warnings is { Count: > 0 } ? 2 : 0;
         }, json); });
 
         return addPartCommand;

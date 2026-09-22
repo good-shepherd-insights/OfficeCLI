@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -52,9 +56,27 @@ public partial class WordHandler
                                 @"opacity=""[^""]*""", $@"opacity=""{value}""");
                             break;
                         case "rotation":
+<<<<<<< HEAD
                             xml = System.Text.RegularExpressions.Regex.Replace(xml,
                                 @"rotation\s*:\s*-?\d+(?:\.\d+)?", $@"rotation:{value}");
                             break;
+=======
+                        {
+                            // Normalize into 0-360 (schema: -45 → 315) and
+                            // reject non-numeric input; mirrors AddWatermark.
+                            if (!double.TryParse(value,
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture, out var wmSetRot))
+                                throw new ArgumentException(
+                                    $"Invalid 'rotation' value: '{value}'. Expected a number in degrees (e.g. 315 or -45).");
+                            wmSetRot %= 360;
+                            if (wmSetRot < 0) wmSetRot += 360;
+                            var wmSetRotStr = wmSetRot.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                            xml = System.Text.RegularExpressions.Regex.Replace(xml,
+                                @"rotation\s*:\s*-?\d+(?:\.\d+)?", $@"rotation:{wmSetRotStr}");
+                            break;
+                        }
+>>>>>>> upstream/main
                         case "size":
                             // BUG-R36-B3: font-size on the v:textpath. Accept bare or pt-suffixed.
                             var sz = value.EndsWith("pt", StringComparison.OrdinalIgnoreCase) ? value : value + "pt";
@@ -129,9 +151,15 @@ public partial class WordHandler
         // CONSISTENCY(chart-position-set): same vocabulary as Excel and
         // PPTX. x/y are silently dropped (flagged as unsupported) since
         // inline mode has no absolute position.
+<<<<<<< HEAD
         if (!isSeriesPath && chartInfo.Inline != null)
         {
             ApplyWordChartPositionSet(chartInfo.Inline, chartProps, unsupported);
+=======
+        if (!isSeriesPath && chartInfo.Container != null)
+        {
+            ApplyWordChartPositionSet(chartInfo, chartProps, unsupported);
+>>>>>>> upstream/main
             // Drop ALL position keys (x/y/width/height) from chartProps
             // after handling — unsupported ones were already reported by
             // ApplyWordChartPositionSet. Forwarding them to ChartHelper
@@ -371,6 +399,10 @@ public partial class WordHandler
                 // accept the same set or `--prop code=...` becomes silent
                 // unsupported here while it succeeds on Add.
                 case "instruction" or "instr" or "code":
+<<<<<<< HEAD
+=======
+                    OfficeCli.Core.ParseHelpers.ValidateXmlText(value, "instr");
+>>>>>>> upstream/main
                     field.InstrCode.Text = value.StartsWith(" ") ? value : $" {value} ";
                     // Auto-mark dirty when instruction changes
                     var beginCharI = field.BeginRun.GetFirstChild<FieldChar>();
@@ -591,12 +623,51 @@ public partial class WordHandler
         var markRPr = pProps.ParagraphMarkRunProperties ?? pProps.AppendChild(new ParagraphMarkRunProperties());
         foreach (var (key, value) in properties)
         {
+<<<<<<< HEAD
+=======
+            // foreach iterates the base Dictionary enumerator, which bypasses the
+            // TrackingPropertyDictionary override — register each iterated key so
+            // genuinely-consumed props aren't reported as false unsupported_property.
+            properties.ContainsKey(key);
+>>>>>>> upstream/main
             if (key.Equals("text", StringComparison.OrdinalIgnoreCase)) continue;
             // BUG-DUMP-R42-1: `referenceStyle` is consumed at note-creation time
             // (AddFootnote/AddEndnote stamps it as the ref-mark run's <w:rStyle>).
             // It is not a paragraph/run format key, so skip it here rather than
             // reporting it as unsupported.
             if (key.Equals("referenceStyle", StringComparison.OrdinalIgnoreCase)) continue;
+<<<<<<< HEAD
+=======
+            // referenceRPr / referenceMarkRPr are consumed at note-creation time
+            // (AddFootnote/AddEndnote rebuild the reference runs from them).
+            if (key.Equals("referenceRPr", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("referenceMarkRPr", StringComparison.OrdinalIgnoreCase)) continue;
+            // referenceCustomMark / referenceCustomMarkFollows are likewise
+            // consumed at note-creation time (AddFootnote/AddEndnote stamp the
+            // body ref run's w:customMarkFollows + sibling <w:t> glyph). The dump
+            // forwards both on every custom-mark note, so without this skip a
+            // round-trip falsely reports them as unsupported_property.
+            if (key.Equals("referenceCustomMark", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("referenceCustomMarkFollows", StringComparison.OrdinalIgnoreCase)) continue;
+            // Explicit paragraph-mark-only formatting (the dotted markRPr.* form
+            // the dump forwards from the note's first paragraph) writes ONLY to
+            // the ¶ mark, never to the content runs — mirrors ApplyCommentFormatKeys.
+            if (key.StartsWith("markRPr.", StringComparison.OrdinalIgnoreCase))
+            {
+                ApplyRunFormatting(markRPr, key.Substring("markRPr.".Length), value);
+                continue;
+            }
+            // BUG-DUMP: an explicit empty `style` means the source note paragraph
+            // had no pStyle. Strip AddFootnote/AddEndnote's hard-coded
+            // FootnoteText/EndnoteText default so the note inherits the document
+            // default paragraph style (and its spacing) like the source did.
+            if (key.Equals("style", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrEmpty(value))
+            {
+                pProps.RemoveAllChildren<ParagraphStyleId>();
+                continue;
+            }
+>>>>>>> upstream/main
             if (ApplyParagraphLevelProperty(pProps, key, value)) continue;
             bool runApplied = false;
             foreach (var run in contentRuns)
@@ -645,8 +716,20 @@ public partial class WordHandler
         var markRPr = pProps.ParagraphMarkRunProperties ?? pProps.AppendChild(new ParagraphMarkRunProperties());
         foreach (var (key, value) in properties)
         {
+<<<<<<< HEAD
             var lk = key.ToLowerInvariant();
             if (lk == "text" || lk == "author" || lk == "initials" || lk == "date") continue;
+=======
+            // Register each iterated key with the tracking comparer (foreach uses
+            // the base Dictionary enumerator, bypassing the tracking override).
+            properties.ContainsKey(key);
+            var lk = key.ToLowerInvariant();
+            // done/resolved (w15:done) + parentId (w15:paraIdParent) are handled
+            // by SetElementComment / AddComment against commentsExtended.xml, not
+            // here — skip so they aren't mis-flagged as unsupported comment props.
+            if (lk == "text" || lk == "author" || lk == "initials" || lk == "date"
+                || lk == "done" || lk == "resolved" || lk == "parentid") continue;
+>>>>>>> upstream/main
             // BUG-DUMP-R45-3: explicit paragraph-mark-only formatting (the dotted
             // `markRPr.*` form Navigation emits when the source comment paragraph
             // genuinely carries a <w:pPr><w:rPr>). Writes ONLY to the ¶ mark,
@@ -754,8 +837,18 @@ public partial class WordHandler
         var unsupported = new List<string>();
         var secIdxStr = secSetMatch.Groups[1].Success ? secSetMatch.Groups[1].Value
             : (secSetMatch.Groups[2].Success ? secSetMatch.Groups[2].Value : "1");
+<<<<<<< HEAD
         var secIdx = int.Parse(secIdxStr);
         var sectionProps = FindSectionProperties();
+=======
+        var sectionProps = FindSectionProperties();
+        // /section[last()] resolves to the final section (mirrors p[last()]).
+        // On an empty doc (no sectPr yet) last() falls through to 1 so the
+        // auto-create-section-1 branch below still fires.
+        var secIdx = secIdxStr.Equals("last()", StringComparison.OrdinalIgnoreCase)
+            ? (sectionProps.Count >= 1 ? sectionProps.Count : 1)
+            : int.Parse(secIdxStr);
+>>>>>>> upstream/main
 
         // If no section properties exist and requesting section 1, create one
         if (sectionProps.Count == 0 && secIdx == 1)
@@ -868,8 +961,13 @@ public partial class WordHandler
                     // Equal-width columns: "3" or "3,720" (count,space in twips)
                     var eqCols = EnsureColumns(sectPr);
                     var colParts = value.Split(',');
+<<<<<<< HEAD
                     if (!short.TryParse(colParts[0], out var colCount) || colCount < 1)
                         throw new ArgumentException($"Invalid 'columns' value: '{value}'. Expected a positive integer (>= 1), optionally followed by ',space' (e.g. '3' or '3,720').");
+=======
+                    if (!short.TryParse(colParts[0], out var colCount) || colCount < 1 || colCount > 45)
+                        throw new ArgumentException($"Invalid 'cols' value: '{value}'. cols must be between 1 and 45 (OOXML CT_Columns/@num MaxInclusive=45), optionally followed by ',space' (e.g. '3' or '3,720').");
+>>>>>>> upstream/main
                     eqCols.ColumnCount = (Int16Value)colCount;
                     eqCols.EqualWidth = true;
                     if (colParts.Length > 1)
@@ -1053,9 +1151,18 @@ public partial class WordHandler
                     // TrySetSectionLayout — countBy can be set without
                     // touching restart mode. Auto-create LineNumberType with
                     // restart=continuous when it doesn't exist yet.
+<<<<<<< HEAD
                     if (!int.TryParse(value, out var ncb) || ncb < 1)
                         throw new ArgumentException(
                             $"Invalid lineNumberCountBy value: '{value}'. Must be a positive integer.");
+=======
+                    // BUGFIX (NumericBoundaryScanTests): CountBy is an Int16; a
+                    // value above 32767 silently overflowed the (short) cast to a
+                    // negative number → schema-invalid w:countBy. Bound the range.
+                    if (!int.TryParse(value, out var ncb) || ncb < 1 || ncb > 32767)
+                        throw new ArgumentException(
+                            $"Invalid lineNumberCountBy value: '{value}'. Must be a positive integer (1-32767).");
+>>>>>>> upstream/main
                     var lnNum = sectPr.GetFirstChild<LineNumberType>();
                     if (lnNum == null)
                     {
@@ -1142,6 +1249,22 @@ public partial class WordHandler
                     TrySetFootnoteEndnoteNumProps(sectPr, key, value);
                     break;
                 }
+<<<<<<< HEAD
+=======
+                case "pgborders" or "pageborders":
+                case var pgK when pgK.StartsWith("pgborders.", StringComparison.OrdinalIgnoreCase)
+                              || pgK.StartsWith("pageborders.", StringComparison.OrdinalIgnoreCase):
+                {
+                    // CONSISTENCY(add-set-symmetry): pgBorders is implemented in
+                    // TrySetSectionLayout (used by /-path Add); the /section[N]
+                    // and /body/sectPr Set paths must accept the same vocabulary.
+                    // Normalize pageborders→pgborders alias before delegating.
+                    var keyLc = key.ToLowerInvariant().Replace("pageborders", "pgborders");
+                    if (!TrySetSectionLayout(keyLc, value))
+                        unsupported.Add(key);
+                    break;
+                }
+>>>>>>> upstream/main
                 default:
                     // Generic dotted "element.attr=value" fallback (pgSz.orient,
                     // pgMar.top, cols.num, …). Same helper as paragraph/run
@@ -1654,6 +1777,22 @@ public partial class WordHandler
                 continue;
             }
 
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(style-snaptogrid-pPr): see AddStyle (BUG-DUMP-STYLE-SNAPGRID).
+            // snapToGrid is dual-valid (CT_PPr + CT_RPr); for a paragraph/table
+            // style it disables grid-snapping for the whole paragraph and must
+            // land in pPr. ApplyRunFormatting below would mis-route it to rPr, so
+            // intercept it here first. Character styles fall through to rPr.
+            if (string.Equals(key, "snapToGrid", StringComparison.OrdinalIgnoreCase)
+                && (style.Type?.Value == StyleValues.Paragraph || style.Type?.Value == StyleValues.Table))
+            {
+                var pPrSnap = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                pPrSnap.SnapToGrid = new SnapToGrid { Val = OnOffValue.FromBoolean(IsTruthy(value)) };
+                continue;
+            }
+
+>>>>>>> upstream/main
             var rPrProbeFmt = new StyleRunProperties();
             if (ApplyRunFormatting(rPrProbeFmt, key, value))
             {
@@ -1846,6 +1985,10 @@ public partial class WordHandler
                 }
                 case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
                 case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right" or "border.between" or "border.bar":
+<<<<<<< HEAD
+=======
+                case "border.color" or "border.sz" or "border.size" or "border.space" or "border.val" or "border.style":
+>>>>>>> upstream/main
                 {
                     var pPrB = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     ApplyStyleParagraphBorders(pPrB, key, value);

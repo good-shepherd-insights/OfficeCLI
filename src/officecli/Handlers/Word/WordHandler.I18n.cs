@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -77,12 +81,35 @@ public partial class WordHandler
 
         var markRPr = pProps.ParagraphMarkRunProperties
             ?? EnsureParagraphMarkRunPropertiesInSchemaOrder(pProps);
+<<<<<<< HEAD
         ApplyRunFormatting(markRPr, "direction", rtl ? "rtl" : "ltr");
+=======
+        if (rtl)
+        {
+            ApplyRunFormatting(markRPr, "direction", "rtl");
+        }
+        else
+        {
+            // CONSISTENCY(rtl-cascade): paragraph-level flip to ltr clears
+            // run/mark-level <w:rtl/> outright. Direct run-level direction=ltr
+            // (see ApplyRunFormatting) emits explicit val=0 to override
+            // inherited RTL; here the cascade owns the override at the
+            // paragraph layer, so child runs do not each need to repeat it.
+            markRPr.RemoveAllChildren<RightToLeftText>();
+        }
+>>>>>>> upstream/main
 
         foreach (var run in paragraph.Descendants<Run>())
         {
             var rPr = EnsureRunProperties(run);
+<<<<<<< HEAD
             ApplyRunFormatting(rPr, "direction", rtl ? "rtl" : "ltr");
+=======
+            if (rtl)
+                ApplyRunFormatting(rPr, "direction", "rtl");
+            else
+                rPr.RemoveAllChildren<RightToLeftText>();
+>>>>>>> upstream/main
         }
     }
 
@@ -258,6 +285,7 @@ public partial class WordHandler
             format["size.cs"] = $"{szCsHalfPt / 2.0:0.##}pt";
         }
 
+<<<<<<< HEAD
         // bold.cs / italic.cs — boolean OnOff toggles. Honor the Val attribute:
         // <w:bCs val="false"/> exists in the rPrChange-driven flow when Set
         // explicitly turns the CS toggle off (parity with bare bold/italic
@@ -275,5 +303,26 @@ public partial class WordHandler
         if (iCsEl != null && (iCsEl.Val == null || iCsEl.Val.Value)
             && !format.ContainsKey("italic.cs"))
             format["italic.cs"] = true;
+=======
+        // bold.cs / italic.cs — boolean OnOff toggles. Emit the bool value
+        // whenever the element is PRESENT (mirrors bare bold/italic via
+        // IsToggleOn): on when val is absent/true, OFF when val="0"/false.
+        // BUG-DUMP-BCS-FALSE: emitting only when ON dropped an explicit
+        // <w:bCs w:val="0"/> — a run that turns complex-script bold OFF to
+        // override a bold paragraph/style. On round-trip the override
+        // vanished and the run re-inherited the style's bold, rendering
+        // Arabic/RTL text bold when the source was non-bold (COP-13 heading
+        // runs). The element's presence is the signal to round-trip; its
+        // value carries on/off, exactly like bare bold.
+        var bCsEl = primary?.GetFirstChild<BoldComplexScript>()
+            ?? fallback?.GetFirstChild<BoldComplexScript>();
+        if (bCsEl != null && !format.ContainsKey("bold.cs"))
+            format["bold.cs"] = bCsEl.Val == null || bCsEl.Val.Value;
+
+        var iCsEl = primary?.GetFirstChild<ItalicComplexScript>()
+            ?? fallback?.GetFirstChild<ItalicComplexScript>();
+        if (iCsEl != null && !format.ContainsKey("italic.cs"))
+            format["italic.cs"] = iCsEl.Val == null || iCsEl.Val.Value;
+>>>>>>> upstream/main
     }
 }

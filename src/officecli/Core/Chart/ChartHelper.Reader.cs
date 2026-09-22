@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -12,6 +16,25 @@ internal static partial class ChartHelper
 {
     // ==================== Chart Readback ====================
 
+<<<<<<< HEAD
+=======
+    // BUG-DUMP-CHART-AXID-UNSIGNED: c:axId/@val is xsd:unsignedInt, but Word
+    // routinely emits values >= 2^31 in their signed-overflow text form (e.g.
+    // "-1880390128" = unsigned 2414577168). UInt32Value.Value throws a
+    // FormatException on the negative string, which previously crashed the ENTIRE
+    // document dump (Error: input string '-1880390128' was not in a correct
+    // format). Read the raw text and reinterpret leniently so axis-rank mapping
+    // (the only consumer) survives; Word opens such files fine.
+    private static uint? SafeAxisIdVal(C.AxisId? ax)
+    {
+        var raw = ax?.Val?.InnerText;
+        if (string.IsNullOrEmpty(raw)) return null;
+        if (uint.TryParse(raw, out var u)) return u;
+        if (long.TryParse(raw, out var l)) return unchecked((uint)l);
+        return null;
+    }
+
+>>>>>>> upstream/main
     internal static void ReadChartProperties(C.Chart chart, DocumentNode node, int depth)
     {
         var plotArea = chart.GetFirstChild<C.PlotArea>();
@@ -28,6 +51,47 @@ internal static partial class ChartHelper
                 ?.GetFirstChild<Drawing.Level1ParagraphProperties>();
             if (rootLvl1?.RightToLeft?.HasValue == true)
                 node.Format["direction"] = rootLvl1.RightToLeft.Value ? "rtl" : "ltr";
+<<<<<<< HEAD
+=======
+
+            // chartSpace-level default text properties (<c:txPr> directly
+            // under c:chartSpace) set the base font for EVERY chart element
+            // — an 18pt default reshapes axis labels, legend and plot-area
+            // proportions. Carry it verbatim (*Raw family) so dump→replay
+            // preserves the base font.
+            if (rootTxPr != null)
+                node.InternalFormat["chartTxPrRaw"] = rootTxPr.OuterXml;
+
+            // 3D wall/floor elements — sources hide the wall grid with
+            // <a:ln><a:noFill/> spPr; without carrying them the rebuilt 3D
+            // chart shows PowerPoint's default wall outlines.
+            var chartForWalls = chartSpace.GetFirstChild<C.Chart>();
+            if (chartForWalls != null)
+            {
+                var floorEl2 = chartForWalls.GetFirstChild<C.Floor>();
+                if (floorEl2?.HasChildren == true)
+                    node.InternalFormat["floorRaw"] = floorEl2.InnerXml;
+                var sideWallEl = chartForWalls.GetFirstChild<C.SideWall>();
+                if (sideWallEl?.HasChildren == true)
+                    node.InternalFormat["sideWallRaw"] = sideWallEl.InnerXml;
+                var backWallEl = chartForWalls.GetFirstChild<C.BackWall>();
+                if (backWallEl?.HasChildren == true)
+                    node.InternalFormat["backWallRaw"] = backWallEl.InnerXml;
+            }
+
+            // 1904 date epoch flag — Builder always writes an explicit
+            // <c:date1904>, so only the non-default true needs surfacing.
+            if (chartSpace.GetFirstChild<C.Date1904>()?.Val?.Value == true)
+                node.Format["date1904"] = "true";
+
+            // Chart style number (<c:style val="N"/>, or the mc:Fallback
+            // form when the source wraps it in AlternateContent). Drives
+            // gridline tint / effect defaults in real PowerPoint.
+            var styleEl = chartSpace.Elements<C.Style>().FirstOrDefault()
+                ?? chartSpace.Descendants<C.Style>().FirstOrDefault();
+            if (styleEl?.Val?.HasValue == true)
+                node.Format["chartStyle"] = styleEl.Val.Value.ToString();
+>>>>>>> upstream/main
         }
 
         var chartType = DetectChartType(plotArea);
@@ -88,6 +152,20 @@ internal static partial class ChartHelper
                     _ => null,
                 };
                 if (ctLabel == null) continue;
+<<<<<<< HEAD
+=======
+                // Grouping-qualified tokens (columnstacked / areapercentstacked
+                // …) so a combo whose groups are stacked doesn't replay as
+                // clustered/standard. BuildComboGroup parses the suffix back.
+                if (ctLabel is "column" or "bar" or "area" or "line")
+                {
+                    var grp = ct is C.BarChart bch2
+                        ? bch2.GetFirstChild<C.BarGrouping>()?.Val?.InnerText
+                        : ct.GetFirstChild<C.Grouping>()?.Val?.InnerText;
+                    if (grp == "stacked") ctLabel += "stacked";
+                    else if (grp == "percentStacked") ctLabel += "percentstacked";
+                }
+>>>>>>> upstream/main
                 var serCount = ct.Elements<OpenXmlCompositeElement>()
                     .Count(e => e.LocalName == "ser");
                 for (int i = 0; i < serCount; i++) typesPerSeries.Add(ctLabel);
@@ -108,7 +186,15 @@ internal static partial class ChartHelper
         }
 
         var titleEl = chart.GetFirstChild<C.Title>();
+<<<<<<< HEAD
         var titleText = titleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+=======
+        // Concatenate ALL text runs — a styled title splits its text across
+        // multiple <a:r> runs and taking only the first truncated it
+        // ("Stacked column mixed with…" → "Stacked ").
+        var titleRuns = titleEl?.Descendants<Drawing.Text>().Select(t => t.Text).ToList();
+        var titleText = titleRuns is { Count: > 0 } ? string.Concat(titleRuns) : null;
+>>>>>>> upstream/main
         if (titleText == null && titleEl != null)
         {
             // BuildChartTitle routes single-cell-reference values (e.g. "Q1",
@@ -118,6 +204,32 @@ internal static partial class ChartHelper
             // 'title' get readback isn't silently empty.
             var strRefFormula = titleEl.Descendants<C.Formula>().FirstOrDefault()?.Text;
             if (!string.IsNullOrEmpty(strRefFormula)) titleText = strRefFormula;
+<<<<<<< HEAD
+=======
+
+            // Auto-title: an empty <c:title> with autoTitleDeleted=0 makes
+            // real PowerPoint title a SINGLE-series chart with the series
+            // name. Surface that resolved name so dump→replay keeps the
+            // rendered title (the rebuilt chart writes it as literal text).
+            if (titleText == null
+                && chart.GetFirstChild<C.AutoTitleDeleted>()?.Val?.Value != true)
+            {
+                var serEls = plotArea.Descendants<OpenXmlCompositeElement>()
+                    .Where(e => e.LocalName == "ser").ToList();
+                if (serEls.Count == 1)
+                {
+                    var serName = serEls[0].GetFirstChild<C.SeriesText>()
+                        ?.Descendants<C.NumericValue>().FirstOrDefault()?.Text;
+                    if (!string.IsNullOrEmpty(serName)) titleText = serName;
+                }
+                // Multi-series auto-title: PowerPoint renders its localized
+                // "Chart Title" placeholder. No literal text can reproduce
+                // that locale-dependent string — signal the builder to write
+                // an empty <c:title/> + autoTitleDeleted=0 instead.
+                if (titleText == null)
+                    node.Format["autoTitle"] = "true";
+            }
+>>>>>>> upstream/main
         }
         if (titleText != null) node.Format["title"] = titleText;
 
@@ -213,15 +325,27 @@ internal static partial class ChartHelper
                     || titleDefRp.GetAttributes().Any(a => a.LocalName is "i" or "u"));
                 bool hasAlgn = titlePPr.GetAttributes().Any(a => a.LocalName == "algn");
                 if (defRpMeaningful || hasAlgn)
+<<<<<<< HEAD
                     node.Format["title.pPr"] = titlePPr.OuterXml;
+=======
+                    node.InternalFormat["title.pPr"] = titlePPr.OuterXml;
+>>>>>>> upstream/main
             }
         }
 
         var legend = chart.GetFirstChild<C.Legend>();
         if (legend != null)
         {
+<<<<<<< HEAD
             var posRaw = legend.GetFirstChild<C.LegendPosition>()?.Val?.HasValue == true
                 ? legend.GetFirstChild<C.LegendPosition>()!.Val!.InnerText : "b";
+=======
+            // Absent <c:legendPos> → ECMA-376 CT_LegendPos default is "r"
+            // (right), which is what real PowerPoint renders. Only an explicit
+            // val overrides this.
+            var posRaw = legend.GetFirstChild<C.LegendPosition>()?.Val?.HasValue == true
+                ? legend.GetFirstChild<C.LegendPosition>()!.Val!.InnerText : "r";
+>>>>>>> upstream/main
             node.Format["legend"] = posRaw switch
             {
                 "b" => "bottom",
@@ -231,6 +355,21 @@ internal static partial class ChartHelper
                 "tr" => "topRight",
                 _ => posRaw
             };
+<<<<<<< HEAD
+=======
+            // Per-entry legend deletion (<c:legendEntry><c:idx/><c:delete val="1"/>).
+            // The Setter writes these (legendEntry{N}.delete) but the Reader had
+            // no read site, so the Get-driven dump silently reverted a hidden
+            // legend entry on round-trip. Key uses 1-based ordinal = source idx+1,
+            // matching the Setter's legendEntry{N} parse (N → idx N-1).
+            foreach (var le in legend.Elements<C.LegendEntry>())
+            {
+                var leIdx = le.GetFirstChild<C.Index>()?.Val;
+                var leDel = le.GetFirstChild<C.Delete>()?.Val;
+                if (leDel?.HasValue == true && leDel.Value && leIdx?.HasValue == true)
+                    node.Format[$"legendEntry{leIdx.Value + 1}.delete"] = "true";
+            }
+>>>>>>> upstream/main
         }
         else
         {
@@ -243,15 +382,24 @@ internal static partial class ChartHelper
         // (c:barChart, c:lineChart, ...). Using Descendants pulled the first
         // series-level <c:dLbls> instead when it appeared earlier in XML order,
         // causing chart-level labelFont readback to mirror series 1's font.
+<<<<<<< HEAD
         var dataLabels = plotArea.ChildElements
+=======
+        var labelGroup = plotArea.ChildElements
+>>>>>>> upstream/main
             .OfType<OpenXmlCompositeElement>()
             .Where(e => e is C.BarChart || e is C.LineChart || e is C.PieChart
                 || e is C.AreaChart || e is C.Area3DChart || e is C.ScatterChart
                 || e is C.DoughnutChart || e is C.Bar3DChart || e is C.Line3DChart
                 || e is C.Pie3DChart || e is C.OfPieChart || e is C.BubbleChart
                 || e is C.RadarChart || e is C.StockChart)
+<<<<<<< HEAD
             .Select(g => g.GetFirstChild<C.DataLabels>())
             .FirstOrDefault(d => d != null);
+=======
+            .FirstOrDefault(g => g.GetFirstChild<C.DataLabels>() != null);
+        var dataLabels = labelGroup?.GetFirstChild<C.DataLabels>();
+>>>>>>> upstream/main
         if (dataLabels != null)
         {
             var parts = new List<string>();
@@ -270,7 +418,23 @@ internal static partial class ChartHelper
                 // up with our canonical-value rule (Get returns truth, Set
                 // accepts friendly aliases). Friendly forms like "insideEnd"
                 // remain accepted on the Set side via the alias map.
+<<<<<<< HEAD
                 node.Format["labelPos"] = dlPos.InnerText;
+=======
+                //
+                // ST_DLblPosPie restricts pie/pie3D to {bestFit, ctr, inEnd,
+                // inBase}. A pie chart can still carry a stored outEnd/t/b/l/r
+                // (Word silently treats it as bestFit), but emitting that value
+                // would make a dump→batch replay reject the whole `add chart`
+                // op and drop the chart. Suppress the invalid-for-pie value on
+                // dump so the chart round-trips; the position is non-semantic
+                // for pie anyway.
+                var posText = dlPos.InnerText;
+                var isPieGroup = labelGroup is C.PieChart or C.Pie3DChart;
+                var pieValid = posText is "bestFit" or "ctr" or "inEnd" or "inBase";
+                if (!isPieGroup || pieValid)
+                    node.Format["labelPos"] = posText;
+>>>>>>> upstream/main
             }
         }
 
@@ -343,6 +507,16 @@ internal static partial class ChartHelper
         {
             node.Format["gridlines"] = "true";
             ReadGridlineDetail(majorGL, node, "gridline");
+<<<<<<< HEAD
+=======
+            // BUG-DUMP: the granular gridlineColor reads only the solidFill's
+            // base scheme/rgb value and drops a:lumMod/a:lumOff (a tx1 gridline
+            // tinted to 85% light gray rebuilt as solid black) plus the line's
+            // cap/cmpd/algn/join. Capture the gridline <c:spPr> verbatim — same
+            // approach as valAx.spPr — so the tint and line geometry round-trip.
+            var majorGLSpPr = GetSpPrChildXml(majorGL);
+            if (majorGLSpPr != null) node.InternalFormat["gridline.spPr"] = majorGLSpPr;
+>>>>>>> upstream/main
         }
         else if (valAxisForGrid != null)
         {
@@ -353,6 +527,11 @@ internal static partial class ChartHelper
         {
             node.Format["minorGridlines"] = "true";
             ReadGridlineDetail(minorGL, node, "minorGridline");
+<<<<<<< HEAD
+=======
+            var minorGLSpPr = GetSpPrChildXml(minorGL);
+            if (minorGLSpPr != null) node.InternalFormat["minorGridline.spPr"] = minorGLSpPr;
+>>>>>>> upstream/main
         }
 
         // GapWidth / Overlap from bar/column chart
@@ -367,6 +546,34 @@ internal static partial class ChartHelper
         if (barChart?.GetFirstChild<C.SeriesLines>() != null)
             node.Format["serLines"] = "true";
 
+<<<<<<< HEAD
+=======
+        // gapDepth (3D bar/line/area chart depth spacing). Setter writes
+        // <c:gapDepth> on the 3D chart group but the Reader had no read site,
+        // so dump→replay dropped it. Only present on 3D charts, so Descendants
+        // is unambiguous; emit only when the element exists (non-default).
+        var gapDepthEl = plotArea.Descendants<C.GapDepth>().FirstOrDefault();
+        if (gapDepthEl?.Val?.HasValue == true)
+            node.Format["gapDepth"] = gapDepthEl.Val.Value.ToString();
+
+        // Category-axis position (<c:catAx><c:axPos>). Setter's axisPosition
+        // writes it on the category axis; the Reader never read it back, so a
+        // non-default (top/left/right) tick position reverted to the bottom
+        // default on dump→replay. axPos is a required element (always present),
+        // so emit only when it differs from the category-axis default "b" to
+        // avoid newly stamping axisPosition onto every existing chart's dump.
+        var catAxisPos = plotArea.GetFirstChild<C.CategoryAxis>()
+            ?.GetFirstChild<C.AxisPosition>()?.Val;
+        if (catAxisPos?.HasValue == true && catAxisPos.InnerText != "b")
+            node.Format["axisPosition"] = catAxisPos.InnerText switch
+            {
+                "t" => "top",
+                "l" => "left",
+                "r" => "right",
+                _ => "bottom",
+            };
+
+>>>>>>> upstream/main
         // CONSISTENCY(bar3d-shape): emit barShape so Set/Add shape=cone|cylinder|...
         // round-trips through Get. Lives on <c:bar3DChart><c:shape>.
         var bar3dForShape = plotArea.GetFirstChild<C.Bar3DChart>();
@@ -414,23 +621,41 @@ internal static partial class ChartHelper
         var catAxisForTxPr = (OpenXmlElement?)plotArea.GetFirstChild<C.CategoryAxis>()
             ?? plotArea.GetFirstChild<C.DateAxis>();
         var catAxTxPrXml = GetTxPrChildXml(catAxisForTxPr);
+<<<<<<< HEAD
         if (catAxTxPrXml != null) node.Format["catAx.txPr"] = catAxTxPrXml;
         var valAxTxPrXml = GetTxPrChildXml(valAxisForGrid);
         if (valAxTxPrXml != null) node.Format["valAx.txPr"] = valAxTxPrXml;
+=======
+        if (catAxTxPrXml != null) node.InternalFormat["catAx.txPr"] = catAxTxPrXml;
+        var valAxTxPrXml = GetTxPrChildXml(valAxisForGrid);
+        if (valAxTxPrXml != null) node.InternalFormat["valAx.txPr"] = valAxTxPrXml;
+>>>>>>> upstream/main
 
         // Secondary axis — emit the 1-based series indices bound to the
         // secondary axis so dump→replay round-trips. The Setter expects
         // "1,3" form (series indices); emitting bare "true" silently failed
         // parsing on replay because every comma-split token tried as int
         // produced [-1] then was filtered out.
+<<<<<<< HEAD
         var valAxes = plotArea.Elements<C.ValueAxis>().ToList();
         if (valAxes.Count > 1)
+=======
+        // R16-8: scatter and bubble charts inherently use two value axes
+        // (X + Y), not a primary/secondary split. Reporting secondaryAxis for
+        // them is a phantom readback that corrupts dump→replay. Skip them.
+        var valAxes = plotArea.Elements<C.ValueAxis>().ToList();
+        if (valAxes.Count > 1 && chartType is not ("scatter" or "bubble"))
+>>>>>>> upstream/main
         {
             // Map AxisId -> rank by document order; rank 0 = primary, 1 = secondary.
             var axisRank = new Dictionary<uint, int>();
             for (int ai = 0; ai < valAxes.Count; ai++)
             {
+<<<<<<< HEAD
                 var axId = valAxes[ai].GetFirstChild<C.AxisId>()?.Val?.Value;
+=======
+                var axId = SafeAxisIdVal(valAxes[ai].GetFirstChild<C.AxisId>());
+>>>>>>> upstream/main
                 if (axId.HasValue) axisRank[axId.Value] = ai;
             }
             // Walk every series across every chart-type child of plotArea;
@@ -450,7 +675,11 @@ internal static partial class ChartHelper
                     // element's c:axId children; primary vs secondary depends
                     // on which value-axis those IDs match.
                     var binds = seriesAxisIds
+<<<<<<< HEAD
                         .Select(a => a.Val?.Value)
+=======
+                        .Select(a => SafeAxisIdVal(a))
+>>>>>>> upstream/main
                         .Where(v => v.HasValue && axisRank.ContainsKey(v.Value))
                         .Select(v => axisRank[v!.Value]);
                     if (binds.Any(r => r >= 1)) secIdx.Add(seriesIdx);
@@ -502,6 +731,7 @@ internal static partial class ChartHelper
             node.Format["yaxis.labelRotation"] = deg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
 
+<<<<<<< HEAD
         // Axis titles
         var valAxis = plotArea.GetFirstChild<C.ValueAxis>();
         var valAxisTitle = valAxis?.GetFirstChild<C.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
@@ -510,6 +740,32 @@ internal static partial class ChartHelper
         var catAxis = plotArea.GetFirstChild<C.CategoryAxis>();
         var catAxisTitle = catAxis?.GetFirstChild<C.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
         if (catAxisTitle != null) node.Format["catTitle"] = catAxisTitle;
+=======
+        // Axis titles. Capture the title paragraph's <a:pPr> verbatim alongside
+        // the text: like the chart title, the axis-title builder (BuildChartTitle)
+        // hard-codes the run to 14pt bold, so a source axis title sized only on
+        // its defRPr (e.g. sz=800 b=0) rebuilt oversized and bold. The .pPr key
+        // carries the source styling so the replay restores it.
+        var valAxis = plotArea.GetFirstChild<C.ValueAxis>();
+        var valAxisTitleEl = valAxis?.GetFirstChild<C.Title>();
+        var valAxisTitle = valAxisTitleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        if (valAxisTitle != null)
+        {
+            node.Format["axisTitle"] = valAxisTitle;
+            var vPPr = valAxisTitleEl!.Descendants<Drawing.ParagraphProperties>().FirstOrDefault();
+            if (vPPr != null && AxisTitlePPrMeaningful(vPPr)) node.InternalFormat["axisTitle.pPr"] = vPPr.OuterXml;
+        }
+
+        var catAxis = plotArea.GetFirstChild<C.CategoryAxis>();
+        var catAxisTitleEl = catAxis?.GetFirstChild<C.Title>();
+        var catAxisTitle = catAxisTitleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        if (catAxisTitle != null)
+        {
+            node.Format["catTitle"] = catAxisTitle;
+            var cPPr = catAxisTitleEl!.Descendants<Drawing.ParagraphProperties>().FirstOrDefault();
+            if (cPPr != null && AxisTitlePPrMeaningful(cPPr)) node.InternalFormat["catTitle.pPr"] = cPPr.OuterXml;
+        }
+>>>>>>> upstream/main
 
         // CONSISTENCY(cat-axis-type): emit the category-axis kind so Add/Set
         // can round-trip `catAxisType=date|category`. Default omitted when
@@ -558,11 +814,19 @@ internal static partial class ChartHelper
         // present). These fragments reference theme colours (round-tripped via
         // the theme part) and carry NO external relationships.
         var valAxSpPrXml = GetSpPrChildXml(valAxis);
+<<<<<<< HEAD
         if (valAxSpPrXml != null) node.Format["valAx.spPr"] = valAxSpPrXml;
         var catAxSpPrXml = GetSpPrChildXml(catAxis);
         if (catAxSpPrXml != null) node.Format["catAx.spPr"] = catAxSpPrXml;
         var plotAreaSpPrXml = GetSpPrChildXml(plotArea);
         if (plotAreaSpPrXml != null) node.Format["plotArea.spPr"] = plotAreaSpPrXml;
+=======
+        if (valAxSpPrXml != null) node.InternalFormat["valAx.spPr"] = valAxSpPrXml;
+        var catAxSpPrXml = GetSpPrChildXml(catAxis);
+        if (catAxSpPrXml != null) node.InternalFormat["catAx.spPr"] = catAxSpPrXml;
+        var plotAreaSpPrXml = GetSpPrChildXml(plotArea);
+        if (plotAreaSpPrXml != null) node.InternalFormat["plotArea.spPr"] = plotAreaSpPrXml;
+>>>>>>> upstream/main
 
         // Axis visibility (c:delete)
         var valAxisDelete = valAxis?.GetFirstChild<C.Delete>();
@@ -707,6 +971,15 @@ internal static partial class ChartHelper
                 csOutline = csCSpPr?.GetFirstChild<Drawing.Outline>();
             }
             if (csOutline != null) ReadOutlineDetail(csOutline, node, "chartArea.border");
+<<<<<<< HEAD
+=======
+            // Verbatim chartSpace <c:spPr> — like plotArea.spPr, the granular
+            // chartArea.border.color reads only the base scheme value and drops
+            // a:lumMod/a:lumOff (a tx1 frame tinted light gray rebuilt black).
+            // Capture the frame fill + border verbatim so the tint round-trips.
+            var chartAreaSpPr = chart.Parent != null ? GetSpPrChildXml(chart.Parent) : null;
+            if (chartAreaSpPr != null) node.InternalFormat["chartArea.spPr"] = chartAreaSpPr;
+>>>>>>> upstream/main
         }
 
         // Chart-type-specific
@@ -784,7 +1057,11 @@ internal static partial class ChartHelper
             if (dlDefRp != null)
             {
                 if (dlDefRp.FontSize?.HasValue == true)
+<<<<<<< HEAD
                     // CONSISTENCY(canonical-units / project CLAUDE.md): font
+=======
+                    // CONSISTENCY(canonical-units / the project conventions): font
+>>>>>>> upstream/main
                     // sizes emit pt-qualified ("12pt"). Round-trip via labelFont.size
                     // accepts both "12" and "12pt" on input.
                     node.Format["labelFont.size"] = $"{dlDefRp.FontSize.Value / 100}pt";
@@ -908,14 +1185,95 @@ internal static partial class ChartHelper
                 if (serEl != null && IsReferenceLineSeries(serEl))
                     seriesNode.Format["refLine"] = "true";
 
+<<<<<<< HEAD
+=======
+                // Source c:idx / c:order — PowerPoint keys the theme accent
+                // cycle (and stack order) off these, not off document
+                // position. A combo dump reorders series by chart-group, so
+                // rebuilding with positional idx recolors every series.
+                if (serEl != null)
+                {
+                    var srcIdx = serEl.Elements<C.Index>().FirstOrDefault()?.Val?.Value;
+                    if (srcIdx != null && srcIdx.Value != (uint)i)
+                        seriesNode.Format["seriesIdx"] = srcIdx.Value.ToString();
+                    var srcOrder = serEl.Elements<C.Order>().FirstOrDefault()?.Val?.Value;
+                    if (srcOrder != null && srcOrder.Value != (uint)i)
+                        seriesNode.Format["seriesOrder"] = srcOrder.Value.ToString();
+                }
+
+                // Source series with no explicit color (no <c:spPr> at all,
+                // OR an spPr that only sets geometry like <a:ln w=…> without
+                // any fill) inherit their color from the theme accent cycle.
+                // Flag it so a replay suppresses the DefaultSeriesColors
+                // injection (which would pin a modern Office palette over
+                // the deck's own theme colors). Consumed by
+                // SeriesWithNoCapturedFill via series{N}.inheritFill.
+                if (serEl != null)
+                {
+                    var serSpPrEl = serEl.GetFirstChild<C.ChartShapeProperties>();
+                    bool hasExplicitColor = serSpPrEl != null
+                        && serSpPrEl.Descendants().Any(d => d.LocalName
+                            is "solidFill" or "gradFill" or "pattFill" or "blipFill" or "noFill");
+                    if (!hasExplicitColor)
+                        seriesNode.Format["inheritFill"] = "true";
+                }
+
+>>>>>>> upstream/main
                 // Cell reference formulas (for series with NumberReference/StringReference)
                 if (serEl != null)
                 {
                     var valRef = ReadFormulaRef(serEl.GetFirstChild<C.Values>());
+<<<<<<< HEAD
                     if (valRef != null) seriesNode.Format["valuesRef"] = valRef;
                     var catRef = ReadFormulaRef(serEl.GetFirstChild<C.CategoryAxisData>());
                     if (catRef != null) seriesNode.Format["categoriesRef"] = catRef;
 
+=======
+                    // Scatter/bubble series carry their numeric magnitude in
+                    // <c:yVal>, not <c:val>. Without surfacing the yVal ref the
+                    // Excel emitter's "all series have valuesRef" gate fails and
+                    // the chart replays as disconnected literals (bubbles pile
+                    // at x=0). The Builder maps info.ValuesRef → yVal on replay.
+                    valRef ??= ReadFormulaRef(serEl.GetFirstChild<C.YValues>());
+                    if (valRef != null) seriesNode.Format["valuesRef"] = valRef;
+
+                    // Source numCache formatCode (e.g. #,##0). Data labels
+                    // with numFmt sourceLinked=1 render THIS format — losing
+                    // it drops thousands separators ("220,000" → "220000").
+                    var valCacheFmt = serEl.GetFirstChild<C.Values>()
+                        ?.GetFirstChild<C.NumberReference>()
+                        ?.GetFirstChild<C.NumberingCache>()
+                        ?.GetFirstChild<C.FormatCode>()?.Text;
+                    if (!string.IsNullOrEmpty(valCacheFmt) && valCacheFmt != "General")
+                        seriesNode.Format["valuesNumFmt"] = valCacheFmt;
+                    var catRef = ReadFormulaRef(serEl.GetFirstChild<C.CategoryAxisData>());
+                    // Scatter/bubble store their X range under <c:xVal>, not
+                    // <c:cat>. The Builder rewrites xVal from info.CategoriesRef
+                    // on replay, so surface the xVal ref as categoriesRef to keep
+                    // the X axis live-linked to the source cells.
+                    catRef ??= ReadFormulaRef(serEl.GetFirstChild<C.XValues>());
+                    if (catRef != null) seriesNode.Format["categoriesRef"] = catRef;
+
+                    // Sparse series: the source numCache/numLit may hold
+                    // points at non-contiguous idx positions (blank cells in
+                    // the source range — e.g. pts at idx 1,2 of ptCount 4).
+                    // ReadAllSeries compacts them, so a replay would place
+                    // every value at idx 0..n-1 and shift the points left.
+                    // Surface the dense zero-padded value list plus the blank
+                    // index list (0-based) so the batch emitter can rebuild
+                    // the exact point placement via series{N}._blankIndexes.
+                    var sparseValEl = (OpenXmlCompositeElement?)serEl.GetFirstChild<C.Values>()
+                        ?? serEl.GetFirstChild<C.YValues>();
+                    var sparse = ReadSparseNumericData(sparseValEl);
+                    if (sparse != null)
+                    {
+                        seriesNode.Format["values"] = string.Join(",",
+                            sparse.Value.padded.Select(v => v.ToString("G",
+                                System.Globalization.CultureInfo.InvariantCulture)));
+                        seriesNode.Format["blankIndexes"] = string.Join(",", sparse.Value.blanks);
+                    }
+
+>>>>>>> upstream/main
                     // R44 major-2: scatter series carry X data under <c:xVal>
                     // (not <c:cat>). ReadAllSeries returns only Y values; surface
                     // X here so series.Format["x"] round-trips for scatter charts.
@@ -970,7 +1328,11 @@ internal static partial class ChartHelper
                 {
                     var rawSpPr = serEl.GetFirstChild<C.ChartShapeProperties>();
                     if (rawSpPr != null && HasMeaningfulStyling(rawSpPr))
+<<<<<<< HEAD
                         seriesNode.Format["spPr"] = rawSpPr.OuterXml;
+=======
+                        seriesNode.InternalFormat["spPr"] = rawSpPr.OuterXml;
+>>>>>>> upstream/main
 
                     var rawDpts = serEl.Elements<C.DataPoint>()
                         .Where(dp => dp.GetFirstChild<C.ChartShapeProperties>() != null
@@ -981,18 +1343,34 @@ internal static partial class ChartHelper
                     if (rawDpts.Count > 0)
                         // \x1e (record separator) joins the dPt fragments; it can
                         // never appear inside XML, so a literal split is safe.
+<<<<<<< HEAD
                         seriesNode.Format["dPt"] = string.Join("\x1e", rawDpts);
+=======
+                        // Stored in InternalFormat — verbatim OOXML is a dump→
+                        // batch replay carrier, not user-facing Get output. The
+                        // canonical per-point readback lives at point{N}.color/
+                        // etc. below.
+                        seriesNode.InternalFormat["dPt"] = string.Join("\x1e", rawDpts);
+>>>>>>> upstream/main
 
                     var rawDLbls = serEl.GetFirstChild<C.DataLabels>();
                     // Only round-trip dLbls verbatim when it carries rich styling
                     // (numFmt / spPr / txPr). A bare show-flag-only <c:dLbls> is
                     // already reconstructed by the existing dataLabels= readback,
                     // and replaying it verbatim would just duplicate that work.
+<<<<<<< HEAD
+=======
+                    // InternalFormat: same rationale as dPt above.
+>>>>>>> upstream/main
                     if (rawDLbls != null
                         && (rawDLbls.GetFirstChild<C.NumberingFormat>() != null
                             || rawDLbls.GetFirstChild<C.ChartShapeProperties>() != null
                             || rawDLbls.GetFirstChild<C.TextProperties>() != null))
+<<<<<<< HEAD
                         seriesNode.Format["dLbls"] = rawDLbls.OuterXml;
+=======
+                        seriesNode.InternalFormat["dLbls"] = rawDLbls.OuterXml;
+>>>>>>> upstream/main
                 }
 
                 var serSpPr = serEl?.GetFirstChild<C.ChartShapeProperties>();
@@ -1002,7 +1380,20 @@ internal static partial class ChartHelper
                 // setter side re-applies NoFill.
                 if (serSpPr?.GetFirstChild<Drawing.NoFill>() != null)
                     seriesNode.Format["color"] = "none";
+<<<<<<< HEAD
                 var serColor = serSpPr?.GetFirstChild<Drawing.SolidFill>();
+=======
+                // Line-based series (line/scatter/radar) carry their color on
+                // the line stroke (<a:ln><a:solidFill>). Read it FIRST; fall
+                // back to the bare <a:solidFill> for backward-compat with
+                // files authored before the stroke-color fix.
+                var serIsLineBased = serEl?.Parent?.LocalName
+                    is "lineChart" or "scatterChart" or "radarChart";
+                Drawing.SolidFill? serColor = null;
+                if (serIsLineBased)
+                    serColor = serSpPr?.GetFirstChild<Drawing.Outline>()?.GetFirstChild<Drawing.SolidFill>();
+                serColor ??= serSpPr?.GetFirstChild<Drawing.SolidFill>();
+>>>>>>> upstream/main
                 if (serColor != null)
                 {
                     var colorVal = ReadColorFromFill(serColor);
@@ -1039,9 +1430,17 @@ internal static partial class ChartHelper
                 var prstDash = outline?.GetFirstChild<Drawing.PresetDash>();
                 if (prstDash?.Val?.HasValue == true)
                     seriesNode.Format["lineDash"] = prstDash.Val.InnerText;
+<<<<<<< HEAD
                 // Outline color
                 var outlineFill = outline?.GetFirstChild<Drawing.SolidFill>();
                 if (outlineFill != null)
+=======
+                // Outline color. For line-based series the stroke solidFill is
+                // already surfaced as the series `color` above, so don't also
+                // emit it as `outlineColor` (would double-encode the same value).
+                var outlineFill = outline?.GetFirstChild<Drawing.SolidFill>();
+                if (outlineFill != null && !serIsLineBased)
+>>>>>>> upstream/main
                 {
                     var outColor = ReadColorFromFill(outlineFill);
                     if (outColor != null) seriesNode.Format["outlineColor"] = outColor;
@@ -1101,6 +1500,19 @@ internal static partial class ChartHelper
                     if (dispRSqr?.HasValue == true && dispRSqr.Value) seriesNode.Format["trendline.dispRSqr"] = "true";
                     var dispEq = firstTl.GetFirstChild<C.DisplayEquation>()?.Val;
                     if (dispEq?.HasValue == true && dispEq.Value) seriesNode.Format["trendline.dispEq"] = "true";
+<<<<<<< HEAD
+=======
+                    // Forecast forward/backward + manual intercept. Previously
+                    // unread, so dump→replay silently dropped them even though
+                    // the Setter accepts trendline.forecastforward/backward/
+                    // intercept. Emitted below via the chart-level fan-out keys.
+                    var fwd = firstTl.GetFirstChild<C.Forward>()?.Val;
+                    if (fwd?.HasValue == true) seriesNode.Format["trendline.forward"] = fwd.Value;
+                    var bwd = firstTl.GetFirstChild<C.Backward>()?.Val;
+                    if (bwd?.HasValue == true) seriesNode.Format["trendline.backward"] = bwd.Value;
+                    var icpt = firstTl.GetFirstChild<C.Intercept>()?.Val;
+                    if (icpt?.HasValue == true) seriesNode.Format["trendline.intercept"] = icpt.Value;
+>>>>>>> upstream/main
                     // CONSISTENCY(trendline-name-readback): the Setter writes
                     // a <c:trendlineLbl> with rich-text holding the user's
                     // name. Pull the text content back for Get parity.
@@ -1163,9 +1575,41 @@ internal static partial class ChartHelper
                                 var numStr = firstPt?.GetFirstChild<C.NumericValue>()?.Text;
                                 if (!string.IsNullOrEmpty(numStr)) mag = numStr;
                             }
+<<<<<<< HEAD
                             seriesNode.Format["errBars"] = mag != null
                                 ? $"{typeName}:{mag}"
                                 : typeName;
+=======
+                            // Emit direction prefix when it's needed to keep
+                            // round-trip lossless. plus/minus always carry the
+                            // prefix (they're meaningful only with explicit
+                            // direction). For ebDir=both, prefix when the type
+                            // is the "bare direction" default (stdErr — the
+                            // shape Setter produces from `errBars=both`), so
+                            // Get round-trips "both:stdErr" back to the same
+                            // input. Other types under direction=both stay
+                            // implicit ("fixed:5") to preserve the prior
+                            // R55-tested output for non-directional input.
+                            // Always prefix the direction so Set/Get round-trip
+                            // is lossless. R41's earlier guard `typeName ==
+                            // "stdErr"` was too narrow: `both:fixed:5` and
+                            // `both:percentage:10` carry ebDir=both with a
+                            // non-stdErr type, and dropped the prefix on
+                            // readback. Always emitting `both:` for explicit-
+                            // direction Build paths keeps the form recoverable.
+                            // (Sets without an explicit direction keyword
+                            // still default to ebDir=both at Build time, so
+                            // their readback also picks up the prefix — that's
+                            // intentional now that R43 asserts the explicit
+                            // round-trip form.)
+                            var ebDir = errBars.GetFirstChild<C.ErrorBarType>()?.Val?.InnerText;
+                            var dirPrefix = ebDir is "plus" or "minus" or "both"
+                                ? ebDir + ":"
+                                : "";
+                            seriesNode.Format["errBars"] = mag != null
+                                ? $"{dirPrefix}{typeName}:{mag}"
+                                : $"{dirPrefix}{typeName}";
+>>>>>>> upstream/main
                         }
                     }
                 }
@@ -1194,6 +1638,18 @@ internal static partial class ChartHelper
                     if (serDLbls.GetFirstChild<C.ShowPercent>()?.Val?.Value == true) dlFlags.Add("percent");
                     if (dlFlags.Count > 0)
                         seriesNode.Format["dataLabels"] = string.Join(",", dlFlags);
+<<<<<<< HEAD
+=======
+
+                    // Carry the whole <c:dLbls> verbatim whenever present —
+                    // per-point dLbl, numFmt, separator, positions AND the
+                    // plain show flags all ride it (the flag summary above is
+                    // Get-friendly but was never replayed; a 3D bar's
+                    // showVal=1 was silently dropped). The per-series
+                    // `series{N}.dlbls` Set case re-inserts it in schema
+                    // order.
+                    seriesNode.Format["dlbls"] = serDLbls.OuterXml;
+>>>>>>> upstream/main
                 }
                 var serDlDefRp = serDLbls?.GetFirstChild<C.TextProperties>()
                     ?.GetFirstChild<Drawing.Paragraph>()
@@ -1511,7 +1967,11 @@ internal static partial class ChartHelper
     /// line width in points, and dash style name. Colors come back as 6-digit hex without
     /// the '#' prefix; dash name is the OOXML PresetLineDashValues InnerText (e.g. "sysDash").
     /// </summary>
+<<<<<<< HEAD
     internal static List<(string Name, double Value, string Color, double WidthPt, string Dash)> ReadReferenceLines(C.PlotArea plotArea)
+=======
+    internal static List<(string Name, double Value, string Color, double WidthPt, string Dash)> ReadReferenceLines(C.PlotArea plotArea, Dictionary<string, string>? themeColors = null)
+>>>>>>> upstream/main
     {
         var result = new List<(string, double, string, double, string)>();
         foreach (var lineChart in plotArea.Elements<C.LineChart>())
@@ -1537,10 +1997,28 @@ internal static partial class ChartHelper
                 var widthEmu = outline?.Width?.Value ?? 19050;
                 var widthPt = widthEmu / EmuConverter.EmuPerPointF;
 
+<<<<<<< HEAD
                 // Color: solidFill srgbClr val
                 var color = "FF0000";
                 var srgb = outline?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
                 if (!string.IsNullOrEmpty(srgb)) color = srgb;
+=======
+                // Color: solidFill srgbClr hex, or schemeClr resolved through the theme map
+                // (this secondary reader previously handled only srgbClr, so a themed reference
+                // line fell back to the red default instead of its accent color).
+                var color = "FF0000";
+                var refFill = outline?.GetFirstChild<Drawing.SolidFill>();
+                var srgb = refFill?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+                if (!string.IsNullOrEmpty(srgb))
+                    color = srgb;
+                else if (refFill?.GetFirstChild<Drawing.SchemeColor>()?.Val?.InnerText is string schemeName
+                         && themeColors != null)
+                {
+                    var canonical = ParseHelpers.NormalizeSchemeColorName(schemeName) ?? schemeName;
+                    if (themeColors.TryGetValue(canonical, out var hex) || themeColors.TryGetValue(schemeName, out hex))
+                        color = hex;
+                }
+>>>>>>> upstream/main
 
                 var dashVal = outline?.GetFirstChild<Drawing.PresetDash>()?.Val;
                 var dash = dashVal?.InnerText ?? "dash";
@@ -1626,6 +2104,49 @@ internal static partial class ChartHelper
                 .ToArray();
         }
 
+<<<<<<< HEAD
+=======
+        // Numeric category axes: Excel/PowerPoint emit <c:numRef>/<c:numLit> when
+        // the category labels are numbers (years, quarters, etc). Without these
+        // branches the axis labels render blank. Mirror ReadNumericData's chain.
+        var numRef = catData.GetFirstChild<C.NumberReference>();
+        var numCache = numRef?.GetFirstChild<C.NumberingCache>();
+        if (numCache != null)
+        {
+            return numCache.Elements<C.NumericPoint>()
+                .OrderBy(p => p.Index?.Value ?? 0)
+                .Select(p => p.GetFirstChild<C.NumericValue>()?.Text ?? "")
+                .ToArray();
+        }
+
+        var numLit = catData.GetFirstChild<C.NumberLiteral>();
+        if (numLit != null)
+        {
+            return numLit.Elements<C.NumericPoint>()
+                .OrderBy(p => p.Index?.Value ?? 0)
+                .Select(p => p.GetFirstChild<C.NumericValue>()?.Text ?? "")
+                .ToArray();
+        }
+
+        // Multi-level (grouped) category axis (<c:multiLvlStrRef>, emitted when Excel
+        // grouped row/column headers feed the category axis). PowerPoint draws a
+        // hierarchical axis; the FIRST <c:lvl> holds the innermost, per-point labels
+        // nearest the axis (later lvls are coarser groupings). The single-level renderer
+        // surfaces that innermost level (the grouping rows are a known limitation).
+        // Without this branch all category labels rendered blank.
+        var multiLvlRef = catData.Elements().FirstOrDefault(e => e.LocalName == "multiLvlStrRef");
+        var multiCache = multiLvlRef?.Elements().FirstOrDefault(e => e.LocalName == "multiLvlStrCache");
+        var firstLvl = multiCache?.Elements().FirstOrDefault(e => e.LocalName == "lvl");
+        if (firstLvl != null)
+        {
+            return firstLvl.Elements().Where(e => e.LocalName == "pt")
+                .OrderBy(p => uint.TryParse(
+                    p.GetAttributes().FirstOrDefault(a => a.LocalName == "idx").Value, out var n) ? n : 0u)
+                .Select(p => p.Elements().FirstOrDefault(e => e.LocalName == "v")?.InnerText ?? "")
+                .ToArray();
+        }
+
+>>>>>>> upstream/main
         // StringReference without cache — return null (data lives in cells)
         // The formula is read separately via ReadFormulaRef
         return null;
@@ -1723,6 +2244,44 @@ internal static partial class ChartHelper
         return result;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Detect a sparse numeric point list (fewer points than ptCount, i.e.
+    /// blank source cells) inside a val/yVal's numCache or numLit. Returns
+    /// the dense zero-padded value array plus the 0-based blank indexes, or
+    /// null when the data is dense (or absent / malformed).
+    /// </summary>
+    internal static (double[] padded, int[] blanks)? ReadSparseNumericData(OpenXmlCompositeElement? valElement)
+    {
+        if (valElement == null) return null;
+        var container = (OpenXmlCompositeElement?)valElement
+                .GetFirstChild<C.NumberReference>()?.GetFirstChild<C.NumberingCache>()
+            ?? valElement.GetFirstChild<C.NumberLiteral>();
+        if (container == null) return null;
+        var ptCount = (int?)container.GetFirstChild<C.PointCount>()?.Val?.Value ?? -1;
+        var pts = container.Elements<C.NumericPoint>().ToList();
+        if (ptCount <= 0 || pts.Count == 0 || pts.Count >= ptCount) return null;
+        var byIdx = new Dictionary<int, double>();
+        foreach (var pt in pts)
+        {
+            if (pt.Index?.Value is not uint uidx || uidx >= (uint)ptCount) return null;
+            double.TryParse(pt.GetFirstChild<C.NumericValue>()?.Text,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v);
+            byIdx[(int)uidx] = v;
+        }
+        var padded = new double[ptCount];
+        var blanks = new List<int>();
+        for (int i = 0; i < ptCount; i++)
+        {
+            if (byIdx.TryGetValue(i, out var v)) padded[i] = v;
+            else blanks.Add(i);
+        }
+        return (padded, blanks.ToArray());
+    }
+
+>>>>>>> upstream/main
     internal static double[]? ReadNumericData(OpenXmlCompositeElement? valElement)
     {
         if (valElement == null) return null;
@@ -2049,6 +2608,31 @@ internal static partial class ChartHelper
     /// <summary>
     /// Read font spec from TextProperties: returns "SIZE:COLOR:FONTNAME" format or null.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // An axis title's <a:pPr> is worth round-tripping when its defRPr carries
+    // explicit font/size/weight/style/color — i.e. anything that differs from
+    // the builder's hard-coded 14pt-bold default — or the paragraph itself sets
+    // alignment. Unlike the chart-title check, size (sz) and weight (b) count:
+    // axis titles are typically smaller and non-bold, and that is exactly the
+    // styling the builder loses.
+    private static bool AxisTitlePPrMeaningful(Drawing.ParagraphProperties pPr)
+    {
+        var defRp = pPr.GetFirstChild<Drawing.DefaultRunProperties>();
+        if (defRp != null)
+        {
+            if (defRp.FontSize?.HasValue == true || defRp.Bold?.HasValue == true
+                || defRp.Italic?.HasValue == true)
+                return true;
+            if (defRp.ChildElements.Any(c => c.LocalName is "solidFill" or "latin" or "ea" or "cs"))
+                return true;
+            if (defRp.GetAttributes().Any(a => a.LocalName is "u" or "strike"))
+                return true;
+        }
+        return pPr.GetAttributes().Any(a => a.LocalName == "algn");
+    }
+
+>>>>>>> upstream/main
     private static string? ReadFontSpec(C.TextProperties textProperties)
     {
         var defRp = textProperties.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
@@ -2063,7 +2647,11 @@ internal static partial class ChartHelper
         var fill = defRp.GetFirstChild<Drawing.SolidFill>();
         var color = ReadColorFromFill(fill);
         // Canonical: hex colors are emitted with the "#" prefix (project
+<<<<<<< HEAD
         // CLAUDE.md). Earlier this stripped "#" via TrimStart, breaking the
+=======
+        // the project conventions). Earlier this stripped "#" via TrimStart, breaking the
+>>>>>>> upstream/main
         // canonical form for axisFont / legendFont compound readback.
         parts.Add(color ?? "");
 

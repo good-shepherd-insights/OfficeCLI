@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "ole",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["embed", "object", "oleobject"],
+>>>>>>> upstream/main
   "parent": "slide",
   "operations": {
     "add": true,

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -568,6 +572,17 @@ internal static partial class PivotTableHelper
             // Set-time scope (seeded from existing state earlier if not passed).
             if (onAxis && !ActiveDefaultSubtotal)
                 pf.DefaultSubtotal = false;
+<<<<<<< HEAD
+=======
+
+            // Items were removed + re-appended above. Any pre-existing
+            // fillDownLabels extLst (placed AFTER the old items by AddTable)
+            // now precedes the new items — CT_PivotField requires
+            // items → autoSortScope → extLst, so an out-of-order extLst makes
+            // real Excel refuse the file (0x800A03EC). Move it back to last.
+            var pfExtLst = pf.GetFirstChild<PivotFieldExtensionList>();
+            if (pfExtLst != null) { pfExtLst.Remove(); pf.AppendChild(pfExtLst); }
+>>>>>>> upstream/main
         }
 
         // Layer 2: Rebuild area reference lists

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -21,15 +25,22 @@ public partial class PowerPointHandler
         var slidePartsN = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slidePartsN.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slidePartsN.Count})");
+<<<<<<< HEAD
         var notesPart = EnsureNotesSlidePart(slidePartsN[slideIdx - 1]);
         var unsupportedN = new List<string>();
         // Pull the notes body shape (idx=1 placeholder) so run-level keys
+=======
+        var notesPart = EnsureNotesSlidePart(slidePartsN[PathIndex.ToArrayIndex(slideIdx)]);
+        var unsupportedN = new List<string>();
+        // Pull the notes body shape (type=body placeholder) so run-level keys
+>>>>>>> upstream/main
         // (lang, lang.*, font, size, color, …) route through the same
         // SetRunOrShapeProperties pipeline as regular slide shapes.
         // CONSISTENCY(notes-shape-set): notes had its own bespoke key
         // handling that recognised only text/direction; other run keys
         // surfaced as UNSUPPORTED. The notes body is just a Shape — it
         // should accept the full run-attr surface.
+<<<<<<< HEAD
         Shape? notesBody = null;
         var notesShapeTree = notesPart.NotesSlide?.CommonSlideData?.ShapeTree;
         if (notesShapeTree != null)
@@ -40,13 +51,20 @@ public partial class PowerPointHandler
                 if (ph?.Index?.Value == 1) { notesBody = sh; break; }
             }
         }
+=======
+        var notesBody = FindNotesBodyShape(notesPart.NotesSlide?.CommonSlideData?.ShapeTree);
+>>>>>>> upstream/main
 
         var deferredRunProps = new Dictionary<string, string>();
         foreach (var (key, value) in properties)
         {
             if (key.Equals("text", StringComparison.OrdinalIgnoreCase))
             {
+<<<<<<< HEAD
                 XmlTextValidator.ValidateOrThrow(value, "text");
+=======
+                XmlTextValidator.ValidateOrThrow(value, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                 SetNotesText(notesPart, value);
             }
             else if (key.Equals("direction", StringComparison.OrdinalIgnoreCase)
@@ -97,8 +115,12 @@ public partial class PowerPointHandler
         }
         else
         {
+<<<<<<< HEAD
             var layouts = presentationPart.SlideMasterParts
                 .SelectMany(m => m.SlideLayoutParts).ToList();
+=======
+            var layouts = PowerPointHandler.LayoutsInOrder(presentationPart);
+>>>>>>> upstream/main
             if (partIdx < 1 || partIdx > layouts.Count)
                 throw new ArgumentException($"SlideLayout {partIdx} not found (total: {layouts.Count})");
             ownerPart = layouts[partIdx - 1];
@@ -178,7 +200,11 @@ public partial class PowerPointHandler
             var allRuns = shape.Descendants<Drawing.Run>().ToList();
             // Pass the owning part so fill/image/effect helpers that need a
             // relationship anchor (e.g. picture fills) write to the correct part.
+<<<<<<< HEAD
             var unsupp = SetRunOrShapeProperties(properties, allRuns, shape, ownerPart);
+=======
+            var unsupp = SetRunOrShapeProperties(properties, allRuns, shape, ownerPart, unrecognizedLatex: LastUnrecognizedLatex);
+>>>>>>> upstream/main
             rootEl.Save();
             return unsupp;
         }
@@ -317,7 +343,11 @@ public partial class PowerPointHandler
         var slideParts2 = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts2.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts2.Count})");
+<<<<<<< HEAD
         var slidePart2 = slideParts2[slideIdx - 1];
+=======
+        var slidePart2 = slideParts2[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var slide2 = GetSlide(slidePart2);
 
         var unsupported = new List<string>();
@@ -342,6 +372,12 @@ public partial class PowerPointHandler
                     else
                         AutoUnprefixMorphNames(slidePart2);
                     break;
+<<<<<<< HEAD
+=======
+                case "transitionspeed":
+                    ApplyTransitionSpeed(slidePart2, value);
+                    break;
+>>>>>>> upstream/main
                 case "advancetime" or "advanceaftertime":
                     SetAdvanceTime(slide2, value);
                     break;
@@ -379,11 +415,25 @@ public partial class PowerPointHandler
                         slide2.Show = null;
                     break;
                 }
+<<<<<<< HEAD
+=======
+                case "showmastershapes":
+                {
+                    // <p:sld showMasterSp="0"> — suppress master-level
+                    // decoration shapes. Default (null) means show. false→"0".
+                    if (IsTruthy(value))
+                        slide2.ShowMasterShapes = null;
+                    else
+                        slide2.ShowMasterShapes = false;
+                    break;
+                }
+>>>>>>> upstream/main
                 case "showfooter":
                 case "showslidenumber":
                 case "showdate":
                 case "showheader":
                 {
+<<<<<<< HEAD
                     // Toggle header/footer visibility flags on the slide.
                     // Emits <p:hf ftr="1" sldNum="0" dt="1" hdr="0"/> as a
                     // direct child of <p:sld>. The OpenXml SDK models this
@@ -403,6 +453,48 @@ public partial class PowerPointHandler
                         case "showheader": hf.Header = flag; break;
                     }
                     if (isNew) slide2.AppendChild(hf);
+=======
+                    // Toggle header/footer visibility. OOXML CT_Slide does not
+                    // permit p:hf as a child of p:sld (validate flags it as an
+                    // invalid child element), so visibility is controlled
+                    // exclusively by the master-level placeholder presence:
+                    // a ftr/dt/sldNum placeholder on the slide master makes
+                    // the corresponding footer-row text render; absent
+                    // placeholders mean nothing renders. Inject placeholders
+                    // on enable. Disable is a UI concept we don't model on the
+                    // master (matches PowerPoint UI — "show/hide" doesn't
+                    // delete the master shape); the existing master ph stays.
+                    bool flag = IsTruthy(value);
+                    if (flag && key.ToLowerInvariant() != "showheader")
+                    {
+                        EnsureMasterFooterPlaceholder(slidePart2, key.ToLowerInvariant());
+                    }
+                    // Clean up any pre-existing p:hf left on the slide by an
+                    // older OfficeCli build — purely defensive so reload of an
+                    // older file passes validate after a no-op Set.
+                    var legacyHf = slide2.GetFirstChild<HeaderFooter>();
+                    if (legacyHf != null) legacyHf.Remove();
+                    break;
+                }
+                case "footertext":
+                {
+                    // R44 (deferred): we still write the text into the master
+                    // ftr placeholder TextBody so the data persists, but real
+                    // PowerPoint won't render it without the full placeholder
+                    // chain (master ph → layout ph reference → slide-level
+                    // <p:hf ftr=1> AND footer instance). All three layers are
+                    // schema-constrained in ways that fight each other (p:hf
+                    // is invalid on both p:sld AND p:presentation; layout-
+                    // level inheritance needs its own placeholder shapes).
+                    // Mirrors [[project_deferred_watermark_header_render]]:
+                    // render-layer feature pending a dedicated design pass.
+                    // For now, accept the input + persist + surface a clear
+                    // advisory so callers don't think Set succeeded visually.
+                    EnsureMasterFooterPlaceholder(slidePart2, "showfooter");
+                    SetMasterFooterPlaceholderText(slidePart2,
+                        PlaceholderValues.Footer, value);
+                    unsupported.Add("footerText (deferred: text stored in master ftr placeholder, but real PowerPoint requires the full master/layout/slide placeholder chain to render — currently a visual no-op pending render-layer rework)");
+>>>>>>> upstream/main
                     break;
                 }
                 case "direction":
@@ -452,7 +544,11 @@ public partial class PowerPointHandler
                     if (!GenericXmlQuery.SetGenericAttribute(slide2, key, value))
                     {
                         if (unsupported.Count == 0)
+<<<<<<< HEAD
                             unsupported.Add($"{key} (valid slide props: background, background.mode, background.alpha, background.scale, layout, transition, name, align, distribute, targets, showFooter, showSlideNumber, showDate, showHeader)");
+=======
+                            unsupported.Add($"{key} (valid slide props: background, background.mode, background.alpha, background.scale, layout, transition, name, align, distribute, targets, showFooter, showSlideNumber, showDate, showHeader, showMasterShapes)");
+>>>>>>> upstream/main
                         else
                             unsupported.Add(key);
                     }
@@ -464,4 +560,134 @@ public partial class PowerPointHandler
         return unsupported;
     }
 
+<<<<<<< HEAD
+=======
+    // When showFooter / showSlideNumber / showDate is toggled on, the slide
+    // master must carry a matching placeholder shape — PowerPoint won't
+    // render footer-area content from <p:hf> flags alone. Blank documents
+    // created by BlankDocCreator have no footer placeholders in the master,
+    // so without this helper the toggle was a silent visual no-op.
+    //
+    // Geometry / positions mirror PowerPoint's default footer-row layout
+    // (per CT_HeaderFooter convention): three horizontally-spaced shapes
+    // along the bottom of the slide. EMU values match the standard 16:9
+    // template ("Office Theme") so the injection looks native.
+    private static void EnsureMasterFooterPlaceholder(SlidePart slidePart, string flagKey)
+    {
+        var layoutPart = slidePart.SlideLayoutPart;
+        var masterPart = layoutPart?.SlideMasterPart;
+        if (masterPart?.SlideMaster == null) return;
+
+        var master = masterPart.SlideMaster;
+        var shapeTree = master.CommonSlideData?.ShapeTree;
+        if (shapeTree == null) return;
+
+        PlaceholderValues phType;
+        long offsetX, offsetY, extentCx, extentCy;
+        string phName;
+        uint phIdx;
+        // 16:9 widescreen master: cx=12192000 EMU (~33.87cm), cy=6858000 EMU (~19.05cm)
+        // Footer row sits at y ≈ 6356000 EMU with cy ≈ 365125 (~1cm).
+        switch (flagKey)
+        {
+            case "showfooter":
+                phType = PlaceholderValues.Footer;
+                phName = "Footer Placeholder";
+                phIdx = 11;
+                offsetX = 4040188; offsetY = 6356350;
+                extentCx = 4111625; extentCy = 365125;
+                break;
+            case "showdate":
+                phType = PlaceholderValues.DateAndTime;
+                phName = "Date Placeholder";
+                phIdx = 10;
+                offsetX = 838200; offsetY = 6356350;
+                extentCx = 2895600; extentCy = 365125;
+                break;
+            case "showslidenumber":
+                phType = PlaceholderValues.SlideNumber;
+                phName = "Slide Number Placeholder";
+                phIdx = 12;
+                offsetX = 8470900; offsetY = 6356350;
+                extentCx = 2895600; extentCy = 365125;
+                break;
+            default:
+                return;
+        }
+
+        // Skip if a placeholder of this type already lives on the master.
+        var existing = shapeTree.Descendants<PlaceholderShape>()
+            .Any(ph => ph.Type != null && ph.Type.Value == phType);
+        if (existing) return;
+
+        // Pick a fresh cNvPr id higher than anything else on the master so we
+        // don't collide with existing shape ids (master placeholders typically
+        // use small ids 2..N).
+        uint nextId = 1;
+        foreach (var nvDp in shapeTree.Descendants<NonVisualDrawingProperties>())
+        {
+            if (nvDp.Id?.Value is uint v && v >= nextId) nextId = v + 1;
+        }
+        if (nextId < 100) nextId = 100;
+
+        var shape = new Shape();
+        shape.NonVisualShapeProperties = new NonVisualShapeProperties(
+            new NonVisualDrawingProperties { Id = nextId, Name = phName },
+            new NonVisualShapeDrawingProperties(
+                new DocumentFormat.OpenXml.Drawing.ShapeLocks { NoGrouping = true }),
+            new ApplicationNonVisualDrawingProperties(
+                new PlaceholderShape { Type = phType, Index = phIdx, Size = PlaceholderSizeValues.Quarter })
+        );
+        shape.ShapeProperties = new ShapeProperties(
+            new DocumentFormat.OpenXml.Drawing.Transform2D(
+                new DocumentFormat.OpenXml.Drawing.Offset { X = offsetX, Y = offsetY },
+                new DocumentFormat.OpenXml.Drawing.Extents { Cx = extentCx, Cy = extentCy }
+            )
+        );
+        shape.TextBody = new TextBody(
+            new DocumentFormat.OpenXml.Drawing.BodyProperties(),
+            new DocumentFormat.OpenXml.Drawing.ListStyle(),
+            new DocumentFormat.OpenXml.Drawing.Paragraph(
+                new DocumentFormat.OpenXml.Drawing.EndParagraphRunProperties { Language = "en-US" })
+        );
+        shapeTree.AppendChild(shape);
+        master.Save();
+    }
+
+    // Stamp footer text into the master ftr placeholder's TextBody. The
+    // placeholder shape must already exist (caller's responsibility — usually
+    // by calling EnsureMasterFooterPlaceholder("showfooter") first). Replaces
+    // any prior text content with a single run, so re-setting overwrites.
+    private static void SetMasterFooterPlaceholderText(SlidePart slidePart,
+        PlaceholderValues phType, string text)
+    {
+        var master = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster;
+        if (master == null) return;
+        var phShape = master.CommonSlideData?.ShapeTree?
+            .Descendants<Shape>()
+            .FirstOrDefault(s => s.NonVisualShapeProperties?
+                .ApplicationNonVisualDrawingProperties?
+                .GetFirstChild<PlaceholderShape>()?.Type?.Value == phType);
+        if (phShape == null) return;
+        var txBody = phShape.TextBody;
+        if (txBody == null)
+        {
+            txBody = new TextBody(
+                new DocumentFormat.OpenXml.Drawing.BodyProperties(),
+                new DocumentFormat.OpenXml.Drawing.ListStyle());
+            phShape.TextBody = txBody;
+        }
+        // Strip existing paragraphs and emit a single <a:p><a:r><a:t>{text}</a:t></a:r></a:p>.
+        // BodyProperties + ListStyle are preserved so any auto-fit / wrap
+        // configuration survives.
+        foreach (var p in txBody.Elements<DocumentFormat.OpenXml.Drawing.Paragraph>().ToList())
+            p.Remove();
+        var run = new DocumentFormat.OpenXml.Drawing.Run(
+            new DocumentFormat.OpenXml.Drawing.RunProperties { Language = "en-US" },
+            new DocumentFormat.OpenXml.Drawing.Text(text));
+        txBody.AppendChild(new DocumentFormat.OpenXml.Drawing.Paragraph(run));
+        master.Save();
+    }
+
+>>>>>>> upstream/main
 }

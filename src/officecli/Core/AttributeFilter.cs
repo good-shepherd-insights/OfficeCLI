@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -17,6 +21,26 @@ internal static class AttributeFilter
 
     public record Condition(string Key, FilterOp Op, string Value);
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// A query diagnostic carrying both a human-readable <see cref="Message"/> (the
+    /// only field surfaced on the text/stderr path, unchanged) and machine-readable
+    /// correction fields for the `query --json` contract: <see cref="Kind"/> routes
+    /// the failure (unknown_key / value_no_match / non_numeric), and
+    /// <see cref="Available"/> + <see cref="Suggestion"/> let an agent self-correct
+    /// without parsing the prose. Non-empty-path warnings carry Message only.
+    /// </summary>
+    public record FilterDiagnostic(
+        string Message,
+        string Code = "filter_warning",
+        string? Kind = null,
+        string? Key = null,
+        string? Value = null,
+        string[]? Available = null,
+        string? Suggestion = null);
+
+>>>>>>> upstream/main
     // Regex: [key op value] where op is ~=, >=, <=, !=, =, >, or <.
     // The leading '@' is an optional XPath-style attribute prefix accepted
     // for round-trip parity with Get/Add output (e.g. `/slide[1]/shape[@id=10000]`
@@ -37,6 +61,42 @@ internal static class AttributeFilter
         @"\[([^\]]*)\]",
         RegexOptions.Compiled);
 
+<<<<<<< HEAD
+=======
+    // Quote-aware extraction of top-level [...] block contents. Brackets inside
+    // a quoted value ("...", '...', or the r"..."/r'...' regex form) are treated
+    // as literal text, so a regex character class ([a-z]) or any value that
+    // contains a bracket does not truncate the block or unbalance the selector.
+    // `balanced` is false when a '[' is never closed (outside quotes) or a ']'
+    // appears with no open block — the caller reports an unclosed-bracket error.
+    private static List<string> ExtractBracketBlocks(string selector, out bool balanced)
+    {
+        var blocks = new List<string>();
+        char? quote = null;
+        int blockStart = -1;
+        bool strayClose = false;
+        for (int i = 0; i < selector.Length; i++)
+        {
+            char c = selector[i];
+            if (quote.HasValue)
+            {
+                if (c == '\\' && i + 1 < selector.Length) { i++; continue; }   // \" stays inside the quote
+                if (c == quote.Value) quote = null;
+                continue;
+            }
+            if (c == '"' || c == '\'') { quote = c; continue; }
+            if (c == '[') { if (blockStart < 0) blockStart = i + 1; }
+            else if (c == ']')
+            {
+                if (blockStart >= 0) { blocks.Add(selector[blockStart..i]); blockStart = -1; }
+                else strayClose = true;
+            }
+        }
+        balanced = blockStart < 0 && !strayClose && !quote.HasValue;
+        return blocks;
+    }
+
+>>>>>>> upstream/main
     // Regex: numeric positional index [N] only (used for reverse-doc-order keys).
     private static readonly Regex BracketIndexRegex = new(
         @"\[(\d+)\]",
@@ -71,7 +131,11 @@ internal static class AttributeFilter
             // would otherwise eat the surrounding quote that marks the prefix.
             var isRegexForm = rawVal.Length >= 3 && rawVal[0] == 'r'
                 && (rawVal[1] == '"' || rawVal[1] == '\'');
+<<<<<<< HEAD
             var val = isRegexForm ? rawVal : rawVal.Trim('\'', '"');
+=======
+            var val = isRegexForm ? rawVal : UnquoteValue(rawVal);
+>>>>>>> upstream/main
 
             // Detect corrupted values from mis-parsed operators (e.g. === parsed as = with value ==X)
             if (val.StartsWith("=") || val.StartsWith("~") || val.StartsWith("!"))
@@ -96,7 +160,11 @@ internal static class AttributeFilter
             // matches. Users tried e.g. `ole[progId=Excel*]` expecting a
             // contains-like match. Fail fast with a clear error pointing to
             // the right operator rather than quietly mis-filtering.
+<<<<<<< HEAD
             if (val.Contains('*'))
+=======
+            if (!isRegexForm && val.Contains('*'))
+>>>>>>> upstream/main
                 throw new CliException(
                     $"Wildcards (*) are not supported in attribute filters. " +
                     $"Use ~= for contains, e.g. {key}~={val.Trim('*')}.")
@@ -105,6 +173,10 @@ internal static class AttributeFilter
                     Suggestion = $"Did you mean [{key}~={val.Trim('*')}]?"
                 };
 
+<<<<<<< HEAD
+=======
+            RejectRegexOnNonContainsOp(key, op, val, isRegexForm);
+>>>>>>> upstream/main
             conditions.Add(new Condition(key, op, val));
             matchedSpans.Add((m.Index, m.Index + m.Length));
         }
@@ -177,10 +249,14 @@ internal static class AttributeFilter
         return conditions.Select(c => new Condition(keyResolver(c.Key), c.Op, c.Value)).ToList();
     }
 
+<<<<<<< HEAD
     public static (List<DocumentNode> Results, List<string> Warnings) ApplyWithWarnings(
+=======
+    public static (List<DocumentNode> Results, List<FilterDiagnostic> Warnings) ApplyWithWarnings(
+>>>>>>> upstream/main
         List<DocumentNode> nodes, List<Condition> conditions, bool applyAll = true)
     {
-        var warnings = new List<string>();
+        var warnings = new List<FilterDiagnostic>();
         if (conditions.Count == 0) return (nodes, warnings);
 
         var toApply = applyAll
@@ -194,10 +270,12 @@ internal static class AttributeFilter
         {
             if (cond.Op == FilterOp.NotEqual) continue; // missing key is valid for !=
             bool anyHasKey = nodes.Any(n => ResolveValue(n, cond.Key).HasKey);
-            if (!anyHasKey && nodes.Count > 0)
+            if (!anyHasKey && nodes.Count > 0 && !KeyDeclaredValid(nodes, cond.Key))
             {
-                warnings.Add($"Warning: filter key '{cond.Key}' not found in any result's Format. " +
-                    $"Available keys: {string.Join(", ", GetAllFormatKeys(nodes))}");
+                var keys = GetAllFormatKeys(nodes).ToArray();
+                warnings.Add(new FilterDiagnostic(
+                    $"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", keys)}",
+                    Kind: "unknown_key", Key: cond.Key, Available: keys));
             }
         }
 
@@ -206,8 +284,9 @@ internal static class AttributeFilter
         {
             if (ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
             {
-                warnings.Add($"Warning: '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}] " +
-                    $"is not numeric — comparison may produce unexpected results");
+                warnings.Add(new FilterDiagnostic(
+                    $"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]",
+                    Kind: "non_numeric", Key: cond.Key, Value: cond.Value));
             }
             // Also check actual values in nodes
             foreach (var node in nodes)
@@ -215,8 +294,9 @@ internal static class AttributeFilter
                 var (hasKey, actual) = ResolveValue(node, cond.Key);
                 if (hasKey && ExtractNumber(actual) == null && !EmuConverter.TryParseEmu(actual, out _))
                 {
-                    warnings.Add($"Warning: value '{actual}' for key '{cond.Key}' at {node.Path} " +
-                        $"is not numeric — {OpToString(cond.Op)} comparison may be unreliable");
+                    warnings.Add(new FilterDiagnostic(
+                        $"Warning: non-numeric '{actual}' for '{cond.Key}' at {node.Path}",
+                        Kind: "non_numeric", Key: cond.Key, Value: actual));
                     break; // one warning per condition is enough
                 }
             }
@@ -226,7 +306,7 @@ internal static class AttributeFilter
         return (results, warnings);
     }
 
-    private static string OpToString(FilterOp op) => op switch
+    internal static string OpToString(FilterOp op) => op switch
     {
         FilterOp.Equal => "=",
         FilterOp.NotEqual => "!=",
@@ -250,6 +330,115 @@ internal static class AttributeFilter
             if (!string.IsNullOrEmpty(node.Type)) keys.Add("type");
         }
         return keys;
+    }
+
+    /// <summary>
+    /// Build self-correction diagnostics for a query that returned no rows,
+    /// evaluated against the full (unfiltered) candidate set so the report is
+    /// operator-independent. For each leaf condition: a missing key lists the
+    /// available keys (with a Levenshtein "did you mean"); an existing key whose
+    /// value matched nothing lists the distinct values actually present (also with
+    /// a near-miss suggestion); a non-numeric operand on a comparison operator is
+    /// flagged. Mirrors the per-leaf warnings of ApplyWithWarnings but never goes
+    /// silent just because an `=` / `!=` pre-filter emptied the candidate set.
+    /// </summary>
+    private static List<FilterDiagnostic> DiagnoseEmptyResult(List<DocumentNode> candidates, List<Condition> conditions)
+    {
+        var diags = new List<FilterDiagnostic>();
+        foreach (var cond in conditions)
+        {
+            if (cond.Op == FilterOp.Exists) continue;
+
+            bool anyHasKey = candidates.Any(n => ResolveValue(n, cond.Key).HasKey);
+            if (!anyHasKey)
+            {
+                if (cond.Op == FilterOp.NotEqual) continue; // an absent key satisfies !=
+                if (KeyDeclaredValid(candidates, cond.Key)) continue; // known-but-unset → a clean 0-match
+                var keys = GetAllFormatKeys(candidates).OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
+                var near = NearestMatch(cond.Key, keys, matchKeySegment: true);
+                var msg = $"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", keys)}";
+                if (near != null) msg += $" (did you mean '{near}'?)";
+                diags.Add(new FilterDiagnostic(msg, Kind: "unknown_key", Key: cond.Key,
+                    Available: keys.ToArray(), Suggestion: near));
+                continue;
+            }
+
+            // Non-numeric operand on a numeric comparison (same text ApplyWithWarnings emits).
+            if (cond.Op is FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.GreaterThan or FilterOp.LessThan
+                && ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
+            {
+                diags.Add(new FilterDiagnostic(
+                    $"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]",
+                    Kind: "non_numeric", Key: cond.Key, Value: cond.Value));
+                continue;
+            }
+
+            // Key exists but the value matched no element: surface the values that
+            // do exist so the caller can pick a real one. Restricted to = / ~=,
+            // where "no match" means a wrong literal (for != / numeric ops an empty
+            // result is an ordinary, non-correctable outcome).
+            if (cond.Op is FilterOp.Equal or FilterOp.Contains
+                && !candidates.Any(n => MatchOne(n, cond)))
+            {
+                var values = candidates
+                    .Select(n => ResolveValue(n, cond.Key))
+                    .Where(r => r.HasKey && !string.IsNullOrEmpty(r.Value))
+                    .Select(r => r.Value)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (values.Count > 0)
+                {
+                    var near = NearestMatch(cond.Value, values);
+                    const int cap = 20;
+                    var shown = string.Join(", ", values.Take(cap));
+                    if (values.Count > cap) shown += $", … (+{values.Count - cap} more)";
+                    var msg = $"Warning: no match for {cond.Key}='{cond.Value}'. Available: {shown}";
+                    if (near != null) msg += $" (did you mean '{near}'?)";
+                    // Available is capped independently of the message: bound the JSON
+                    // payload while still giving an agent a usable enumeration.
+                    diags.Add(new FilterDiagnostic(msg, Kind: "value_no_match", Key: cond.Key, Value: cond.Value,
+                        Available: values.Take(50).ToArray(), Suggestion: near));
+                }
+            }
+        }
+        return diags;
+    }
+
+    /// <summary>
+    /// Closest candidate to <paramref name="input"/> by Levenshtein distance,
+    /// within a length-scaled threshold (max(2, len/3), mirroring CommandBuilder's
+    /// property suggester). Returns null when nothing is close or the best is a
+    /// tie, so a "did you mean" is only offered when it is unambiguous.
+    /// When <paramref name="matchKeySegment"/> is set, a dotted candidate also
+    /// scores against its last segment so a typo of the bare leaf (blod → bold)
+    /// still resolves to the canonical dotted key (font.bold) — keeping the
+    /// suggestion cross-format consistent where one handler exposes `bold` and
+    /// another exposes `font.bold`. Off for values, whose dots are literal.
+    /// </summary>
+    private static string? NearestMatch(string input, IEnumerable<string> candidates, bool matchKeySegment = false)
+    {
+        if (string.IsNullOrEmpty(input)) return null;
+        var lower = input.ToLowerInvariant();
+        int threshold = Math.Max(2, input.Length / 3);
+        string? best = null;
+        int bestDist = int.MaxValue, tie = 0;
+        foreach (var c in candidates)
+        {
+            var lc = c.ToLowerInvariant();
+            if (lc == lower) continue; // identical — nothing to suggest
+            var d = EditDistance.Damerau(lower, lc);
+            if (matchKeySegment)
+            {
+                int dot = lc.LastIndexOf('.');
+                if (dot >= 0 && dot < lc.Length - 1)
+                    d = Math.Min(d, EditDistance.Damerau(lower, lc[(dot + 1)..]));
+            }
+            if (d > threshold) continue;
+            if (d < bestDist) { bestDist = d; best = c; tie = 1; }
+            else if (d == bestDist) tie++;
+        }
+        return tie == 1 ? best : null;
     }
 
     /// <summary>
@@ -289,10 +478,25 @@ internal static class AttributeFilter
                 // Pathological pattern — treat as no-match rather than hanging.
                 return false;
             }
+<<<<<<< HEAD
             catch (System.ArgumentException)
             {
                 // Malformed regex — fall through to literal contains so the
                 // user still gets usable behavior, never an opaque exception.
+=======
+            catch (System.ArgumentException ex)
+            {
+                // The user explicitly asked for a regex (r"...") but it does not
+                // compile. Silently falling back to a literal contains returned
+                // an empty result, indistinguishable from "no data matched" — the
+                // user could not tell a typo'd pattern from a genuine 0 rows.
+                // Surface it, mirroring the "Malformed selector" errors.
+                throw new CliException($"Malformed regex pattern in \"{find}\": {ex.Message}")
+                {
+                    Code = "invalid_selector",
+                    Suggestion = "Fix the regex, or drop the r\"...\" prefix to match the text literally."
+                };
+>>>>>>> upstream/main
             }
         }
         return text.Contains(find, StringComparison.OrdinalIgnoreCase);
@@ -323,6 +527,21 @@ internal static class AttributeFilter
         return false;
     }
 
+<<<<<<< HEAD
+=======
+    // A cell's `value` has two forms: the raw stored value (Format["value"],
+    // e.g. 0.5) and the display string (node.Text, e.g. "50%"). ResolveValue
+    // returns the raw form (so relational ops compare numbers), so an equality
+    // written against the DISPLAY form ("value=50%") would miss. This lets
+    // equality also match the display text — cells only, so a paragraph whose
+    // Text coincidentally equals a filter value is never affected.
+    private static bool CellValueDisplayMatches(DocumentNode node, string key, string target)
+        => string.Equals(key, "value", StringComparison.OrdinalIgnoreCase)
+           && string.Equals(node.Type, "cell", StringComparison.OrdinalIgnoreCase)
+           && node.Text != null
+           && StringEquals(node.Text, target);
+
+>>>>>>> upstream/main
     private static bool MatchOne(DocumentNode node, Condition cond)
     {
         // Resolve actual value from node
@@ -339,7 +558,16 @@ internal static class AttributeFilter
         if ((cond.Op == FilterOp.Equal || cond.Op == FilterOp.NotEqual)
             && string.Equals(cond.Key, "style", StringComparison.OrdinalIgnoreCase))
         {
+<<<<<<< HEAD
             bool dualHit = StringEquals(node.Style ?? "", cond.Value)
+=======
+            // hasKey/actualStr covers nodes whose "style" key is NOT the Word
+            // paragraph style at all — e.g. an Excel row-where probe carrying a
+            // table column literally headed "Style" — so the dual-key sugar
+            // must not shadow the plain resolved value.
+            bool dualHit = (hasKey && StringEquals(actualStr, cond.Value))
+                || StringEquals(node.Style ?? "", cond.Value)
+>>>>>>> upstream/main
                 || (node.Format.TryGetValue("style", out var sid) && StringEquals(sid?.ToString() ?? "", cond.Value))
                 || (node.Format.TryGetValue("styleName", out var sname) && StringEquals(sname?.ToString() ?? "", cond.Value));
             return cond.Op == FilterOp.Equal ? dualHit : !dualHit;
@@ -353,12 +581,16 @@ internal static class AttributeFilter
             case FilterOp.Equal:
                 if (!hasKey) return false;
                 return StringEquals(actualStr, cond.Value)
-                    || DimensionEquals(actualStr, cond.Value);
+                    || DimensionEquals(actualStr, cond.Value)
+                    || NumericEquals(actualStr, cond.Value)
+                    || CellValueDisplayMatches(node, cond.Key, cond.Value);
 
             case FilterOp.NotEqual:
                 if (!hasKey) return true; // key absent → not equal
                 return !StringEquals(actualStr, cond.Value)
-                    && !DimensionEquals(actualStr, cond.Value);
+                    && !DimensionEquals(actualStr, cond.Value)
+                    && !NumericEquals(actualStr, cond.Value)
+                    && !CellValueDisplayMatches(node, cond.Key, cond.Value);
 
             case FilterOp.Contains:
                 if (!hasKey) return false;
@@ -395,6 +627,22 @@ internal static class AttributeFilter
         {
             var val = node.Format[matchedKey];
             return (true, val?.ToString() ?? "");
+        }
+
+        // Revision synthetic nodes namespace every key (revision.type,
+        // revision.author, revision.id, revision.date). The Word handler's
+        // selector pre-filter (MatchesFilter in Set.Revision) accepts the short
+        // names, so `query revision[@type=ins]` matched at the handler only to
+        // be dropped here — `type` fell through to the node.Type fallback below
+        // ("revision" != "ins") and `author` resolved as unknown key. Map the
+        // short name onto its namespaced Format key, gated on the revision node
+        // type (same gating precedent as the cell `value` fallback below).
+        if (string.Equals(node.Type, "revision", StringComparison.OrdinalIgnoreCase))
+        {
+            var nsKey = node.Format.Keys.FirstOrDefault(k =>
+                string.Equals(k, "revision." + key, StringComparison.OrdinalIgnoreCase));
+            if (nsKey != null)
+                return (true, node.Format[nsKey]?.ToString() ?? "");
         }
 
         // "text" falls back to node.Text if not in Format
@@ -445,6 +693,14 @@ internal static class AttributeFilter
             return string.Equals(aNorm, bNorm, StringComparison.OrdinalIgnoreCase);
         return false;
     }
+
+    // Numeric equality so `=` / `!=` agree with the ordered operators on
+    // numbers: `[N=25.0]` matches a stored 25, and `[Price!=25]` correctly
+    // EXCLUDES a stored 25.0 instead of keeping it on a literal-string mismatch.
+    // Exact value equality (CompareNumeric == 0); returns false for any operand
+    // that is not numerically comparable, so text equality is unaffected.
+    private static bool NumericEquals(string actual, string expected)
+        => CompareNumeric(actual, expected) == 0;
 
     private static bool DimensionEquals(string actual, string expected)
     {
@@ -507,7 +763,7 @@ internal static class AttributeFilter
         return null;
     }
 
-    private static decimal? ExtractNumber(string value)
+    private static double? ExtractNumber(string value)
     {
         if (string.IsNullOrEmpty(value)) return null;
 
@@ -522,7 +778,13 @@ internal static class AttributeFilter
             }
         }
 
-        return decimal.TryParse(trimmed, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : null;
+        // double, not decimal: Excel's numeric domain is IEEE double
+        // (±9.99e307, 15 significant digits). decimal.TryParse silently fails
+        // past ~7.9e28, which made `[Amount>1e200]` a no-match while
+        // `[Amount=1e300]` still hit via the string-equality fallback —
+        // wrong answers with no warning. Non-finite parses (1e999) stay null.
+        return NumericText.TryParse(trimmed, out var n)
+            && double.IsFinite(n) ? n : null;
     }
 
     private static string ExtractUnit(string value)
@@ -558,6 +820,10 @@ internal static class AttributeFilter
     public sealed record PredicateExpr(Condition Cond) : FilterExpr;
     public sealed record AndExpr(IReadOnlyList<FilterExpr> Parts) : FilterExpr;
     public sealed record OrExpr(IReadOnlyList<FilterExpr> Parts) : FilterExpr;
+<<<<<<< HEAD
+=======
+    public sealed record NotExpr(FilterExpr Part) : FilterExpr;
+>>>>>>> upstream/main
 
     /// <summary>
     /// Parse a selector's bracket filters into one expression tree. Multiple
@@ -567,9 +833,19 @@ internal static class AttributeFilter
     /// </summary>
     public static FilterExpr? ParseExpr(string selector)
     {
+<<<<<<< HEAD
         var openCount = selector.Count(c => c == '[');
         var closeCount = selector.Count(c => c == ']');
         if (openCount != closeCount)
+=======
+        // Quote-aware bracket extraction: a `[` or `]` inside a quoted value
+        // (including the r"..."/r'...' regex form) is literal, so a regex
+        // character class `[a-z]` or a value containing `]` neither truncates
+        // the block nor trips the balance check. A raw count would mis-handle
+        // both (unterminated-quote for r"[A]", unclosed-bracket for "x]y").
+        var blocks = ExtractBracketBlocks(selector, out bool balanced);
+        if (!balanced)
+>>>>>>> upstream/main
             throw new CliException($"Malformed selector: unclosed bracket in \"{selector}\"")
             {
                 Code = "invalid_selector",
@@ -577,9 +853,14 @@ internal static class AttributeFilter
             };
 
         var parts = new List<FilterExpr>();
+<<<<<<< HEAD
         foreach (Match block in BracketBlockRegex.Matches(selector))
         {
             var content = block.Groups[1].Value;
+=======
+        foreach (var content in blocks)
+        {
+>>>>>>> upstream/main
             if (string.IsNullOrWhiteSpace(content))
                 throw new CliException($"Malformed selector: empty brackets \"[]\" in \"{selector}\"")
                 {
@@ -622,6 +903,10 @@ internal static class AttributeFilter
         PredicateExpr p => new PredicateExpr(new Condition(keyResolver(p.Cond.Key), p.Cond.Op, p.Cond.Value)),
         AndExpr a => new AndExpr(a.Parts.Select(x => NormalizeKeysExpr(x, keyResolver)).ToList()),
         OrExpr o => new OrExpr(o.Parts.Select(x => NormalizeKeysExpr(x, keyResolver)).ToList()),
+<<<<<<< HEAD
+=======
+        NotExpr n => new NotExpr(NormalizeKeysExpr(n.Part, keyResolver)),
+>>>>>>> upstream/main
         _ => expr
     };
 
@@ -632,6 +917,10 @@ internal static class AttributeFilter
         PredicateExpr p => MatchOne(node, p.Cond),
         AndExpr a => a.Parts.All(x => MatchesExpr(node, x)),
         OrExpr o => o.Parts.Any(x => MatchesExpr(node, x)),
+<<<<<<< HEAD
+=======
+        NotExpr n => !MatchesExpr(node, n.Part),
+>>>>>>> upstream/main
         _ => true
     };
 
@@ -643,10 +932,17 @@ internal static class AttributeFilter
     /// ApplyWithWarnings emits (missing key, non-numeric comparison value) by
     /// walking the predicate leaves.
     /// </summary>
+<<<<<<< HEAD
     public static (List<DocumentNode> Results, List<string> Warnings) ApplyExprWithWarnings(
         List<DocumentNode> nodes, FilterExpr? expr)
     {
         var warnings = new List<string>();
+=======
+    public static (List<DocumentNode> Results, List<FilterDiagnostic> Warnings) ApplyExprWithWarnings(
+        List<DocumentNode> nodes, FilterExpr? expr)
+    {
+        var warnings = new List<FilterDiagnostic>();
+>>>>>>> upstream/main
         if (expr == null) return (nodes, warnings);
 
         foreach (var cond in LeafConditions(expr))
@@ -654,6 +950,7 @@ internal static class AttributeFilter
             if (cond.Op != FilterOp.NotEqual)
             {
                 bool anyHasKey = nodes.Any(n => ResolveValue(n, cond.Key).HasKey);
+<<<<<<< HEAD
                 if (!anyHasKey && nodes.Count > 0)
                     warnings.Add($"Warning: filter key '{cond.Key}' not found in any result's Format. " +
                         $"Available keys: {string.Join(", ", GetAllFormatKeys(nodes))}");
@@ -662,6 +959,21 @@ internal static class AttributeFilter
                 && ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
                 warnings.Add($"Warning: '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}] " +
                     $"is not numeric — comparison may produce unexpected results");
+=======
+                if (!anyHasKey && nodes.Count > 0 && !KeyDeclaredValid(nodes, cond.Key))
+                {
+                    var keys = GetAllFormatKeys(nodes).ToArray();
+                    warnings.Add(new FilterDiagnostic(
+                        $"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", keys)}",
+                        Kind: "unknown_key", Key: cond.Key, Available: keys));
+                }
+            }
+            if (cond.Op is FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.GreaterThan or FilterOp.LessThan
+                && ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
+                warnings.Add(new FilterDiagnostic(
+                    $"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]",
+                    Kind: "non_numeric", Key: cond.Key, Value: cond.Value));
+>>>>>>> upstream/main
         }
 
         var results = nodes.Where(n => MatchesExpr(n, expr)).ToList();
@@ -678,6 +990,136 @@ internal static class AttributeFilter
             int.TryParse(m.Groups[1].Value.Trim(), out _) ? m.Value : "");
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Index of the top-level `>` child combinator, or -1 when the selector has
+    /// none. Mirrors the handlers' own split (WordHandler.SplitChildCombinator):
+    /// a `>` inside a predicate bracket is comparison text
+    /// (`paragraph[size>=14pt] > run`), never a combinator, so only a
+    /// bracket-depth-0 `>` splits.
+    /// </summary>
+    private static int ChildCombinatorIndex(string selector)
+    {
+        int depth = 0;
+        for (int i = 0; i < selector.Length; i++)
+        {
+            switch (selector[i])
+            {
+                case '[': depth++; break;
+                case ']': depth--; break;
+                case '>' when depth == 0: return i;
+            }
+        }
+        return -1;
+    }
+
+    // The handlers' own selector grammar (WordHandler.ParseSingleSelector):
+    // a bracket reaches the handler's gate only when it is
+    // `[@]key=value` / `[@]key!=value` with a word key. Comparison ops
+    // (`>`, `>=`, `<`, `<=`, `~=`), a bare exists bracket and a dotted key are
+    // never captured, so the handler gates nothing for them.
+    private static readonly Regex HandlerGatedBracketRegex = new(
+        @"@?\w+(!=|=)[^\]]+", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The parent-side brackets the handler's own selector grammar can gate on:
+    /// `[@]key=value` / `[@]key!=value` inside a parent part that is a pure AND.
+    /// Empty when the parent part is a boolean expression — the handlers'
+    /// grammar has no `and` / `or`, so such a bracket would be read as one
+    /// literal value — and empty for addressing (`[2]`) or an operator the
+    /// grammar never captures. These are exactly the predicates this change
+    /// hands over to the handler's gate: PostFilterSelector drops them from the
+    /// engine's post-filter, ChildSideStripped keeps them in the handler query.
+    /// Everything else stays where it is today.
+    /// </summary>
+    private static IEnumerable<string> HandlerGatedParentBrackets(string parent)
+    {
+        if (TryFlatten(ParseExpr(parent)) is null) yield break;
+        foreach (var content in ExtractBracketBlocks(parent, out _))
+        {
+            if (int.TryParse(content.Trim(), out _)) continue;
+            if (!HandlerGatedBracketRegex.IsMatch(content)) continue;
+            yield return content;
+        }
+    }
+
+    /// <summary>
+    /// The selector the ENGINE's post-filter may narrow. For a `parent > child`
+    /// selector the candidates the handler returned ARE the children, so a
+    /// parent-side predicate re-applied here can never match — a run does not
+    /// carry its paragraph's `style`, a table does not carry a paragraph's
+    /// `text` — and can only empty the result, with the diagnostic then blaming
+    /// the child. Measured on 1.0.151: `paragraph[style=Normal] > run` = 0 rows +
+    /// "unknown key 'style'", and `paragraph[text=AAABBB] > run` = 0 rows +
+    /// "no match for text='AAABBB'. Available: AAA, BBB" (the RUN texts) while
+    /// the paragraph's own text is AAABBB.
+    ///
+    /// Those predicates are not dropped, they move: the handler still receives
+    /// the whole selector and its ChildSelector branch is what gates the parent
+    /// (WordHandler.MatchesSelector). Only brackets that gate exists for move —
+    /// a parent-side predicate the handler's grammar cannot express has no gate
+    /// to defer to, so it keeps the legacy child-side evaluation here; dropping
+    /// it would let a filtered selector fall through to everything, the
+    /// bulk-edit hazard the element-token check above was added for
+    /// (BUG-R34-03), and a parent part that parses to a boolean is kept whole
+    /// for the same reason (the handlers' grammar has no `and` / `or`).
+    ///
+    /// With nothing to hand over the selector is returned unchanged, so every
+    /// path that is not a `parent > child` selector with a gateable parent
+    /// predicate is byte-for-byte what it is today. That covers the
+    /// ElementResolvesOwnBoolean family (the Excel row/col table-column keys the
+    /// handler attaches to the returned nodes — re-confirming them there is
+    /// deliberate), malformed selectors (so ParseExpr keeps reporting them
+    /// through the existing unclosed-/empty-bracket diagnostics wherever the
+    /// stray bracket sits) and pure-numeric brackets (addressing, ParseExpr's
+    /// business to skip).
+    /// </summary>
+    private static string PostFilterSelector(string selector)
+    {
+        int idx = ChildCombinatorIndex(selector);
+        if (idx < 0 || ElementResolvesOwnBoolean(selector)) return selector;
+        var blocks = ExtractBracketBlocks(selector, out bool balanced);
+        if (!balanced || blocks.Any(string.IsNullOrWhiteSpace)) return selector;
+
+        var parent = selector[..idx];
+        if (!HandlerGatedParentBrackets(parent).Any()) return selector;
+
+        // What the engine still has to re-apply: the child's own predicates plus
+        // the parent predicates the handler's grammar cannot express.
+        var kept = ExtractBracketBlocks(parent, out _)
+            .Where(content => !int.TryParse(content.Trim(), out _)
+                              && !HandlerGatedBracketRegex.IsMatch(content))
+            .Select(content => "[" + content + "]");
+        return selector[(idx + 1)..] + string.Concat(kept);
+    }
+
+    /// <summary>
+    /// The query string for the BOOLEAN path, which strips the filter brackets so
+    /// the handler returns the full element set for the tree to narrow. The
+    /// child side's brackets go; the parent side keeps exactly the brackets the
+    /// tree no longer applies (HandlerGatedParentBrackets) — they are the
+    /// handler's gate on the parent. Stripping them too, as the whole-selector
+    /// StripFilterBrackets did, dropped that gate silently and left the tree
+    /// evaluating a parent predicate against the children. When there is nothing
+    /// to keep this is StripFilterBrackets(selector) — the byte-identical
+    /// legacy string.
+    /// </summary>
+    private static string ChildSideStripped(string selector)
+    {
+        int idx = ChildCombinatorIndex(selector);
+        if (idx < 0) return StripFilterBrackets(selector);
+
+        var parent = selector[..idx];
+        var gated = HandlerGatedParentBrackets(parent).ToList();
+        if (gated.Count == 0) return StripFilterBrackets(selector);
+
+        return StripFilterBrackets(parent).TrimEnd()
+               + string.Concat(gated.Select(content => "[" + content + "]"))
+               + ">" + StripFilterBrackets(selector[(idx + 1)..]);
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Unified selector filtering for query / set / remove. A pure-AND (flat)
     /// selector takes the exact legacy path: the handler pre-filters and the flat
     /// conditions are re-applied (idempotent). A selector containing `or` is
@@ -694,6 +1136,7 @@ internal static class AttributeFilter
     /// always applies all conditions: stripping the bracket means the handler did
     /// not pre-filter, so the tree must evaluate every predicate itself.
     /// </param>
+<<<<<<< HEAD
     public static (List<DocumentNode> Results, List<string> Warnings) FilterSelector(
         string selector, Func<string, List<DocumentNode>> query, Func<string, string>? keyResolver = null,
         bool applyAll = true)
@@ -713,6 +1156,139 @@ internal static class AttributeFilter
         // then re-confirms on the carried column values.
         var queryStr = ElementResolvesOwnBoolean(selector) ? selector : StripFilterBrackets(selector);
         return ApplyExprWithWarnings(query(queryStr), expr);
+=======
+    /// <summary>
+    /// A selector must begin with something a handler can read as an element,
+    /// a cell/sheet reference, a path or a predicate. One that opens with a
+    /// stray symbol (<c>%%%badselector</c>, <c>!!invalid!!</c>) parsed to an
+    /// EMPTY element token in xlsx and pptx, and an empty token means "no type
+    /// filter" — every cell / every shape came back with exit 0, which is a
+    /// bulk-edit hazard once the same selector reaches set/remove. docx
+    /// happened to return nothing. Reject it in one place so all three formats
+    /// answer with the same invalid_selector the bracket checks already emit.
+    /// </summary>
+    private static void RejectGarbageSelectorHead(string selector)
+    {
+        var s = selector.TrimStart();
+        if (s.Length == 0) return;
+        var c = s[0];
+        // letters/digits/_ : element names, A1 refs, sheet names
+        // ' "            : Excel-quoted sheet names ('My Data'!row)
+        // / [ :          : path form, bare predicate, pseudo-class
+        // * . # @ $ (    : wildcard / CSS-style heads left to the handlers
+        if (!(char.IsLetterOrDigit(c) || c == '_' || c == '\'' || c == '"'
+            || c == '/' || c == '[' || c == ':' || c == '*' || c == '.' || c == '#'
+            || c == '@' || c == '$' || c == '('))
+            throw new CliException($"Malformed selector: \"{selector}\" does not start with an element name, a cell reference or a path.")
+            {
+                Code = "invalid_selector",
+                Suggestion = "Start with an element type, e.g. cell[value>5], shape[text~=Hello], p[bold=true], or a path like /Sheet1/A1."
+            };
+
+        // The same empty element token also arises AFTER a separator: a sheet
+        // prefix with nothing behind it (`Sheet1!`), a trailing or doubled
+        // combinator (`slide[1]>`, `slide[1]>>shape`), an empty pseudo-class
+        // (`cell:`). Look only at top-level text — a '>' or '!' inside a
+        // predicate value is literal.
+        var outside = System.Text.RegularExpressions.Regex.Replace(s, @"\[[^\]]*\]|'[^']*'|""[^""]*""", "").TrimEnd();
+        if (outside.Length > 0 && (outside[^1] is '>' or '!' or ':' or ',' || outside.Contains(">>")))
+            throw new CliException($"Malformed selector: \"{selector}\" has no element name after '{(outside.Contains(">>") ? ">>" : outside[^1].ToString())}'.")
+            {
+                Code = "invalid_selector",
+                Suggestion = "Name the element, e.g. Sheet1!cell, slide[1]>shape, cell:contains(text)."
+            };
+    }
+
+    public static (List<DocumentNode> Results, List<FilterDiagnostic> Warnings) FilterSelector(
+        string selector, Func<string, List<DocumentNode>> query, Func<string, string>? keyResolver = null,
+        bool applyAll = true)
+    {
+        // CSS-style comma union: `row[Dept=Sales],row[Dept=Marketing]` runs
+        // each part and unions the results (deduped by Path). Commas INSIDE
+        // brackets are value text, never separators.
+        var unionParts = SplitTopLevelCommas(selector);
+        if (unionParts.Count > 1)
+        {
+            var unionResults = new List<DocumentNode>();
+            var unionWarnings = new List<FilterDiagnostic>();
+            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var part in unionParts)
+            {
+                var (r, w) = FilterSelector(part.Trim(), query, keyResolver, applyAll);
+                foreach (var n in r)
+                    if (n.Path == null || seenPaths.Add(n.Path))
+                        unionResults.Add(n);
+                unionWarnings.AddRange(w);
+            }
+            return (unionResults, unionWarnings);
+        }
+
+        RejectGarbageSelectorHead(selector);
+
+        // The parser sees the selector the post-filter is allowed to narrow —
+        // the child side of a combinator (see PostFilterSelector).
+        var expr = ParseExpr(PostFilterSelector(selector));
+        if (expr != null && keyResolver != null)
+            expr = NormalizeKeysExpr(expr, keyResolver);
+
+        List<DocumentNode> results;
+        List<FilterDiagnostic> warnings;
+        List<Condition> leafConds;
+
+        if (TryFlatten(expr) is { } flat)
+        {
+            (results, warnings) = ApplyWithWarnings(query(selector), flat, applyAll);
+            leafConds = flat;
+        }
+        else
+        {
+            // Boolean path. Most elements are filtered by the generic engine on the
+            // broad result, so strip the brackets and query bare. Elements that
+            // resolve their OWN virtual attributes — Excel `row` table-column values
+            // are attached by the handler's row-where, NOT present on a bare row —
+            // must receive the full selector so the handler can resolve them; the tree
+            // then re-confirms on the carried column values.
+            // Strip only the CHILD side's brackets: the parent's must keep
+            // reaching the handler, which is what gates the parent.
+            var queryStr = ElementResolvesOwnBoolean(selector) ? selector : ChildSideStripped(selector);
+            (results, warnings) = ApplyExprWithWarnings(query(queryStr), expr);
+            leafConds = expr == null ? new List<Condition>() : LeafConditions(expr).ToList();
+        }
+
+        // Agent self-correction: a zero-result query is the moment a caller most
+        // needs guidance, yet the diagnostics above can fall silent. When the
+        // operator is `=` / `!=` the handler pre-filters at the selector level, so a
+        // wrong key or value leaves an EMPTY candidate set — there are no nodes left
+        // to enumerate available keys from, and a non-matching value emits nothing at
+        // all. (A non-pre-filtered operator like `>` / `~=` keeps the full set and so
+        // already warns, which is exactly the operator-dependent inconsistency this
+        // closes.) Re-introspect against the full element set (filter brackets
+        // stripped) so a missing key is always reported and a near-miss value is
+        // suggested regardless of operator. Error path only — successful queries keep
+        // their existing warning set untouched.
+        // Skip for selectors whose element resolves its own virtual attributes
+        // (Excel row/col table-column predicates): the bare stripped query
+        // returns nodes WITHOUT those virtual keys, so a legitimate zero-match
+        // (row[Header='x'] matching nothing) mis-diagnosed as
+        // "unknown key 'Header'". The handler already throws its own rich
+        // not_found error for genuinely unknown columns.
+        if (results.Count == 0 && leafConds.Count > 0 && !ElementResolvesOwnBoolean(selector))
+        {
+            try
+            {
+                var fullSet = query(ChildSideStripped(selector));
+                if (fullSet.Count > 0)
+                    warnings = DiagnoseEmptyResult(fullSet, leafConds);
+            }
+            catch (CliException)
+            {
+                // A stripped selector the handler rejects must not turn a clean
+                // empty result into a failure; keep the original diagnostics.
+            }
+        }
+
+        return (results, warnings);
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -757,6 +1333,10 @@ internal static class AttributeFilter
             {
                 case AndExpr:
                 case OrExpr:
+<<<<<<< HEAD
+=======
+                case NotExpr:                                                // not(...) — negation is always a content filter
+>>>>>>> upstream/main
                     return true;                                             // boolean expression
                 case PredicateExpr p:
                     if (p.Cond.Op == FilterOp.Exists) break;                // `[A]` / `[key]` bare token → structural (Excel col[A])
@@ -792,6 +1372,17 @@ internal static class AttributeFilter
         return Regex.IsMatch(s, @"^(?:row|col|column)\[", RegexOptions.IgnoreCase);
     }
 
+<<<<<<< HEAD
+=======
+    // Split a selector on top-level commas. Single scanner implementation
+    // lives in SelectorCommaSplit (shared with the PowerPoint handler-level
+    // union) — quote-aware AND paren-aware, so a comma inside `:contains(a,b)`
+    // or a quoted value never splits. This wrapper only drops empty segments.
+    private static List<string> SplitTopLevelCommas(string selector)
+        => SelectorCommaSplit.SplitTopLevelCommas(selector)
+            .Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+
+>>>>>>> upstream/main
     /// <summary>Wrap a flat condition list as an expression (single predicate or AND).</summary>
     public static FilterExpr FromConditions(IReadOnlyList<Condition> conds)
         => conds.Count == 1
@@ -803,6 +1394,10 @@ internal static class AttributeFilter
         PredicateExpr p => new[] { p.Cond },
         AndExpr a => a.Parts.SelectMany(LeafConditions),
         OrExpr o => o.Parts.SelectMany(LeafConditions),
+<<<<<<< HEAD
+=======
+        NotExpr n => LeafConditions(n.Part),
+>>>>>>> upstream/main
         _ => Enumerable.Empty<Condition>()
     };
 
@@ -810,7 +1405,11 @@ internal static class AttributeFilter
     //   expr   := or
     //   or     := and ( 'or' and )*
     //   and    := factor ( 'and' factor )*
+<<<<<<< HEAD
     //   factor := '(' or ')' | predicate
+=======
+    //   factor := 'not' '(' or ')' | '(' or ')' | predicate
+>>>>>>> upstream/main
     //   pred   := key op value
     private sealed class ExprParser
     {
@@ -843,9 +1442,26 @@ internal static class AttributeFilter
         private FilterExpr ParseFactor()
         {
             SkipWs();
+<<<<<<< HEAD
             // Only `and` / `or` are reserved. `not` is intentionally NOT a keyword
             // — it parses as an ordinary value/identifier, leaving the word free
             // for a future negation design.
+=======
+            // `not(...)` negates a sub-expression — the form the Err suggestion
+            // has always advertised. Word-bounded: `[not=5]` (a column named
+            // "not") still parses as a predicate because '=' breaks the keyword;
+            // an exists-check on a column literally named "not" needs quotes
+            // (["not"]).
+            if (TryKeyword("not"))
+            {
+                SkipWs();
+                Expect('(');
+                var negated = ParseOr();
+                SkipWs();
+                Expect(')');
+                return new NotExpr(negated);
+            }
+>>>>>>> upstream/main
             if (Peek() == '(')
             {
                 _i++;
@@ -860,10 +1476,37 @@ internal static class AttributeFilter
         private Condition ParsePredicate()
         {
             SkipWs();
+<<<<<<< HEAD
             int keyStart = _i;
             if (_i < _s.Length && _s[_i] == '@') _i++;
             while (_i < _s.Length && (char.IsLetterOrDigit(_s[_i]) || _s[_i] == '.' || _s[_i] == '_')) _i++;
             var key = _s[keyStart.._i];
+=======
+            string key;
+            // Quoted key — lets a predicate address a header name that contains
+            // spaces or punctuation (`["Full Name"~=doe]`, `["Amount, USD">0]`),
+            // which the bare identifier reader below (letters/digits/._ only)
+            // cannot. Content is taken literally between the quotes.
+            if (_i < _s.Length && (_s[_i] == '"' || _s[_i] == '\''))
+            {
+                key = ReadQuotedInner();
+            }
+            else
+            {
+                int keyStart = _i;
+                if (_i < _s.Length && _s[_i] == '@') _i++;
+                while (_i < _s.Length && (char.IsLetterOrDigit(_s[_i]) || _s[_i] == '.' || _s[_i] == '_')) _i++;
+                key = _s[keyStart.._i];
+                // The bare reader stopped INSIDE the name (emoji, dash, … —
+                // anything outside letters/digits/._). Without this check the
+                // leftover reads as trailing junk ("unexpected '📊>90'") with
+                // no hint that quoting the header is the fix.
+                if (key.Length > 0 && _i < _s.Length && !char.IsWhiteSpace(_s[_i])
+                    && _s[_i] != ')' && !IsOpStart(_s[_i]))
+                    throw Err($"key '{key}' stops at '{_s[_i..Math.Min(_i + 4, _s.Length)]}' — a name with characters " +
+                              $"outside letters/digits/._ must be quoted, e.g. [\"{key}…\">90]");
+            }
+>>>>>>> upstream/main
             if (key.Length == 0 || key == "@")
                 throw Err($"expected a predicate (key op value) at '{_s[_i..]}'");
             SkipWs();
@@ -925,12 +1568,41 @@ internal static class AttributeFilter
             if (rPrefixed) _i++;                 // consume 'r'
             char quote = _s[_i];
             _i++;                                // consume opening quote
+<<<<<<< HEAD
             while (_i < _s.Length && _s[_i] != quote) _i++;
+=======
+            // A backslash escapes the next char, so \" continues the string
+            // (r-form included, Python-raw-string style: the backslash itself
+            // stays in the token — UnquoteValue / the regex engine handle it).
+            while (_i < _s.Length && _s[_i] != quote)
+                _i += _s[_i] == '\\' && _i + 1 < _s.Length ? 2 : 1;
+>>>>>>> upstream/main
             if (_i >= _s.Length) throw Err($"unterminated quoted value in '{_s[start..]}'");
             _i++;                                // consume closing quote
             return _s[start.._i];
         }
 
+<<<<<<< HEAD
+=======
+        // Read a quoted KEY, returning the inner content WITHOUT the quotes
+        // (unlike ReadQuoted, which keeps them for value regex/trim logic). Used
+        // only for a quoted predicate key, where the raw header name is wanted.
+        private string ReadQuotedInner()
+        {
+            char quote = _s[_i];
+            _i++;                                // consume opening quote
+            int start = _i;
+            while (_i < _s.Length && _s[_i] != quote)
+                _i += _s[_i] == '\\' && _i + 1 < _s.Length ? 2 : 1;
+            if (_i >= _s.Length) throw Err($"unterminated quoted key in '{_s[start..]}'");
+            // Re-wrap so UnquoteValue applies the same one-pair strip + escape
+            // processing as values (a header can contain the quote char too).
+            var inner = UnquoteValue(quote + _s[start.._i] + quote);
+            _i++;                                // consume closing quote
+            return inner;
+        }
+
+>>>>>>> upstream/main
         // True when the whitespace at wsPos is followed by an `and`/`or` keyword
         // at a word boundary — the point where an unquoted value ends.
         private bool ConnectiveAhead(int wsPos)
@@ -989,7 +1661,11 @@ internal static class AttributeFilter
     private static Condition BuildCondition(string key, string opStr, string rawVal)
     {
         var isRegexForm = rawVal.Length >= 3 && rawVal[0] == 'r' && (rawVal[1] == '"' || rawVal[1] == '\'');
+<<<<<<< HEAD
         var val = isRegexForm ? rawVal : rawVal.Trim('\'', '"');
+=======
+        var val = isRegexForm ? rawVal : UnquoteValue(rawVal);
+>>>>>>> upstream/main
 
         if (val.StartsWith("=") || val.StartsWith("~") || val.StartsWith("!"))
             throw new CliException($"Malformed selector: invalid operator near \"{key}{opStr}{val}\". Supported operators: =, !=, ~=, >=, <=, >, <")
@@ -997,7 +1673,15 @@ internal static class AttributeFilter
                 Code = "invalid_selector",
                 Suggestion = $"Did you mean [{key}={val.TrimStart('=', '~', '!')}]?"
             };
+<<<<<<< HEAD
         if (val.Contains('*'))
+=======
+        // The wildcard guard is for a bare `*` (glob), which the engine does not
+        // support. A regex value (r"...") legitimately uses `*` as a quantifier
+        // (`.*`, `a*`) — exempt it, or the flagship regex form is unusable and
+        // the error even suggests the r"..." syntax it just rejected.
+        if (!isRegexForm && val.Contains('*'))
+>>>>>>> upstream/main
             throw new CliException($"Wildcards (*) are not supported in attribute filters. Use ~= for contains, e.g. {key}~={val.Trim('*')}.")
             {
                 Code = "invalid_selector",
@@ -1014,6 +1698,62 @@ internal static class AttributeFilter
             "!=" => FilterOp.NotEqual,
             _ => FilterOp.Equal
         };
+<<<<<<< HEAD
         return new Condition(key.TrimStart('@'), op, val);
     }
+=======
+        RejectRegexOnNonContainsOp(key, op, val, isRegexForm);
+        return new Condition(key.TrimStart('@'), op, val);
+    }
+
+    // Strip exactly ONE matching quote pair from a value token, honoring the
+    // backslash escapes the tokenizer recognizes inside a quoted value (\" \'
+    // \\). The old Trim('\'','"') was wrong twice over: it stripped a whole
+    // RUN of trailing quote chars ('a "b"' lost its legal final double quote
+    // and the predicate silently matched nothing), and it stripped mismatched
+    // pairs ("a' → a). Unquoted tokens pass through untouched, so a Windows
+    // path value keeps its backslashes.
+    private static string UnquoteValue(string rawVal)
+    {
+        if (rawVal.Length < 2) return rawVal;
+        char q = rawVal[0];
+        if ((q != '"' && q != '\'') || rawVal[^1] != q) return rawVal;
+        var inner = rawVal[1..^1];
+        if (!inner.Contains('\\')) return inner;
+        var sb = new System.Text.StringBuilder(inner.Length);
+        for (int i = 0; i < inner.Length; i++)
+        {
+            if (inner[i] == '\\' && i + 1 < inner.Length && (inner[i + 1] == q || inner[i + 1] == '\\'))
+            { sb.Append(inner[i + 1]); i++; continue; }
+            sb.Append(inner[i]);
+        }
+        return sb.ToString();
+    }
+
+    // A node may DECLARE keys that are valid for its type even when no node in
+    // the result set currently carries a value (sparse emit-only-when-set
+    // props, e.g. Excel row height/hidden). Handlers stamp the set on
+    // InternalFormat["declaredKeys"]; a filter on a declared-but-unset key is a
+    // clean 0-match, not an "unknown key" warning.
+    private static bool KeyDeclaredValid(List<DocumentNode> nodes, string key)
+        => nodes.Any(n => n.InternalFormat.TryGetValue("declaredKeys", out var v)
+            && v is IEnumerable<string> ks && ks.Contains(key, StringComparer.OrdinalIgnoreCase));
+
+    // Only ~= evaluates the r"..." regex form; every other operator compares
+    // the raw `r"..."` string LITERALLY, which silently matches nothing (the
+    // stored text almost never contains the quotes). Fail fast instead — a
+    // silent 0-hit reads as "the data doesn't exist". To compare against a
+    // literal value that genuinely starts with r", quote it: [key="r\"x\""].
+    private static void RejectRegexOnNonContainsOp(string key, FilterOp op, string val, bool isRegexForm)
+    {
+        if (!isRegexForm || op == FilterOp.Contains) return;
+        throw new CliException(
+            $"Regex values (r\"...\") are only supported with the ~= operator; " +
+            $"'{OpToString(op)}' would compare the r\"...\" text literally and match nothing. Use [{key.TrimStart('@')}~={val}].")
+        {
+            Code = "invalid_selector",
+            Suggestion = $"[{key.TrimStart('@')}~={val}]",
+        };
+    }
+>>>>>>> upstream/main
 }

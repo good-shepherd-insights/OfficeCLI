@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -51,7 +55,11 @@ public partial class WordHandler
             // BuildSectionNode so `get /` and `get /section[N]` round-trip the
             // same key names. Schema canonical: `columns`, `columnSpace` (with
             // legacy aliases `columns.count`, `columns.space` accepted on
+<<<<<<< HEAD
             // Add/Set, dropped on Get per CLAUDE.md "Get should normalize to
+=======
+            // Add/Set, dropped on Get per the project conventions "Get should normalize to
+>>>>>>> upstream/main
             // the canonical key only"). EqualWidth / separator have no schema
             // canonical alias yet so they keep the dotted form.
             var cols = sectPr.GetFirstChild<Columns>();
@@ -186,8 +194,17 @@ public partial class WordHandler
             node.Format["bookFoldPrintingSheets"] = (int)bookFoldSheets.Val.Value;
         if (settings.GetFirstChild<EvenAndOddHeaders>() != null)
             node.Format["evenAndOddHeaders"] = true;
+<<<<<<< HEAD
         if (settings.GetFirstChild<AutoHyphenation>() != null)
             node.Format["autoHyphenation"] = true;
+=======
+        if (settings.GetFirstChild<UpdateFieldsOnOpen>() != null)
+            node.Format["updateFields"] = true;
+        if (settings.GetFirstChild<AutoHyphenation>() != null)
+            node.Format["autoHyphenation"] = true;
+        if (settings.GetFirstChild<TrackRevisions>() != null)
+            node.Format["trackRevisions"] = true;
+>>>>>>> upstream/main
         var defTabStop = settings.GetFirstChild<DefaultTabStop>();
         if (defTabStop?.Val?.Value != null)
             node.Format["defaultTabStop"] = FormatTwipsToCm((uint)defTabStop.Val.Value);

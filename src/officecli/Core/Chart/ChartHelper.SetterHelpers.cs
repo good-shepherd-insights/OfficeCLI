@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -93,13 +97,41 @@ internal static partial class ChartHelper
             if (trendType == C.TrendlineValues.Polynomial)
                 trendline.AppendChild(new C.PolynomialOrder { Val = (byte)Math.Clamp(order, 2, 6) });
             else if (trendType == C.TrendlineValues.MovingAverage)
+<<<<<<< HEAD
                 trendline.AppendChild(new C.Period { Val = (uint)order });
+=======
+            {
+                // OOXML ST_Skip MinInclusive=2 (c:period inside c:trendline).
+                // Pre-fix code silently accepted order=0/1 which Word 422s on.
+                if (order < 2)
+                    throw new ArgumentException($"movingAvg period must be >= 2 (OOXML ST_Skip MinInclusive=2). Got: {order}.");
+                trendline.AppendChild(new C.Period { Val = (uint)order });
+            }
+>>>>>>> upstream/main
             else
             {
                 // Treat as forward extrapolation periods
                 trendline.AppendChild(new C.Forward { Val = order });
             }
         }
+<<<<<<< HEAD
+=======
+        // OOXML CT_Trendline requires <c:period> when trendlineType=movingAvg;
+        // Word rejects the file otherwise. When no explicit period was given,
+        // fall back to 2 (Excel's default for "Add Trendline → Moving Average").
+        if (trendType == C.TrendlineValues.MovingAverage
+            && trendline.GetFirstChild<C.Period>() == null)
+        {
+            trendline.AppendChild(new C.Period { Val = 2u });
+        }
+        // Same family for polynomial: <c:order> is required for poly trendlines.
+        // Default to degree 2 (Excel's default for "Add Trendline → Polynomial").
+        if (trendType == C.TrendlineValues.Polynomial
+            && trendline.GetFirstChild<C.PolynomialOrder>() == null)
+        {
+            trendline.AppendChild(new C.PolynomialOrder { Val = 2 });
+        }
+>>>>>>> upstream/main
 
         // Backward extrapolation
         if (parts.Length > 2 && double.TryParse(parts[2],
@@ -154,9 +186,22 @@ internal static partial class ChartHelper
                 trendline.AppendChild(new C.PolynomialOrder { Val = (byte)Math.Clamp(ParseHelpers.SafeParseInt(value, "trendline.order"), 2, 6) });
                 break;
             case "period":
+<<<<<<< HEAD
                 trendline.RemoveAllChildren<C.Period>();
                 trendline.AppendChild(new C.Period { Val = (uint)Math.Max(2, ParseHelpers.SafeParseInt(value, "trendline.period")) });
                 break;
+=======
+            {
+                // OOXML ST_Skip MinInclusive=2. Pre-fix code clamped < 2 to 2;
+                // silently coerce hid invalid input from callers. Throw instead.
+                var periodVal = ParseHelpers.SafeParseInt(value, "trendline.period");
+                if (periodVal < 2)
+                    throw new ArgumentException($"trendline.period must be >= 2 (OOXML ST_Skip MinInclusive=2). Got: {periodVal}.");
+                trendline.RemoveAllChildren<C.Period>();
+                trendline.AppendChild(new C.Period { Val = (uint)periodVal });
+                break;
+            }
+>>>>>>> upstream/main
             case "intercept":
                 trendline.RemoveAllChildren<C.Intercept>();
                 trendline.AppendChild(new C.Intercept { Val = ParseHelpers.SafeParseDouble(value, "trendline.intercept") });
@@ -207,6 +252,32 @@ internal static partial class ChartHelper
             or "bubbleChart";
     }
 
+<<<<<<< HEAD
+=======
+    // Single source of truth for labelPos alias parsing. Accepts every
+    // friendly alias plus the raw schema tokens the Reader emits verbatim
+    // (ctr, t, b, l, r, outEnd, inEnd, inBase, bestFit) so dump→batch replay
+    // always parses. Unknown tokens throw instead of silently coercing to
+    // OutsideEnd (silent-accept enum-miss family); the three former inline
+    // switches each covered a different subset, so a token accepted on one
+    // path could throw or coerce on another.
+    internal static C.DataLabelPositionValues ParseDataLabelPosition(string value) =>
+        value.ToLowerInvariant() switch
+        {
+            "center" or "ctr" => C.DataLabelPositionValues.Center,
+            "insideend" or "inside" or "inend" => C.DataLabelPositionValues.InsideEnd,
+            "outsideend" or "outside" or "outend" => C.DataLabelPositionValues.OutsideEnd,
+            "insidebase" or "inbase" or "base" => C.DataLabelPositionValues.InsideBase,
+            "top" or "t" => C.DataLabelPositionValues.Top,
+            "bottom" or "b" => C.DataLabelPositionValues.Bottom,
+            "left" or "l" => C.DataLabelPositionValues.Left,
+            "right" or "r" => C.DataLabelPositionValues.Right,
+            "bestfit" or "best" => C.DataLabelPositionValues.BestFit,
+            _ => throw new ArgumentException(
+                $"Unknown label position '{value}'. Valid: center, insideEnd, outsideEnd, insideBase, top, bottom, left, right, bestFit.")
+        };
+
+>>>>>>> upstream/main
     internal static C.ErrorBars BuildErrorBars(string spec)
     {
         // Format: "type" or "type:value" e.g. "fixed:5", "percent:10", "stddev", "stderr"
@@ -230,6 +301,31 @@ internal static partial class ChartHelper
             typeStr = "fixed";
         }
 
+<<<<<<< HEAD
+=======
+        // Direction-keyword leading form: errBars=both | plus | minus | both:fixed:5
+        // The first slot is the ErrorBarType direction, not the value-type. Shift
+        // remaining slots so the existing typeStr / value parsing picks them up.
+        // Bare direction (no second slot) defaults to type=stdErr — Excel's UI
+        // default for "Error Bars > Standard Error" with direction=Both.
+        var explicitDirection = (C.ErrorBarValues?)null;
+        if (typeStr is "both" or "plus" or "minus")
+        {
+            explicitDirection = typeStr switch
+            {
+                "plus" => C.ErrorBarValues.Plus,
+                "minus" => C.ErrorBarValues.Minus,
+                _ => C.ErrorBarValues.Both,
+            };
+            // Shift: parts[1] becomes the type, parts[2..] becomes value(s).
+            // If no second slot, fall back to stdErr (no magnitude needed).
+            typeStr = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : "stderr";
+            parts = parts.Length > 1
+                ? new[] { typeStr }.Concat(parts.Skip(2)).ToArray()
+                : new[] { typeStr };
+        }
+
+>>>>>>> upstream/main
         var errBars = new C.ErrorBars();
         errBars.AppendChild(new C.ErrorDirection { Val = C.ErrorBarDirectionValues.Y });
 
@@ -267,7 +363,11 @@ internal static partial class ChartHelper
             return errBars;
         }
 
+<<<<<<< HEAD
         errBars.AppendChild(new C.ErrorBarType { Val = C.ErrorBarValues.Both });
+=======
+        errBars.AppendChild(new C.ErrorBarType { Val = explicitDirection ?? C.ErrorBarValues.Both });
+>>>>>>> upstream/main
 
         var errValType = typeStr switch
         {
@@ -275,7 +375,16 @@ internal static partial class ChartHelper
             "percent" or "pct" or "percentage" => C.ErrorValues.Percentage,
             "stddev" or "standarddeviation" => C.ErrorValues.StandardDeviation,
             "stderr" or "standarderror" => C.ErrorValues.StandardError,
+<<<<<<< HEAD
             _ => C.ErrorValues.FixedValue
+=======
+            // Unknown token must fail loudly: "std" silently coerced to
+            // FixedValue produced zero/wrong error bars with no warning
+            // (silent-accept enum-miss family).
+            _ => throw new ArgumentException(
+                $"Unknown error-bar type '{typeStr}'. Valid: fixed[:N], percent[:N], stddev[:N], stderr, " +
+                $"cust:<direction>:<plusCSV>:<minusCSV>, optionally prefixed with both:/plus:/minus:.")
+>>>>>>> upstream/main
         };
         errBars.AppendChild(new C.ErrorBarValueType { Val = errValType });
 
@@ -297,17 +406,69 @@ internal static partial class ChartHelper
 
     // ==================== Border / Outline Helpers ====================
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// a:ln/@w schema ceiling (ST_LineWidth MaxInclusive): 20116800 EMU = 1584pt.
+    /// </summary>
+    internal const int MaxLineWidthEmu = 20116800;
+
+    /// <summary>
+    /// Parse one line-width token (the width slot of "color:width[:dash]" specs
+    /// and the dotted *.width keys) into EMU for a:ln/@w.
+    /// - Bare numbers are POINTS — the documented colon-spec unit
+    ///   (schemas/help: "color:width", examples 0.5 / 1 / 1.5).
+    /// - Unit-qualified values ("1pt", "0.5mm", "0.02in", "12700emu") go through
+    ///   EmuConverter.ParseEmu.
+    /// - Bare integers too large to be a legal point width (&gt; 1584pt) are RAW
+    ///   EMU — the ParseEmu raw-integer convention. Width values copied out of
+    ///   real OOXML (e.g. "…:12700" = 1pt) must round-trip as-is instead of
+    ///   being re-multiplied by 12700 into schema-invalid XML.
+    /// The result is clamped to [0, MaxLineWidthEmu] so Set never emits an
+    /// a:ln/@w that fails OOXML validation.
+    /// </summary>
+    internal static bool TryParseLineWidthEmu(string? token, out int emu)
+    {
+        emu = 0;
+        token = token?.Trim();
+        if (string.IsNullOrEmpty(token)) return false;
+        if (char.IsLetter(token[^1]))
+        {
+            try { emu = (int)Math.Clamp(EmuConverter.ParseEmu(token), 0, MaxLineWidthEmu); }
+            catch (ArgumentException) { return false; }
+            return true;
+        }
+        if (!double.TryParse(token, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var num)
+            || double.IsNaN(num) || double.IsInfinity(num) || num < 0)
+            return false;
+        var asPointsEmu = num * EmuConverter.EmuPerPointF;
+        emu = asPointsEmu > MaxLineWidthEmu && num == Math.Floor(num)
+            ? (int)Math.Min(num, MaxLineWidthEmu)   // raw EMU integer
+            : (int)Math.Min(asPointsEmu, MaxLineWidthEmu);
+        return true;
+    }
+
+>>>>>>> upstream/main
     internal static Drawing.Outline BuildOutlineElement(string spec)
     {
         // Format: "color" or "color:width" or "color:width:dash"
         // e.g. "000000", "333333:1.5", "666666:1:dash"
         var parts = spec.Split(':');
         var color = parts[0].Trim();
+<<<<<<< HEAD
         var widthPt = parts.Length > 1 && double.TryParse(parts[1],
             System.Globalization.CultureInfo.InvariantCulture, out var w) ? w : 0.75;
         var dash = parts.Length > 2 ? parts[2].Trim() : null;
 
         var outline = new Drawing.Outline { Width = (int)(widthPt * EmuConverter.EmuPerPoint) };
+=======
+        var widthEmu = parts.Length > 1 && TryParseLineWidthEmu(parts[1], out var w)
+            ? w : (int)(0.75 * EmuConverter.EmuPerPoint);
+        var dash = parts.Length > 2 ? parts[2].Trim() : null;
+
+        var outline = new Drawing.Outline { Width = widthEmu };
+>>>>>>> upstream/main
         var sf = new Drawing.SolidFill();
         sf.AppendChild(BuildChartColorElement(color));
         outline.AppendChild(sf);
@@ -329,6 +490,7 @@ internal static partial class ChartHelper
         {
             dPt = new C.DataPoint();
             dPt.AppendChild(new C.Index { Val = (uint)pointIndex });
+<<<<<<< HEAD
             // Insert before c:dLbls, c:trendline, c:errBars, c:cat, c:val etc.
             var insertBefore = series.GetFirstChild<C.DataLabels>() as OpenXmlElement
                 ?? series.GetFirstChild<C.Trendline>() as OpenXmlElement
@@ -339,6 +501,15 @@ internal static partial class ChartHelper
                 series.InsertBefore(dPt, insertBefore);
             else
                 series.AppendChild(dPt);
+=======
+            // Route through the shared anchor helper so dPt lands after
+            // marker and before dLbls/trendline/errBars/cat/val/xVal/yVal/
+            // bubbleSize/smooth. Anchoring only on Values/CategoryAxisData
+            // misses scatter/bubble series (data is in xVal/yVal/bubbleSize),
+            // so dPt was appended after the data tail — the validator then
+            // reports "unexpected child element 'c:dPt'".
+            InsertSeriesChildInOrder(series, dPt);
+>>>>>>> upstream/main
         }
 
         var spPr = dPt.GetFirstChild<C.ChartShapeProperties>();
@@ -363,11 +534,15 @@ internal static partial class ChartHelper
         {
             dPt = new C.DataPoint();
             dPt.AppendChild(new C.Index { Val = (uint)pointIndex });
+<<<<<<< HEAD
             var insertBefore = series.GetFirstChild<C.DataLabels>() as OpenXmlElement
                 ?? series.GetFirstChild<C.CategoryAxisData>() as OpenXmlElement
                 ?? series.GetFirstChild<C.Values>();
             if (insertBefore != null) series.InsertBefore(dPt, insertBefore);
             else series.AppendChild(dPt);
+=======
+            InsertSeriesChildInOrder(series, dPt);
+>>>>>>> upstream/main
         }
         dPt.RemoveAllChildren<C.Explosion>();
         if (explosion > 0)
@@ -386,6 +561,7 @@ internal static partial class ChartHelper
         if (dPt != null) return dPt;
         dPt = new C.DataPoint();
         dPt.AppendChild(new C.Index { Val = (uint)pointIndex });
+<<<<<<< HEAD
         var insertBefore = series.GetFirstChild<C.DataLabels>() as OpenXmlElement
             ?? series.GetFirstChild<C.Trendline>() as OpenXmlElement
             ?? series.GetFirstChild<C.ErrorBars>() as OpenXmlElement
@@ -393,6 +569,9 @@ internal static partial class ChartHelper
             ?? series.GetFirstChild<C.Values>();
         if (insertBefore != null) series.InsertBefore(dPt, insertBefore);
         else series.AppendChild(dPt);
+=======
+        InsertSeriesChildInOrder(series, dPt);
+>>>>>>> upstream/main
         return dPt;
     }
 
@@ -741,6 +920,7 @@ internal static partial class ChartHelper
                 var valEl = ser.GetFirstChild<C.Values>();
                 if (valEl != null)
                 {
+<<<<<<< HEAD
                     valEl.RemoveAllChildren();
                     if (value.Contains('!'))
                     {
@@ -748,6 +928,23 @@ internal static partial class ChartHelper
                         var builtVals = BuildValuesRef(value);
                         foreach (var child in builtVals.ChildElements.ToList())
                             valEl.AppendChild(child.CloneNode(true));
+=======
+                    // ATOMICITY: build (and fully validate) the replacement
+                    // content BEFORE touching the existing <c:val>. The old code
+                    // called RemoveAllChildren() first, so a rejected token
+                    // (e.g. a named range like "SalesRange", which is neither a
+                    // Sheet!ref nor a number list) threw AFTER emptying <c:val>,
+                    // leaving a schema-invalid empty element that real Excel
+                    // refuses to open (0x800A03EC) — and it persisted on save
+                    // even though the CLI reported an error.
+                    C.Values builtVals;
+                    if (value.Contains('!'))
+                    {
+                        // Cell reference: e.g. Sheet1!B2:B4 — normalize so a
+                        // sheet name that needs quoting (spaces, hyphens, leading
+                        // digit) is quoted, matching the Add path.
+                        builtVals = BuildValuesRef(NormalizeRangeReference(value));
+>>>>>>> upstream/main
                     }
                     else
                     {
@@ -775,10 +972,19 @@ internal static partial class ChartHelper
                                     { Code = "invalid_value" };
                             nums[ti] = d;
                         }
+<<<<<<< HEAD
                         var builtVals = BuildValues(nums);
                         foreach (var child in builtVals.ChildElements.ToList())
                             valEl.AppendChild(child.CloneNode(true));
                     }
+=======
+                        builtVals = BuildValues(nums);
+                    }
+                    // Validation passed — now safe to swap the content in.
+                    valEl.RemoveAllChildren();
+                    foreach (var child in builtVals.ChildElements.ToList())
+                        valEl.AppendChild(child.CloneNode(true));
+>>>>>>> upstream/main
                 }
                 return true;
             }
@@ -842,7 +1048,15 @@ internal static partial class ChartHelper
 
             case "linewidth":
             case "outlinewidth":
+<<<<<<< HEAD
                 ApplySeriesLineWidth(ser, (int)(ParseHelpers.SafeParseDouble(value, "series.lineWidth") * EmuConverter.EmuPerPoint));
+=======
+                if (TryParseLineWidthEmu(value, out var lnWidthEmu))
+                    ApplySeriesLineWidth(ser, lnWidthEmu);
+                else
+                    // Preserve the structured invalid_value error for garbage input.
+                    ParseHelpers.SafeParseDouble(value, "series.lineWidth");
+>>>>>>> upstream/main
                 return true;
 
             case "linedash" or "dash":
@@ -1133,6 +1347,7 @@ internal static partial class ChartHelper
                 // Skip if this dLbl is already marked deleted — delete wins.
                 if (dLbl.GetFirstChild<C.Delete>() is { Val.Value: true }) return;
                 dLbl.RemoveAllChildren<C.DataLabelPosition>();
+<<<<<<< HEAD
                 var dlPos = value.ToLowerInvariant() switch
                 {
                     "center" or "ctr" => C.DataLabelPositionValues.Center,
@@ -1142,6 +1357,9 @@ internal static partial class ChartHelper
                     _ => C.DataLabelPositionValues.OutsideEnd
                 };
                 dLbl.AppendChild(new C.DataLabelPosition { Val = dlPos });
+=======
+                dLbl.AppendChild(new C.DataLabelPosition { Val = ParseDataLabelPosition(value) });
+>>>>>>> upstream/main
                 break;
             }
             case "numfmt":
@@ -1328,10 +1546,19 @@ internal static partial class ChartHelper
     /// Insert a child into a CT_LineChart at the correct schema position.
     /// Schema: grouping, varyColors, ser+, dLbls, dropLines, hiLowLines, upDownBars, marker, smooth, axId+, extLst
     /// </summary>
+<<<<<<< HEAD
     internal static void InsertLineChartChildInOrder(C.LineChart lc, OpenXmlElement child)
     {
         // CT_LineChart schema order: grouping, varyColors, ser*, dLbls?,
         // dropLines?, hiLowLines?, upDownBars?, marker?, smooth?, extLst?, axId+
+=======
+    internal static void InsertLineChartChildInOrder(OpenXmlCompositeElement lc, OpenXmlElement child)
+    {
+        // CT_LineChart schema order: grouping, varyColors, ser*, dLbls?,
+        // dropLines?, hiLowLines?, upDownBars?, marker?, smooth?, extLst?, axId+
+        // CT_StockChart (ser+, dLbls?, dropLines?, hiLowLines?, upDownBars?,
+        // axId+) is a strict subsequence, so the same anchor chain serves both.
+>>>>>>> upstream/main
         string[] insertBeforeNames = child.LocalName switch
         {
             "dropLines" => ["hiLowLines", "upDownBars", "marker", "smooth", "extLst", "axId"],

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -60,10 +64,21 @@ internal class CliWarning
     public string? Code { get; set; }
     [JsonPropertyName("suggestion")]
     public string? Suggestion { get; set; }
+    // Machine-readable correction fields for the query self-correction contract.
+    // Null on warnings without structured data and omitted from JSON
+    // (WhenWritingNull), so these are purely additive for existing consumers.
+    [JsonPropertyName("kind")]
+    public string? Kind { get; set; }
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+    [JsonPropertyName("value")]
+    public string? Value { get; set; }
+    [JsonPropertyName("available")]
+    public string[]? Available { get; set; }
 }
 
 /// <summary>
-/// Thread-static context for capturing warnings during command execution in JSON mode.
+/// Thread-static context for capturing warnings during command execution.
 /// </summary>
 internal static class WarningContext
 {
@@ -149,10 +164,34 @@ internal static class OutputFormatter
     /// errors, batch had a failed step). For *probe* commands like
     /// `view --mode issues`, success stays true even when issues are listed —
     /// listing issues is the command's normal output, not a failure verdict.
+<<<<<<< HEAD
     /// See CLAUDE.md "JSON Envelope" for the per-command judgment table.
     /// </summary>
     public static string WrapEnvelope(string dataJson, List<CliWarning>? warnings = null, bool success = true)
     {
+=======
+    /// See the project conventions "JSON Envelope" for the per-command judgment table.
+    /// </summary>
+    /// <summary>
+    /// Folds warnings queued in WarningContext (Core-layer advisory sites that
+    /// cannot reach a command's local warning list, e.g. ExcelStyleManager's
+    /// number-format check) into the caller-supplied list. Drains the context,
+    /// so the single top-level envelope a command emits picks them up exactly
+    /// once. No-op unless the command opted in via WarningContext.Begin().
+    /// </summary>
+    private static List<CliWarning>? MergeContextWarnings(List<CliWarning>? warnings)
+    {
+        var pending = WarningContext.End();
+        if (pending == null) return warnings;
+        if (warnings == null || warnings.Count == 0) return pending;
+        warnings.AddRange(pending);
+        return warnings;
+    }
+
+    public static string WrapEnvelope(string dataJson, List<CliWarning>? warnings = null, bool success = true)
+    {
+        warnings = MergeContextWarnings(warnings);
+>>>>>>> upstream/main
         var envelope = new JsonObject { ["success"] = success };
 
         // Parse and embed data as-is (preserves original structure)
@@ -171,6 +210,7 @@ internal static class OutputFormatter
     /// </summary>
     public static string WrapEnvelopeText(string message, List<CliWarning>? warnings = null, int? matched = null, bool success = true)
     {
+        warnings = MergeContextWarnings(warnings);
         var envelope = new JsonObject
         {
             ["success"] = success,
@@ -194,6 +234,10 @@ internal static class OutputFormatter
 
     public static string WrapEnvelopeWithData(string message, DocumentNode data, List<CliWarning>? warnings = null, int? matched = null, bool success = true)
     {
+<<<<<<< HEAD
+=======
+        warnings = MergeContextWarnings(warnings);
+>>>>>>> upstream/main
         var envelope = new JsonObject
         {
             ["success"] = success,
@@ -216,6 +260,7 @@ internal static class OutputFormatter
     /// </summary>
     public static string WrapEnvelopeError(string message, List<CliWarning>? warnings = null)
     {
+        warnings = MergeContextWarnings(warnings);
         var envelope = new JsonObject
         {
             ["success"] = false,
@@ -265,6 +310,22 @@ internal static class OutputFormatter
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Machine-readable code for a per-item failure (batch results[].code).
+    /// Same derivation as the envelope-level error.code — CliException.Code
+    /// verbatim, else the message-pattern inference — EXCEPT the
+    /// internal_error catch-all: at item level an unclassifiable failure
+    /// leaves the code ABSENT (null) so consumers fall back to the message
+    /// text instead of branching on a fake bucket.
+    /// </summary>
+    internal static string? InferErrorCode(Exception ex)
+    {
+        if (ex is CliException cli) return cli.Code;
+        var tmp = new ErrorResult();
+        EnrichFromMessage(tmp, ex);
+        return tmp.Code == "internal_error" ? null : tmp.Code;
     }
 
     private static void EnrichFromMessage(ErrorResult result, Exception ex)
@@ -331,6 +392,97 @@ internal static class OutputFormatter
             return;
         }
 
+<<<<<<< HEAD
+=======
+        // Pattern: "Unsupported MIME type: <mime>. Supported: image/png, …"
+        // (data: URI with an unrecognized or empty media type).
+        if (msg.Contains("Unsupported MIME type"))
+        {
+            result.Code = "invalid_value";
+            var mimeValid = System.Text.RegularExpressions.Regex.Match(msg, @"Supported:\s*(.+?)\.?$");
+            if (mimeValid.Success)
+                result.ValidValues = mimeValid.Groups[1].Value.Split(", ");
+            return;
+        }
+
+        // Pattern: "add-part extpart: parent must be /presentation, /slide[N], …"
+        // — an add-part host outside the allowed set; the value is well-formed
+        // but not an accepted parent for this part type.
+        if (msg.Contains(": parent must be "))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "Cannot resolve @name= outside of a slide context" — a
+        // selector feature used on a path segment that doesn't support it.
+        if (msg.Contains("Cannot resolve @name="))
+        {
+            result.Code = "invalid_path";
+            return;
+        }
+
+        // Pattern: "invalid showDataAs: 'X'" / "invalid subtotal: …" — pivot
+        // enum rejections phrased with a lowercase 'invalid', missed by the
+        // case-sensitive "Invalid " prefix rule above.
+        if (msg.StartsWith("invalid ", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "raw-set: XPath matched no elements: <xpath>. Hint: …" —
+        // the addressed element does not exist, same family as path_not_found.
+        if (msg.Contains("XPath matched no elements"))
+        {
+            result.Code = "not_found";
+            return;
+        }
+
+        // Pattern: "diagram type 'X' is not supported yet (currently: ...)" —
+        // DiagramCompiler rejects a mermaid diagram kind it can't render. It's a
+        // bad-input value (fix by choosing a supported type), not a handler
+        // crash, so it must not fall through to internal_error.
+        if (msg.StartsWith("diagram type '", StringComparison.Ordinal)
+            && msg.Contains("is not supported yet", StringComparison.Ordinal))
+        {
+            result.Code = "unsupported_type";
+            return;
+        }
+
+        // CopyFrom (`add --from`) rejections: the source element can't be cloned
+        // as a direct child of the target (a bookmark half-pair, a part-scoped
+        // footnote/endnote/comment, equation content, or a diagram group — each
+        // "lives inside a paragraph / another part"). WordHandler.CopyFrom throws
+        // "Cannot clone '<path>': … <do X> instead." — a bad-argument value the
+        // caller can act on, not a handler crash.
+        if (msg.StartsWith("Cannot clone '", StringComparison.Ordinal)
+            || msg.StartsWith("Cannot move '", StringComparison.Ordinal)
+            || msg.StartsWith("Cannot swap elements", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Diagram input-validation failures: no mermaid source supplied, or the
+        // source parsed to an empty graph (bare header / all statements
+        // malformed). These are bad-input values the caller can fix, not handler
+        // crashes — keep them out of internal_error. (The empty-graph case used
+        // to leak a raw LINQ "Sequence contains no elements".)
+        if (msg.StartsWith("diagram requires ", StringComparison.Ordinal)
+            || msg.StartsWith("diagram has no nodes", StringComparison.Ordinal)
+            || msg.StartsWith("sequence diagram has no ", StringComparison.Ordinal)
+            // markdown input-validation mirrors diagram: no inline text and no
+            // readable src file is a bad-input value the caller can fix, not a
+            // handler crash. Align its code with diagram's (was leaking
+            // internal_error because no pattern matched the message).
+            || msg.StartsWith("markdown requires ", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+>>>>>>> upstream/main
         // Pattern: "Row <N> in cell reference '...' is out of valid range. …" /
         // "Column '<X>' in cell reference '...' is out of range. …" —
         // raised by ParseCellReference (ExcelHandler.Selector.cs) when a
@@ -461,6 +613,58 @@ internal static class OutputFormatter
         if (msg.Contains("property is required"))
         {
             result.Code = "missing_property";
+            return;
+        }
+
+        // Pattern: batch item shape errors — "'add-part' command requires
+        // 'parent' field" / "requires 'type' or 'from' field" / "requires
+        // 'path' and 'path2' (or 'to') fields" / "Batch item missing required
+        // 'command' field" / "add-part extpart requires property 'data'" /
+        // "pivottable requires 'source' property" / "'shapes' property
+        // required" / "Chart requires data".
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires .{0,40}'[\w-]+'.{0,20}\bfields?\b")
+            || System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires (property )?'[\w-]+'( property)?")
+            || msg.Contains("property required")
+            || msg.Contains("requires data")
+            || msg.Contains("missing required"))
+        {
+            result.Code = "missing_property";
+            return;
+        }
+
+        // Pattern: "batch item[3] is null. Each entry must be a JSON object" —
+        // malformed batch payload, same class as unparseable JSON.
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"^batch item\[\d+\] is null"))
+        {
+            result.Code = "invalid_json";
+            return;
+        }
+
+        // Pattern: "add-part extpart: 'data' is not valid base64" (ours) or
+        // "The input is not a valid Base-64 string…" (raw .NET
+        // FormatException, e.g. a data: URI with a corrupt payload) or
+        // "Only base64-encoded data URIs are supported" (data:, / non-base64
+        // data URI) — malformed payload value, same class as "Invalid <…>".
+        if (msg.Contains("is not valid base64")
+            || msg.Contains("not a valid Base-64")
+            || msg.Contains("Only base64-encoded data URIs"))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "…overlaps existing pivot… choose a different anchor" —
+        // placement conflict, a well-formed but unusable value.
+        if (msg.Contains("overlaps existing pivot"))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: batch item carries unknown field(s) — payload shape error.
+        if (msg.Contains("unknown field"))
+        {
+            result.Code = "invalid_input";
             return;
         }
 

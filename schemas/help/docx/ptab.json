@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "ptab",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["positionaltab"],
+>>>>>>> upstream/main
   "parent": "paragraph",
   "operations": {
     "add": true,

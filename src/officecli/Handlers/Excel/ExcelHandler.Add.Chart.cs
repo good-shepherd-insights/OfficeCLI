@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -39,6 +43,7 @@ public partial class ExcelHandler
         string? dataRangeStr = null;
         if (properties.TryGetValue("datarange", out var dr) || properties.TryGetValue("range", out dr))
             dataRangeStr = dr;
+<<<<<<< HEAD
         if (!string.IsNullOrEmpty(dataRangeStr))
         {
             (seriesData, categories) = ParseDataRangeForChart(dataRangeStr, chartSheetName, properties);
@@ -52,6 +57,64 @@ public partial class ExcelHandler
         if (seriesData.Count == 0)
             throw new ArgumentException("Chart requires a 'data' property. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
                 "or dataRange=\"Sheet1!A1:D5\" or series1=\"Revenue:100,200,300\"");
+=======
+        ChartRangeGeometry? dataRangeGeometry = null;
+        if (!string.IsNullOrEmpty(dataRangeStr))
+        {
+            (seriesData, categories, dataRangeGeometry) = ParseDataRangeForChart(dataRangeStr, chartSheetName, properties);
+        }
+        else
+        {
+            // Qualify bare range references (A1:A3 → Sheet1!A1:A3) before the
+            // shared parser sees them. An unqualified <c:f>$B$1:$B$3</c:f> is
+            // unresolvable inside a chart part — real Excel ignores it and
+            // falls back to ordinal category labels / the stale cache.
+            foreach (var refKey in EnumerateChartRangeKeys(properties))
+            {
+                if (properties.TryGetValue(refKey, out var refVal)
+                    && ChartHelper.IsRangeReference(refVal)
+                    && !refVal.Contains('!'))
+                    properties[refKey] = $"{Core.ModernFunctionQualifier.QuoteSheetNameForRef(chartSheetName)}!{refVal.Trim()}";
+            }
+            categories = ChartHelper.ParseCategories(properties);
+            seriesData = ChartHelper.ParseSeriesData(properties);
+            // CONSISTENCY(chart-series-rangeref-cache): when a series value or
+            // categories arg is given as a cell RANGE (series1=B1:B4,
+            // categories=A1:A4) rather than a literal list, ParseSeriesData/
+            // ParseCategories leave the literal values empty (the range is only
+            // emitted as a numRef/strRef formula). Real Excel — and the
+            // `dataRange=` path here — also snapshot the referenced cells into
+            // a numCache/strCache so the chart renders before the workbook is
+            // re-evaluated (the HTML preview plots only from that cache).
+            // Resolve the ranges against the worksheet now to backfill the
+            // literal values, mirroring ParseDataRangeForChart.
+            BackfillSeriesRangeValues(ref seriesData, ref categories, chartSheetName, properties);
+        }
+
+        if (seriesData.Count == 0)
+        {
+            // A supplied-but-consumed dataRange must not get the generic
+            // "requires a data property" message: with a single-column range
+            // and no explicit categories=, the sole column is reserved as
+            // the category column, leaving zero series — say so.
+            if (properties.ContainsKey("dataRange") || properties.ContainsKey("datarange"))
+                throw new ArgumentException(
+                    "dataRange resolved to 0 series columns: a single-column range is consumed as the " +
+                    "category column by default. Pass categories= explicitly (e.g. categories=Sheet1!A1:A5) " +
+                    "to plot that column as a series, or widen the dataRange to include a values column.");
+            throw new ArgumentException("Chart requires a 'data' property. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
+                "or dataRange=\"Sheet1!A1:D5\" or series1=\"Revenue:100,200,300\"");
+        }
+
+        // Validate the chart type BEFORE any part is created: an unknown type
+        // used to throw inside the builder AFTER the DrawingsPart and its
+        // sheet relationship were attached, leaving an orphaned empty
+        // <xdr:wsDr/> part behind on every failed attempt. Extended (cx)
+        // types — funnel/treemap/… — route through ChartExBuilder below and
+        // must not be run through the classic-type parser.
+        if (!ChartExBuilder.IsExtendedChartType(chartType))
+            ChartHelper.ParseChartType(chartType);
+>>>>>>> upstream/main
 
         // Create DrawingsPart if needed
         var drawingsPart = chartWorksheet.DrawingsPart
@@ -79,8 +142,17 @@ public partial class ExcelHandler
         int fromCol, fromRow, toCol, toRow;
         if (properties.TryGetValue("anchor", out var chartAnchorStr) && !string.IsNullOrWhiteSpace(chartAnchorStr))
         {
+<<<<<<< HEAD
             if (properties.ContainsKey("width") || properties.ContainsKey("height")
                 || properties.ContainsKey("x") || properties.ContainsKey("y"))
+=======
+            // Non-short-circuit | on purpose: each ContainsKey marks the key
+            // as handler-read in TrackingPropertyDictionary. With ||, finding
+            // `width` skipped the x/y/height probes and they surfaced as a
+            // false "UNSUPPORTED props" warning alongside this explicit one.
+            if (properties.ContainsKey("width") | properties.ContainsKey("height")
+                | properties.ContainsKey("x") | properties.ContainsKey("y"))
+>>>>>>> upstream/main
                 Console.Error.WriteLine(
                     "Warning: 'x'/'y'/'width'/'height' are ignored when 'anchor' is provided (anchor defines the full rectangle).");
             if (!TryParseCellRangeAnchor(chartAnchorStr, out var cxFrom, out var cyFrom, out var cxTo, out var cyTo))
@@ -121,6 +193,7 @@ public partial class ExcelHandler
             // tries to resolve rId1 against this chart's rels and errors out.
             var extData = cxChartSpace.Descendants<CX.ExternalData>().FirstOrDefault();
             extData?.Remove();
+<<<<<<< HEAD
             // Rewrite cx:f Sheet1 references to the actual host sheet name
             // (BuildExtendedChartSpace hardcodes "Sheet1" — fine for the
             // PPT/Word embedded xlsx but breaks here when the chart sits
@@ -135,6 +208,34 @@ public partial class ExcelHandler
                         if (f.Text.StartsWith("Sheet1!", StringComparison.Ordinal))
                             f.Text = refSheet + f.Text.Substring("Sheet1".Length);
                     }
+=======
+            // Rewrite cx:f references to the actual host cells.
+            // BuildExtendedChartSpace hardcodes the embedded-xlsx layout
+            // (Sheet1!$A$2:… — correct for PPT/Word, whose chart data lives in
+            // an embedded workbook whose sheet really is Sheet1). On an xlsx
+            // host the formulas must reference the HOST workbook instead:
+            //  - dataRange given: remap sheet name AND coordinates to the
+            //    user's range (issue #176 — the old code skipped this case
+            //    entirely, so a renamed sheet produced Sheet1! references
+            //    that Excel resolves as an external-workbook link: "cannot
+            //    update links" prompt + #REF! category axis + empty plot;
+            //    a non-A1-anchored range additionally pointed at the wrong
+            //    rows even on a sheet that happened to be named Sheet1).
+            //  - inline data (no dataRange): cells were just written to the
+            //    host sheet in the embedded A1-anchored layout, so only the
+            //    sheet name needs replacing.
+            if (dataRangeGeometry != null)
+            {
+                RemapChartExFormulasToHostRange(cxChartSpace, dataRangeGeometry);
+            }
+            else if (chartSheetName != "Sheet1")
+            {
+                var quoted = Core.ModernFunctionQualifier.QuoteSheetNameForRef(chartSheetName);
+                foreach (var f in cxChartSpace.Descendants<CX.Formula>())
+                {
+                    if (f.Text.StartsWith("Sheet1!", StringComparison.Ordinal))
+                        f.Text = quoted + f.Text.Substring("Sheet1".Length);
+>>>>>>> upstream/main
                 }
             }
             var extChartPart = drawingsPart.AddNewPart<ExtendedChartPart>();
@@ -236,7 +337,25 @@ public partial class ExcelHandler
                 deferredProps[dk] = dv;
         }
         if (deferredProps.Count > 0)
+<<<<<<< HEAD
             ChartHelper.SetChartProperties(chartPart, deferredProps);
+=======
+        {
+            // Atomicity: a bad deferred prop (e.g. holeSize=500) throws here,
+            // AFTER the ChartPart was created. Roll the part back on failure so
+            // a rejected Add leaves no orphaned/partial chart part behind — the
+            // reported error (exit 1) must mean nothing was added.
+            try
+            {
+                ChartHelper.SetChartProperties(chartPart, deferredProps);
+            }
+            catch
+            {
+                drawingsPart.DeletePart(chartPart);
+                throw;
+            }
+        }
+>>>>>>> upstream/main
 
         var anchor = new XDR.TwoCellAnchor();
         anchor.Append(new XDR.FromMarker(
@@ -293,6 +412,72 @@ public partial class ExcelHandler
         return $"/{chartSheetName}/chart[{chartIdx}]";
     }
 
+<<<<<<< HEAD
+=======
+    // BUG-002: `add /SheetName/chart[N] --type chart-series` — append a data
+    // series to an existing chart. Mirrors PowerPointHandler.AddChartSeries
+    // (R22-1); additionally resolves xlsx cell-range values/categories into
+    // numRef/strRef + cached snapshot, matching what chart Add emits for
+    // range-referenced series (CONSISTENCY(chart-series-rangeref-cache)).
+    private string AddChartSeries(string parentPath, Dictionary<string, string> properties)
+    {
+        var m = Regex.Match(parentPath, @"^/([^/]+)/chart\[(\d+)\]$");
+        if (!m.Success)
+            throw new ArgumentException(
+                "series must be added to a chart parent: /SheetName/chart[N]");
+        var sheetName = m.Groups[1].Value;
+        var chartIdx = int.Parse(m.Groups[2].Value);
+        var worksheet = FindWorksheet(sheetName)
+            ?? throw new ArgumentException($"Sheet not found: {sheetName}");
+        var drawingsPart = worksheet.DrawingsPart
+            ?? throw new ArgumentException("Sheet has no drawings/charts");
+        var excelCharts = GetExcelCharts(drawingsPart);
+        if (chartIdx < 1 || chartIdx > excelCharts.Count)
+            throw new ArgumentException($"Chart {chartIdx} not found (total: {excelCharts.Count})");
+        var chartInfo = excelCharts[chartIdx - 1];
+        if (chartInfo.StandardPart == null)
+            throw new ArgumentException(
+                $"Chart at {parentPath} is not a standard chart (extended cx charts do not support add series).");
+        var chartPart = chartInfo.StandardPart;
+
+        // Resolve range-reference values/categories against the workbook so
+        // AddSeries seeds literal data (which becomes the cached snapshot).
+        // Mutate `properties` in place instead of copying: enumerating a
+        // TrackingPropertyDictionary into a fresh dict marks EVERY key as
+        // consumed (see TrackingPropertyDictionary.GetEnumerator), which
+        // silently swallows unsupported_property reporting for unknown keys.
+        // TryGetValue / indexer / Remove are the tracked access routes.
+        string? valuesRef = null, categoriesRef = null;
+        List<string>? cachedCats = null;
+        if (properties.TryGetValue("values", out var valRaw) && ChartHelper.IsRangeReference(valRaw))
+        {
+            valuesRef = ChartHelper.NormalizeRangeReference(valRaw, sheetName);
+            var cells = ResolveRangeToCellValues(valRaw, sheetName);
+            if (cells != null)
+                properties["values"] = string.Join(",", cells.Select(v =>
+                    double.TryParse(v, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0));
+            else
+                properties.Remove("values");
+        }
+        if (properties.TryGetValue("categories", out var catRaw))
+        {
+            properties.Remove("categories"); // ChartHelper.AddSeries doesn't consume it
+            if (ChartHelper.IsRangeReference(catRaw))
+            {
+                categoriesRef = ChartHelper.NormalizeRangeReference(catRaw, sheetName);
+                cachedCats = ResolveRangeToCellValues(catRaw, sheetName);
+            }
+        }
+
+        var newIdx = ChartHelper.AddSeries(chartPart, properties);
+        if (newIdx == 0)
+            throw new ArgumentException(
+                "Cannot add a series: the chart has no existing series to derive structure from. Recreate the chart with the desired series instead.");
+        ChartHelper.ApplySeriesRangeRefs(chartPart, newIdx, valuesRef, categoriesRef, cachedCats);
+        return $"/{sheetName}/chart[{chartIdx}]/series[{newIdx}]";
+    }
+
+>>>>>>> upstream/main
     private string AddDefault(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
         var index = position?.Index;
@@ -322,7 +507,11 @@ public partial class ExcelHandler
         SaveWorksheet(fbWorksheet);
 
         var siblings = fbParent.ChildElements.Where(e => e.LocalName == created.LocalName).ToList();
+<<<<<<< HEAD
         var createdIdx = siblings.IndexOf(created) + 1;
+=======
+        var createdIdx = PathIndex.FromArrayIndex(siblings.IndexOf(created));
+>>>>>>> upstream/main
         return $"{parentPath}/{created.LocalName}[{createdIdx}]";
     }
 
@@ -379,4 +568,82 @@ public partial class ExcelHandler
         return sb.ToString();
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Remap the embedded-xlsx cx:f formulas ChartExBuilder emits
+    /// (Sheet1!$A$2:$A$N cats / Sheet1!$B$2… values / Sheet1!$B$1 series name)
+    /// onto the HOST worksheet cells named by dataRange — issue #176. Column
+    /// translation: embedded col A = the dataRange's category column, embedded
+    /// col B+i = the i-th series column. Rows translate to the dataRange's
+    /// data window (header row excluded). A series-name formula is dropped
+    /// (cached literal kept) when the range has no header row; a category
+    /// formula follows the explicit `categories=` ref when one was given,
+    /// and is dropped for an inline literal list.
+    /// </summary>
+    private static void RemapChartExFormulasToHostRange(
+        CX.ChartSpace cxChartSpace, ChartRangeGeometry geo)
+    {
+        var sheet = Core.ModernFunctionQualifier.QuoteSheetNameForRef(geo.SheetName);
+        var pattern = new System.Text.RegularExpressions.Regex(
+            @"^Sheet1!\$([A-Z]+)\$(\d+)(?::\$([A-Z]+)\$(\d+))?$");
+        foreach (var f in cxChartSpace.Descendants<CX.Formula>().ToList())
+        {
+            var m = pattern.Match(f.Text ?? "");
+            if (!m.Success) continue;
+            var embCol = ColumnNameToIndex(m.Groups[1].Value);   // 1-based: A=1
+            bool isRange = m.Groups[3].Success;
+
+            if (!isRange && m.Groups[2].Value == "1")
+            {
+                // Series-name header cell (embedded row 1, col B+i).
+                if (!geo.HasHeaderRow) { f.Remove(); continue; }
+                var col = ColumnIndexToName(geo.FirstSeriesColIdx + embCol - 2);
+                f.Text = $"{sheet}!${col}${geo.HeaderRow}";
+                continue;
+            }
+            if (embCol == 1)
+            {
+                // Category column (embedded col A).
+                if (geo.HasExplicitCategories)
+                {
+                    if (geo.ExplicitCategoriesRef is string catRef)
+                    {
+                        var bang = catRef.LastIndexOf('!');
+                        f.Text = bang > 0
+                            ? Core.ModernFunctionQualifier.QuoteSheetNameForRef(catRef[..bang].Trim('\'')) + catRef[bang..]
+                            : catRef;
+                    }
+                    else
+                    {
+                        f.Remove();   // inline literal list — cached labels only
+                    }
+                    continue;
+                }
+                var catCol = ColumnIndexToName(geo.CatColIdx);
+                f.Text = $"{sheet}!${catCol}${geo.DataStartRow}:${catCol}${geo.EndRow}";
+                continue;
+            }
+            // Series values (embedded col B+i).
+            var valCol = ColumnIndexToName(geo.FirstSeriesColIdx + embCol - 2);
+            f.Text = $"{sheet}!${valCol}${geo.DataStartRow}:${valCol}${geo.EndRow}";
+        }
+    }
+
+    /// <summary>Every chart prop key whose value may be a cell-range
+    /// reference that ends up inside a chart-part c:f formula (and therefore
+    /// must carry a sheet qualifier).</summary>
+    private static IEnumerable<string> EnumerateChartRangeKeys(Dictionary<string, string> properties)
+    {
+        yield return "categories";
+        yield return "categoriesRef";
+        for (int i = 1; i <= 40; i++)
+        {
+            yield return $"series{i}";
+            yield return $"series{i}.values";
+            yield return $"series{i}.categories";
+            yield return $"series{i}.bubbleSize";
+        }
+    }
+>>>>>>> upstream/main
 }

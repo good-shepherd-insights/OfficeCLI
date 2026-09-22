@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -239,7 +243,11 @@ public partial class WordHandler
                     ff.FfData.GetFirstChild<FormFieldName>()?.Val?.Value == indexOrName);
                 if (match.Field == null)
                     return new DocumentNode { Path = path, Type = "error", Text = $"FormField '{indexOrName}' not found" };
+<<<<<<< HEAD
                 var idx = allFormFields.IndexOf(match) + 1;
+=======
+                var idx = PathIndex.FromArrayIndex(allFormFields.IndexOf(match));
+>>>>>>> upstream/main
                 return FormFieldToNode(match, $"/formfield[{idx}]");
             }
         }
@@ -340,7 +348,11 @@ public partial class WordHandler
                 {
                     // CONSISTENCY(canonical-keys): only emit canonical "lvlText";
                     // legacy "text" alias dropped from Get output to honor root
+<<<<<<< HEAD
                     // CLAUDE.md "Canonical DocumentNode.Format Rules". Set still
+=======
+                    // the project conventions "Canonical DocumentNode.Format Rules". Set still
+>>>>>>> upstream/main
                     // accepts both keys via case "text" or "lvltext".
                     lNode.Format["lvlText"] = lvl.LevelText.Val.Value;
                 }
@@ -348,7 +360,11 @@ public partial class WordHandler
                 if (lvl.LevelSuffix?.Val?.HasValue == true) lNode.Format["suff"] = lvl.LevelSuffix.Val.InnerText;
                 var lvlR = lvl.GetFirstChild<LevelRestart>();
                 if (lvlR?.Val?.Value != null) lNode.Format["lvlRestart"] = lvlR.Val.Value.ToString()!;
+<<<<<<< HEAD
                 if (lvl.GetFirstChild<IsLegalNumberingStyle>() != null) lNode.Format["isLgl"] = true;
+=======
+                if (IsToggleOn(lvl.GetFirstChild<IsLegalNumberingStyle>())) lNode.Format["isLgl"] = true;
+>>>>>>> upstream/main
                 var ind = lvl.PreviousParagraphProperties?.Indentation;
                 if (ind?.Left?.Value != null) lNode.Format["indent"] = ind.Left.Value;
                 if (ind?.Hanging?.Value != null) lNode.Format["hanging"] = ind.Hanging.Value;
@@ -375,8 +391,13 @@ public partial class WordHandler
                         lNode.Format["color"] = clr.ThemeColor.InnerText;
                     else if (clr?.Val?.Value != null)
                         lNode.Format["color"] = ParseHelpers.FormatHexColor(clr.Val.Value);
+<<<<<<< HEAD
                     if (rpr.GetFirstChild<Bold>() != null) lNode.Format["bold"] = true;
                     if (rpr.GetFirstChild<Italic>() != null) lNode.Format["italic"] = true;
+=======
+                    if (rpr.GetFirstChild<Bold>() is { } lvlB) lNode.Format["bold"] = IsToggleOn(lvlB);
+                    if (rpr.GetFirstChild<Italic>() is { } lvlI) lNode.Format["italic"] = IsToggleOn(lvlI);
+>>>>>>> upstream/main
                 }
                 return lNode;
             }
@@ -409,12 +430,19 @@ public partial class WordHandler
             var firstName = segments[0].Name.ToLowerInvariant();
             if (firstName == "header" && segments.Count == 1)
             {
-                var hIdx = (segments[0].Index ?? 1) - 1;
+                // last() must resolve to the LAST header by enumeration
+                // (creation) order — mirroring /body/p[last()] and
+                // /section[last()]. Without this, last() (Index == null) fell
+                // through to index 0 = the FIRST header, so get/set on
+                // /header[last()] silently targeted the wrong header.
+                int hCount = _doc.MainDocumentPart?.HeaderParts.Count() ?? 0;
+                var hIdx = segments[0].StringIndex == "last()" ? hCount - 1 : (segments[0].Index ?? 1) - 1;
                 return GetHeaderNode(hIdx, path, depth);
             }
             if (firstName == "footer" && segments.Count == 1)
             {
-                var fIdx = (segments[0].Index ?? 1) - 1;
+                int fCount = _doc.MainDocumentPart?.FooterParts.Count() ?? 0;
+                var fIdx = segments[0].StringIndex == "last()" ? fCount - 1 : (segments[0].Index ?? 1) - 1;
                 return GetFooterNode(fIdx, path, depth);
             }
         }
@@ -550,11 +578,19 @@ public partial class WordHandler
             // never exposed them. dump→batch round-trip therefore always
             // dropped frame dimensions and replay used the 15×10cm default.
             // pptx already returns them; this aligns docx with that contract.
+<<<<<<< HEAD
             var inlineExtent = chartInfo.Inline?.Extent;
             if (inlineExtent?.Cx?.HasValue == true)
                 chartNode.Format["width"] = $"{inlineExtent.Cx.Value / EmuConverter.EmuPerCmF:F1}cm";
             if (inlineExtent?.Cy?.HasValue == true)
                 chartNode.Format["height"] = $"{inlineExtent.Cy.Value / EmuConverter.EmuPerCmF:F1}cm";
+=======
+            var frameExtent = chartInfo.Extent;
+            if (frameExtent?.Cx?.HasValue == true)
+                chartNode.Format["width"] = $"{frameExtent.Cx.Value / EmuConverter.EmuPerCmF:F1}cm";
+            if (frameExtent?.Cy?.HasValue == true)
+                chartNode.Format["height"] = $"{frameExtent.Cy.Value / EmuConverter.EmuPerCmF:F1}cm";
+>>>>>>> upstream/main
 
             if (chartInfo.IsExtended)
             {
@@ -597,17 +633,30 @@ public partial class WordHandler
         // so /Section[1] and /section[1] are equivalent. The returned node's Path is
         // canonicalised to lowercase so callers see a round-trippable form. Style ids
         // (/styles/<id>) remain case-sensitive — they are user-defined identifiers.
+<<<<<<< HEAD
         var secMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/section\[(\d+)\]$",
+=======
+        var secMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/section\[(\d+|last\(\))\]$",
+>>>>>>> upstream/main
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (secMatch.Success)
         {
-            var secIdx = int.Parse(secMatch.Groups[1].Value);
             var sectionProps = FindSectionProperties();
+            // /section[last()] resolves to the final section (mirrors p[last()]).
+            var secGrp = secMatch.Groups[1].Value;
+            var secIdx = secGrp.Equals("last()", StringComparison.OrdinalIgnoreCase)
+                ? sectionProps.Count
+                : int.Parse(secGrp);
             if (secIdx < 1 || secIdx > sectionProps.Count)
                 throw new ArgumentException($"Section {secIdx} not found (total: {sectionProps.Count})");
 
             var sectPr = sectionProps[secIdx - 1];
+<<<<<<< HEAD
             return BuildSectionNode(sectPr, path.ToLowerInvariant());
+=======
+            // Canonicalise last() in the returned path to the resolved index.
+            return BuildSectionNode(sectPr, $"/section[{secIdx}]");
+>>>>>>> upstream/main
         }
 
         // /docDefaults — root-level access to docDefaults rPr/pPr. Mirrors
@@ -661,8 +710,13 @@ public partial class WordHandler
             // paragraph using it) and StyleHidden (style hidden from UI
             // gallery). FillUnknownChildProps covers only rPr/pPr children,
             // so these Style-level bare flags were silently lost on dump.
+<<<<<<< HEAD
             if (style.GetFirstChild<AutoRedefine>() != null) styleNode.Format["autoRedefine"] = true;
             if (style.GetFirstChild<StyleHidden>() != null) styleNode.Format["hidden"] = true;
+=======
+            if (IsToggleOn(style.GetFirstChild<AutoRedefine>())) styleNode.Format["autoRedefine"] = true;
+            if (IsToggleOn(style.GetFirstChild<StyleHidden>())) styleNode.Format["hidden"] = true;
+>>>>>>> upstream/main
             // BUG-DUMP-STYLE-LATENT: latent-style flags (qFormat / uiPriority /
             // semiHidden / unhideWhenUsed / locked). Without these the default
             // Normal style's <w:qFormat/> (and authored uiPriority/semiHidden)
@@ -705,10 +759,23 @@ public partial class WordHandler
                 if (rPr.GetFirstChild<FontSizeComplexScript>()?.Val?.Value is string szCsVal
                     && int.TryParse(szCsVal, out var szCsHalfPt))
                     styleNode.Format["size.cs"] = $"{szCsHalfPt / 2.0:0.##}pt";
+<<<<<<< HEAD
                 if (rPr.Bold != null) styleNode.Format["bold"] = true;
                 if (rPr.GetFirstChild<BoldComplexScript>() != null) styleNode.Format["bold.cs"] = true;
                 if (rPr.Italic != null) styleNode.Format["italic"] = true;
                 if (rPr.GetFirstChild<ItalicComplexScript>() != null) styleNode.Format["italic.cs"] = true;
+=======
+                // Toggle elements carry tri-state semantics: absent (inherit),
+                // present with no val (ON), present with val=0/false (explicit
+                // OFF — overrides an inherited ON). Presence-only readback
+                // collapsed explicit-off to true, so a style whose rPr said
+                // <w:strike w:val="0"/> round-tripped as <w:strike/> and the
+                // rebuilt document struck through every paragraph bound to it.
+                if (rPr.Bold != null) styleNode.Format["bold"] = IsToggleOn(rPr.Bold);
+                if (rPr.GetFirstChild<BoldComplexScript>() is { } bcs) styleNode.Format["bold.cs"] = bcs.Val == null || bcs.Val.Value;
+                if (rPr.Italic != null) styleNode.Format["italic"] = IsToggleOn(rPr.Italic);
+                if (rPr.GetFirstChild<ItalicComplexScript>() is { } ics) styleNode.Format["italic.cs"] = ics.Val == null || ics.Val.Value;
+>>>>>>> upstream/main
                 // BUG-DUMP-R43-3: a style's run color may carry a theme linkage
                 // (<w:color w:val="4F81BD" w:themeColor="accent1"/>) — the hex is
                 // a baked snapshot of the theme slot, and dropping w:themeColor
@@ -723,6 +790,7 @@ public partial class WordHandler
                 if (rPr.Underline?.Val != null) styleNode.Format["underline"] = rPr.Underline.Val.InnerText;
                 // CONSISTENCY(underline-color): underline.color not yet exposed by paragraph/run Get; backfill there too.
                 if (rPr.Underline?.Color?.Value != null) styleNode.Format["underline.color"] = ParseHelpers.FormatHexColor(rPr.Underline.Color.Value);
+<<<<<<< HEAD
                 if (rPr.Strike != null) styleNode.Format["strike"] = true;
                 // Schema-driven readback for the rest of the rPr surface
                 // (CONSISTENCY: schema-contract — schemas/help/docx/style.json
@@ -731,6 +799,16 @@ public partial class WordHandler
                 if (rPr.GetFirstChild<Caps>() != null) styleNode.Format["caps"] = true;
                 if (rPr.GetFirstChild<SmallCaps>() != null) styleNode.Format["smallCaps"] = true;
                 if (rPr.GetFirstChild<Vanish>() != null) styleNode.Format["vanish"] = true;
+=======
+                if (rPr.Strike != null) styleNode.Format["strike"] = IsToggleOn(rPr.Strike);
+                // Schema-driven readback for the rest of the rPr surface
+                // (CONSISTENCY: schema-contract — schemas/help/docx/style.json
+                // declares these get:true).
+                if (rPr.GetFirstChild<DoubleStrike>() is { } ds) styleNode.Format["dstrike"] = IsToggleOn(ds);
+                if (rPr.GetFirstChild<Caps>() is { } cp) styleNode.Format["caps"] = IsToggleOn(cp);
+                if (rPr.GetFirstChild<SmallCaps>() is { } sc) styleNode.Format["smallCaps"] = IsToggleOn(sc);
+                if (rPr.GetFirstChild<Vanish>() is { } vn) styleNode.Format["vanish"] = IsToggleOn(vn);
+>>>>>>> upstream/main
                 // R21-fuzz-1: character-style direction lives in rPr/<w:rtl/>
                 // (character styles cannot carry pPr). Surface as canonical
                 // 'direction' key for character styles; keep legacy `rtl` flag
@@ -750,6 +828,24 @@ public partial class WordHandler
                 }
                 var hl = rPr.GetFirstChild<Highlight>();
                 if (hl?.Val != null) styleNode.Format["highlight"] = hl.Val.InnerText;
+<<<<<<< HEAD
+=======
+                else
+                {
+                    // SDK-binding quirk: <w:highlight> under a STYLE's <w:rPr>
+                    // (StyleRunProperties) re-parses as an OpenXmlUnknownElement
+                    // on reopen — the strongly-typed Highlight child binding only
+                    // fires under a run's RunProperties, so GetFirstChild<Highlight>()
+                    // above misses it after a save→reopen (it sees it fine in the
+                    // freshly-built in-memory tree). The on-disk bytes are
+                    // well-formed and Word honors them; only our typed reader needs
+                    // the local-name fallback so a style highlight set via Set
+                    // round-trips through Get. (Surfaced by RoundTripPersistenceScanTests.)
+                    var hlUnknown = rPr.ChildElements.FirstOrDefault(c => c.LocalName == "highlight");
+                    var hlVal = hlUnknown?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                    if (!string.IsNullOrEmpty(hlVal)) styleNode.Format["highlight"] = hlVal;
+                }
+>>>>>>> upstream/main
                 var shd = rPr.GetFirstChild<Shading>();
                 if (shd?.Fill?.Value != null) styleNode.Format["shading"] = ParseHelpers.FormatHexColor(shd.Fill.Value);
                 var vAlign = rPr.GetFirstChild<VerticalTextAlignment>();
@@ -760,6 +856,25 @@ public partial class WordHandler
                 var charSp = rPr.GetFirstChild<Spacing>();
                 if (charSp?.Val?.Value is int charSpVal)
                     styleNode.Format["charSpacing"] = $"{charSpVal / 20.0:0.##}pt";
+<<<<<<< HEAD
+=======
+                // BUG-DUMP-STYLE-LANG: a style's rPr <w:lang> (val=latin /
+                // eastAsia / bidi) drives proofing language and — for the
+                // eastAsia slot — East-Asian line breaking and font fallback.
+                // Word writes it on web/imported styles (Normal (Web) carries
+                // lang val="en-CA"; List Paragraph lang eastAsia="en-GB"). The
+                // reader never surfaced it, so AddStyle rebuilt the style with
+                // no <w:lang> and the slot was lost on dump→batch. Mirror the
+                // run-level lang.latin/lang.ea/lang.cs vocabulary that
+                // ApplyRunFormatting already consumes.
+                var sLang = rPr.GetFirstChild<Languages>();
+                if (sLang != null)
+                {
+                    if (sLang.Val?.Value != null) styleNode.Format["lang.latin"] = sLang.Val.Value;
+                    if (sLang.EastAsia?.Value != null) styleNode.Format["lang.ea"] = sLang.EastAsia.Value;
+                    if (sLang.Bidi?.Value != null) styleNode.Format["lang.cs"] = sLang.Bidi.Value;
+                }
+>>>>>>> upstream/main
             }
 
             // Read paragraph properties
@@ -783,8 +898,13 @@ public partial class WordHandler
                 if (pPr.SpacingBetweenLines != null)
                 {
                     var sp = pPr.SpacingBetweenLines;
+<<<<<<< HEAD
                     if (sp.Before?.Value != null) styleNode.Format["spaceBefore"] = SpacingConverter.FormatWordSpacing(sp.Before.Value);
                     if (sp.After?.Value != null) styleNode.Format["spaceAfter"] = SpacingConverter.FormatWordSpacing(sp.After.Value);
+=======
+                    if (sp.Before?.Value != null) styleNode.Format["spaceBefore"] = SpacingConverter.FormatWordSpacingNonNegative(sp.Before.Value);
+                    if (sp.After?.Value != null) styleNode.Format["spaceAfter"] = SpacingConverter.FormatWordSpacingNonNegative(sp.After.Value);
+>>>>>>> upstream/main
                     // BUG-DUMP-R46-1: style-level auto-spacing toggles (mirror BUG-DUMP-R44-4 paragraph path)
                     if (sp.BeforeAutoSpacing?.Value != null) styleNode.Format["spaceBeforeAuto"] = sp.BeforeAutoSpacing.Value;
                     if (sp.AfterAutoSpacing?.Value != null) styleNode.Format["spaceAfterAuto"] = sp.AfterAutoSpacing.Value;
@@ -952,7 +1072,20 @@ public partial class WordHandler
 
         var sectType = sectPr.GetFirstChild<SectionType>();
         if (sectType?.Val?.Value != null)
+<<<<<<< HEAD
             secNode.Format["type"] = sectType.Val.InnerText;
+=======
+        {
+            // CONSISTENCY(section-type-canonical): expose under both keys so the
+            // Add vocabulary (type=continuous/...) round-trips and the
+            // schema-canonical `sectionType` key (matches Get-side naming for
+            // the inline sectionBreak emit on body paragraphs) is also picked
+            // up by callers that scan for the longer name.
+            var sectTypeStr = sectType.Val.InnerText;
+            secNode.Format["type"] = sectTypeStr;
+            secNode.Format["sectionType"] = sectTypeStr;
+        }
+>>>>>>> upstream/main
         var pageSize = sectPr.GetFirstChild<PageSize>();
         // Default to A4 size if no explicit page size
         var pgW = pageSize?.Width?.Value ?? WordPageDefaults.A4WidthTwips;
@@ -986,7 +1119,11 @@ public partial class WordHandler
             secNode.Format["chapSep"] = pgNumType.ChapterSeparator.InnerText;
 
         // Title page flag (w:titlePg) — first-page header/footer differs from rest
+<<<<<<< HEAD
         if (sectPr.GetFirstChild<TitlePage>() != null)
+=======
+        if (IsToggleOn(sectPr.GetFirstChild<TitlePage>()))
+>>>>>>> upstream/main
             secNode.Format["titlePage"] = true;
 
         // BUG-DUMP-SECT-PAPERSRC: printer paper-source bins (<w:paperSrc
@@ -1013,12 +1150,20 @@ public partial class WordHandler
             secNode.Format["direction"] = "rtl";
 
         // <w:rtlGutter/> places the binding gutter on the right side.
+<<<<<<< HEAD
         if (sectPr.GetFirstChild<GutterOnRight>() != null)
+=======
+        if (IsToggleOn(sectPr.GetFirstChild<GutterOnRight>()))
+>>>>>>> upstream/main
             secNode.Format["rtlGutter"] = true;
 
         // BUG-DUMP11-03: <w:noEndnote/> suppresses end-of-section endnote
         // collection. On/off toggle — bare element, no val attribute.
+<<<<<<< HEAD
         if (sectPr.GetFirstChild<NoEndnote>() != null)
+=======
+        if (IsToggleOn(sectPr.GetFirstChild<NoEndnote>()))
+>>>>>>> upstream/main
             secNode.Format["noEndnote"] = true;
 
         // BUG-DUMP-SECT-FORMPROT: <w:formProt/> locks section content except
@@ -1395,6 +1540,15 @@ public partial class WordHandler
         var isDirty = beginChar?.Dirty?.Value == true;
         if (isDirty) node.Format["dirty"] = true;
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R37-4: <w:fldChar w:fldLock="true"> on the begin fldChar locks
+        // the field against F9/recalc. Surface it on the collapsed complex-field
+        // node so `get /field[N]` reports the locked state (mirrors the fldSimple
+        // branches in Navigation). Only emit when locked.
+        if (beginChar?.FieldLock?.Value == true) node.Format["fldLock"] = true;
+
+>>>>>>> upstream/main
         // Cross-handler evaluated protocol: true whenever the caller can read
         // some value from the field — i.e. when a cached result run exists.
         // dirty=true (Word will re-render on open) keeps evaluated=true
@@ -1478,8 +1632,8 @@ public partial class WordHandler
             if (font != null) node.Format["font"] = font;
             if (rp.FontSize?.Val?.Value != null)
                 node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2.0:0.##}pt";
-            if (rp.Bold != null) node.Format["bold"] = true;
-            if (rp.Italic != null) node.Format["italic"] = true;
+            if (rp.Bold != null) node.Format["bold"] = IsToggleOn(rp.Bold);
+            if (rp.Italic != null) node.Format["italic"] = IsToggleOn(rp.Italic);
             if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
             else if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
             if (rp.Underline?.Val != null) node.Format["underline"] = rp.Underline.Val.InnerText;
@@ -1561,8 +1715,8 @@ public partial class WordHandler
             if (font != null) node.Format["font"] = font;
             if (rp.FontSize?.Val?.Value != null)
                 node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2.0:0.##}pt";
-            if (rp.Bold != null) node.Format["bold"] = true;
-            if (rp.Italic != null) node.Format["italic"] = true;
+            if (rp.Bold != null) node.Format["bold"] = IsToggleOn(rp.Bold);
+            if (rp.Italic != null) node.Format["italic"] = IsToggleOn(rp.Italic);
             if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
             else if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
             if (rp.Underline?.Val != null) node.Format["underline"] = rp.Underline.Val.InnerText;
@@ -1681,6 +1835,38 @@ public partial class WordHandler
         var body = _doc.MainDocumentPart?.Document?.Body;
         if (body == null) return results;
 
+<<<<<<< HEAD
+=======
+        // '*' full-document listing: TOP-LEVEL body blocks in document order.
+        // Word has no native '*' element, so before this alias the selector
+        // silently matched nothing — and under `query --compact` that
+        // produced the worst possible shape for an agent: a zero-line listing
+        // with a non-zero denominator ('total: 0 of 26 elements'), read as
+        // "the document is empty". Mirrors pptx '*' (all top-level frames).
+        // Deliberately NOT 'paragraph, table': the paragraph selector descends
+        // into table cells, which under --compact double-counts every cell
+        // paragraph next to the folded [table RxC] line and breaks the
+        // N == M read-completeness identity. Top-level-only keeps N == M.
+        if (selector.Trim() == "*")
+        {
+            var topParas = new Queue<DocumentNode>(QueryDispatch("paragraph")
+                .Where(n => System.Text.RegularExpressions.Regex.IsMatch(n.Path, @"^/body/p\[")));
+            var topTables = new Queue<DocumentNode>(QueryDispatch("table")
+                .Where(n => n.Path.StartsWith("/body/tbl[", StringComparison.OrdinalIgnoreCase)));
+            // Merge by walking body children so paragraphs and tables interleave
+            // in document order; anything either queue holds that the walk did
+            // not consume (defensive) is appended, never dropped.
+            foreach (var child in body.Elements())
+            {
+                if (child is Paragraph && topParas.Count > 0) results.Add(topParas.Dequeue());
+                else if (child is Table && topTables.Count > 0) results.Add(topTables.Dequeue());
+            }
+            results.AddRange(topParas);
+            results.AddRange(topTables);
+            return results;
+        }
+
+>>>>>>> upstream/main
         // BUG-R18-01: scoped OLE selector `/body/ole`, `/header[N]/ole`,
         // `/footer[N]/ole` (and `object`/`embed` aliases) was not recognized
         // by ParseSingleSelector — it truncated at the first `[`, so the
@@ -2321,7 +2507,23 @@ public partial class WordHandler
                         var anchorPath = FindCommentAnchorPath(comment.Id.Value);
                         if (anchorPath != null) cNode.Format["anchoredTo"] = anchorPath;
                     }
-                    results.Add(cNode);
+                    // commentsExtended.xml (w15) resolved-state + reply-parent —
+                    // mirrors CommentToNode so `query 'comment[done=false]'` /
+                    // 'comment[parentId=N]' filter correctly.
+                    var (cmtParentId, cmtDone) = ReadCommentExInfo(comment);
+                    cNode.Format["done"] = cmtDone ? "true" : "false";
+                    if (cmtParentId != null) cNode.Format["parentId"] = cmtParentId;
+                    // Filter by attribute (e.g. comment[done=false], comment[parentId=1]).
+                    bool matchAttrs = true;
+                    foreach (var (attrKey, rawVal) in parsed.Attributes)
+                    {
+                        bool negate = rawVal.StartsWith("!");
+                        var val = negate ? rawVal[1..] : rawVal;
+                        var hasKey = cNode.Format.TryGetValue(attrKey, out var fmtVal);
+                        bool matches = hasKey && string.Equals(fmtVal?.ToString(), val, StringComparison.OrdinalIgnoreCase);
+                        if (negate ? matches : !matches) { matchAttrs = false; break; }
+                    }
+                    if (matchAttrs) results.Add(cNode);
                 }
             }
             return results;
@@ -2556,7 +2758,11 @@ public partial class WordHandler
                     else
                     {
                         int cellIdxRC = 0;
+<<<<<<< HEAD
                         foreach (var cell in row.Elements<TableCell>())
+=======
+                        foreach (var cell in GetRowCellsFlattened(row))
+>>>>>>> upstream/main
                         {
                             cellIdxRC++;
                             var cellPath = $"/body/tbl[{tblIdxRC}]/tr[{rowIdxRC}]/tc[{cellIdxRC}]";
@@ -2618,7 +2824,11 @@ public partial class WordHandler
                     else
                     {
                         int cellIdxC = 0;
+<<<<<<< HEAD
                         foreach (var cell in row.Elements<TableCell>())
+=======
+                        foreach (var cell in GetRowCellsFlattened(row))
+>>>>>>> upstream/main
                         {
                             cellIdxC++;
                             var cellPath = $"/body/tbl[{tblIdxC}]/tr[{rowIdxC}]/tc[{cellIdxC}]";
@@ -2727,7 +2937,11 @@ public partial class WordHandler
                     {
                         rowIdx++;
                         int cellIdx = 0;
+<<<<<<< HEAD
                         foreach (var cell in row.Elements<TableCell>())
+=======
+                        foreach (var cell in GetRowCellsFlattened(row))
+>>>>>>> upstream/main
                         {
                             cellIdx++;
                             int cellParaIdx = 0;
@@ -2759,7 +2973,7 @@ public partial class WordHandler
                     {
                         rowIdx++;
                         int cellIdx = 0;
-                        foreach (var cell in row.Elements<TableCell>())
+                        foreach (var cell in GetRowCellsFlattened(row))
                         {
                             cellIdx++;
                             int cellParaIdx = 0;
@@ -2818,7 +3032,11 @@ public partial class WordHandler
                     {
                         rowIdxP++;
                         int cellIdxP = 0;
+<<<<<<< HEAD
                         foreach (var cell in row.Elements<TableCell>())
+=======
+                        foreach (var cell in GetRowCellsFlattened(row))
+>>>>>>> upstream/main
                         {
                             cellIdxP++;
                             int cellParaIdx = 0;
@@ -2857,7 +3075,11 @@ public partial class WordHandler
                     {
                         rowIdx++;
                         int cellIdx = 0;
+<<<<<<< HEAD
                         foreach (var cell in row.Elements<TableCell>())
+=======
+                        foreach (var cell in GetRowCellsFlattened(row))
+>>>>>>> upstream/main
                         {
                             cellIdx++;
                             int cellParaIdx = 0;
@@ -2891,7 +3113,11 @@ public partial class WordHandler
                     {
                         rowIdxPic++;
                         int cellIdxPic = 0;
+<<<<<<< HEAD
                         foreach (var cell in row.Elements<TableCell>())
+=======
+                        foreach (var cell in GetRowCellsFlattened(row))
+>>>>>>> upstream/main
                         {
                             cellIdxPic++;
                             int cellParaIdx = 0;
@@ -3402,6 +3628,20 @@ public partial class WordHandler
             || color.ThemeTint?.Value != null;
         if (!hasTheme)
             return baseVal; // plain color (or null when neither val nor theme set)
+<<<<<<< HEAD
+=======
+        // val="auto" carries no color information — Word resolves the color
+        // from the theme slot, and our own Add writes val="auto" alongside
+        // w:themeColor. Surfacing "auto;themeColor=accent1" breaks the canon
+        // rule that scheme colors pass through as the bare scheme name (root
+        // the project conventions). Only the pure-theme form collapses; an explicit hex val
+        // (BUG-DUMP-R44-1) or a shade/tint modifier still needs the full tail.
+        if (string.Equals(color.Val?.Value, "auto", StringComparison.OrdinalIgnoreCase)
+            && color.ThemeColor?.HasValue == true
+            && color.ThemeShade?.Value == null
+            && color.ThemeTint?.Value == null)
+            return color.ThemeColor.InnerText;
+>>>>>>> upstream/main
         var tail = new System.Text.StringBuilder();
         if (baseVal != null) tail.Append(baseVal);
         if (color.ThemeColor?.HasValue == true) tail.Append(";themeColor=").Append(color.ThemeColor.InnerText);
@@ -3433,10 +3673,17 @@ public partial class WordHandler
         // AddStyle fall back to styleId derivation, re-introducing the bug.
         node.Format["customStyle"] = style.CustomStyle?.Value == true;
         if (style.UIPriority?.Val?.Value is int uip) node.Format["uiPriority"] = uip;
+<<<<<<< HEAD
         if (style.GetFirstChild<SemiHidden>() != null) node.Format["semiHidden"] = true;
         if (style.GetFirstChild<UnhideWhenUsed>() != null) node.Format["unhideWhenUsed"] = true;
         if (style.GetFirstChild<PrimaryStyle>() != null) node.Format["qFormat"] = true;
         if (style.GetFirstChild<Locked>() != null) node.Format["locked"] = true;
+=======
+        if (IsToggleOn(style.GetFirstChild<SemiHidden>())) node.Format["semiHidden"] = true;
+        if (IsToggleOn(style.GetFirstChild<UnhideWhenUsed>())) node.Format["unhideWhenUsed"] = true;
+        if (IsToggleOn(style.GetFirstChild<PrimaryStyle>())) node.Format["qFormat"] = true;
+        if (IsToggleOn(style.GetFirstChild<Locked>())) node.Format["locked"] = true;
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -3452,7 +3699,11 @@ public partial class WordHandler
         var nb = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
         if (nb == null) return null;
         var styles = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
+<<<<<<< HEAD
         var style = styles?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == styleId);
+=======
+        var style = FindStyleById(styleId);
+>>>>>>> upstream/main
         var styleNumId = style?.StyleParagraphProperties?.NumberingProperties?.NumberingId?.Val?.Value;
         if (styleNumId == null) return null;
         var inst = nb.Elements<NumberingInstance>().FirstOrDefault(n => n.NumberID?.Value == styleNumId);

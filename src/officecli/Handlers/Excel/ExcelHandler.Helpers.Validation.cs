@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -25,14 +29,96 @@ public partial class ExcelHandler
             System.Text.RegularExpressions.RegexOptions.Compiled
             | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+<<<<<<< HEAD
+=======
+    // Whole-column (A:A, B:XFD) and whole-row (1:1, 2:10) tokens are legal
+    // sqref members — dump reads them from real files, so add/replay must
+    // accept them too (a column-wide CF rule could not be round-tripped).
+    private static readonly System.Text.RegularExpressions.Regex SqrefWholeToken =
+        new(@"^(\$?[A-Z]+:\$?[A-Z]+|\$?[0-9]+:\$?[0-9]+)$",
+            System.Text.RegularExpressions.RegexOptions.Compiled
+            | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+>>>>>>> upstream/main
     internal static string ValidateSqref(string value, string field)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException($"Invalid {field} '{value}': empty A1 range.");
+<<<<<<< HEAD
         if (!SqrefShape.IsMatch(value.Trim()))
             throw new ArgumentException(
                 $"Invalid {field} '{value}': expected an A1 reference (e.g. 'A1', 'A1:D10', 'A1 B2:C5').");
         return value;
+=======
+        var trimmed = value.Trim();
+        var ok = trimmed
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .All(tok => SqrefShape.IsMatch(tok) || SqrefWholeToken.IsMatch(tok));
+        if (!ok)
+            throw new ArgumentException(
+                $"Invalid {field} '{value}': expected an A1 reference (e.g. 'A1', 'A1:D10', 'A:A', '1:3', 'A1 B2:C5').");
+        // Shape-valid tokens can still point outside Excel's grid: sqref="A0"
+        // passed here, saved fine, and real Excel refused the whole file
+        // (0x800A03EC) — the same out-of-grid family the drawing-anchor parser
+        // rejects. Bounds-check every cell/row/column component.
+        foreach (var tok in trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            foreach (System.Text.RegularExpressions.Match cm in
+                System.Text.RegularExpressions.Regex.Matches(tok, @"\$?([A-Z]+)?\$?([0-9]+)?",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                if (cm.Length == 0) continue;
+                if (cm.Groups[1].Success && cm.Groups[1].Value.Length > 0)
+                {
+                    var colIdx = ColumnNameToIndex(cm.Groups[1].Value.ToUpperInvariant());
+                    if (colIdx < 1 || colIdx > 16384)
+                        throw new ArgumentException(
+                            $"Invalid {field} '{value}': column '{cm.Groups[1].Value}' is outside Excel's grid (A..XFD).");
+                }
+                if (cm.Groups[2].Success && cm.Groups[2].Value.Length > 0)
+                {
+                    if (!long.TryParse(cm.Groups[2].Value, out var rowNum) || rowNum < 1 || rowNum > 1048576)
+                        throw new ArgumentException(
+                            $"Invalid {field} '{value}': row '{cm.Groups[2].Value}' is outside Excel's grid (1..1048576).");
+                }
+            }
+        }
+        // Canonicalize inverted tokens (F5:D3 → D3:F5, per axis) — merge
+        // rejects them and table normalizes them, but CF/DV wrote them
+        // verbatim, leaving a non-canonical sqref whose behavior in real
+        // Excel is undefined. Same convention as the drawing-anchor and
+        // table-range normalization.
+        var normTokens = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(tok =>
+            {
+                var cm = System.Text.RegularExpressions.Regex.Match(tok,
+                    @"^(\$?)([A-Z]+)(\$?)([0-9]+):(\$?)([A-Z]+)(\$?)([0-9]+)$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (cm.Success)
+                {
+                    var c1 = ColumnNameToIndex(cm.Groups[2].Value.ToUpperInvariant());
+                    var c2 = ColumnNameToIndex(cm.Groups[6].Value.ToUpperInvariant());
+                    var r1 = long.Parse(cm.Groups[4].Value);
+                    var r2 = long.Parse(cm.Groups[8].Value);
+                    var colA = c1 <= c2 ? cm.Groups[2].Value : cm.Groups[6].Value;
+                    var colB = c1 <= c2 ? cm.Groups[6].Value : cm.Groups[2].Value;
+                    var rowA = Math.Min(r1, r2);
+                    var rowB = Math.Max(r1, r2);
+                    return $"{colA}{rowA}:{colB}{rowB}";
+                }
+                var wm = System.Text.RegularExpressions.Regex.Match(tok,
+                    @"^\$?([A-Z]+)\$?:\$?([A-Z]+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (wm.Success
+                    && ColumnNameToIndex(wm.Groups[1].Value.ToUpperInvariant())
+                        > ColumnNameToIndex(wm.Groups[2].Value.ToUpperInvariant()))
+                    return $"{wm.Groups[2].Value}:{wm.Groups[1].Value}";
+                var rm = System.Text.RegularExpressions.Regex.Match(tok, @"^\$?([0-9]+)\$?:\$?([0-9]+)$");
+                if (rm.Success && long.Parse(rm.Groups[1].Value) > long.Parse(rm.Groups[2].Value))
+                    return $"{rm.Groups[2].Value}:{rm.Groups[1].Value}";
+                return tok;
+            });
+        return string.Join(" ", normTokens);
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -65,8 +151,13 @@ public partial class ExcelHandler
         // additions (#SPILL!, #CALC!, #FIELD!, #BLOCKED!, #CONNECT!,
         // #UNKNOWN!), and async-fetch sentinels (#GETTING_DATA) which
         // lack the trailing `!`. Intentionally lenient — there is no
+<<<<<<< HEAD
         // OOXML BNF for the error namespace and Microsoft has added
         // codes over time. The trade-off is that `#FOO` would also match
+=======
+        // OOXML BNF for the error namespace and new error codes have
+        // been added over time. The trade-off is that `#FOO` would also match
+>>>>>>> upstream/main
         // here; the alternative (closed-set whitelist) would break the
         // moment a new error code lands.
         char c = value[1];
@@ -93,12 +184,40 @@ public partial class ExcelHandler
             && displayValue != "#OCLI_NOTEVAL!";
     }
 
+<<<<<<< HEAD
     internal static void ValidateFormulaCellRefs(string formula)
     {
         if (string.IsNullOrEmpty(formula)) return;
         var trimmed = formula.TrimStart('=');
         // Strip string literals first ("...") so cell-like substrings inside
         // strings don't trigger validation.
+=======
+    /// <summary>
+    /// Reject R1C1-style references (R2C3, RC[1], R[-1]C) in a formula string.
+    /// The OOXML &lt;f&gt; element is A1-only; writing R1C1 verbatim makes real
+    /// Excel refuse the file (0x800A03EC) while schema validation stays green.
+    /// Shared by cell formulas and conditional-formatting formulas. Does NOT
+    /// do grid-bounds checking (out-of-range A1 refs are tolerated by Excel in
+    /// CF formulas — only cell-formula validation adds the bounds check).
+    /// </summary>
+    internal static void ValidateNoR1C1Reference(string formula)
+    {
+        if (string.IsNullOrEmpty(formula)) return;
+        var stripped = StripFormulaStringLiterals(formula.TrimStart('='));
+        // Only unambiguous forms are rejected: bracketed offsets, or
+        // R<digits>C<digits> (never a legal A1 token or name). "RC1"/"RC"
+        // stay accepted — RC is a real A1 column / legal name.
+        if (System.Text.RegularExpressions.Regex.IsMatch(stripped,
+                @"(?<![A-Za-z0-9_$])(R\[-?\d+\]C(\[-?\d+\]|\d+)?|R\d*C\[-?\d+\]|R\d+C\d+)(?![A-Za-z0-9_])"))
+            throw new ArgumentException(
+                "Formula contains an R1C1-style reference (e.g. R2C3, RC[1]). OOXML stores formulas in A1 notation only — rewrite the reference in A1 form (e.g. C2, $B$3).");
+    }
+
+    // Blank out "..." string literals so cell-like substrings inside them
+    // don't trigger reference validation.
+    private static string StripFormulaStringLiterals(string trimmed)
+    {
+>>>>>>> upstream/main
         var sb = new System.Text.StringBuilder(trimmed.Length);
         bool inStr = false;
         for (int i = 0; i < trimmed.Length; i++)
@@ -112,7 +231,98 @@ public partial class ExcelHandler
             }
             sb.Append(inStr ? ' ' : c);
         }
+<<<<<<< HEAD
         var stripped = sb.ToString();
+=======
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Reject a formula in which any single function call has more than 255
+    /// arguments — Excel's hard per-function limit. Over it, the file is
+    /// schema-valid but real Excel refuses to open it (0x800A03EC). Counts
+    /// top-level commas per parenthesis nesting level (a comma is attributed to
+    /// its innermost enclosing "()"); string literals are skipped, and "{}"
+    /// array-constant commas are not function args. 255 args (254 commas) is
+    /// fine; 256 args (255 commas) throws.
+    /// </summary>
+    internal static void ValidateFormulaArgCount(string formula)
+    {
+        if (string.IsNullOrEmpty(formula)) return;
+        var f = formula.TrimStart('=');
+        var commaStack = new Stack<int>();
+        bool inStr = false;
+        int arrayDepth = 0;
+        for (int i = 0; i < f.Length; i++)
+        {
+            char c = f[i];
+            if (c == '"')
+            {
+                if (inStr && i + 1 < f.Length && f[i + 1] == '"') { i++; continue; }
+                inStr = !inStr;
+                continue;
+            }
+            if (inStr) continue;
+            switch (c)
+            {
+                case '{': arrayDepth++; break;
+                case '}': if (arrayDepth > 0) arrayDepth--; break;
+                case '(': commaStack.Push(0); break;
+                case ')':
+                    if (commaStack.Count > 0)
+                    {
+                        var commas = commaStack.Pop();
+                        // args = commas + 1; reject 256+ args (>=255 commas).
+                        if (commas >= 255)
+                            throw new ArgumentException(
+                                $"Formula has a function call with {commas + 1} arguments; Excel's limit is 255 per function. "
+                                + "Split the call or reference a range instead.");
+                    }
+                    break;
+                case ',':
+                    if (arrayDepth == 0 && commaStack.Count > 0)
+                        commaStack.Push(commaStack.Pop() + 1);
+                    break;
+            }
+        }
+    }
+
+    // Excel's hard ceiling on the character length of a formula / defined-name
+    // refersTo / conditional-format expression. Content beyond this is silently
+    // accepted, persisted, and makes real Excel refuse the file (0x800A03EC).
+    internal const int MaxFormulaLength = 8192;
+
+    /// <summary>
+    /// Reject a formula whose length exceeds Excel's 8192-character ceiling.
+    /// Shared by cell formulas, defined-name refs, and conditional-format
+    /// expressions so the limit is enforced identically everywhere.
+    /// </summary>
+    internal static void ValidateFormulaLength(string? formula, string context = "formula")
+    {
+        if (formula == null) return;
+        var content = formula.TrimStart('=');
+        if (content.Length > MaxFormulaLength)
+            throw new ArgumentException(
+                $"{context} is {content.Length} characters; Excel's limit is {MaxFormulaLength} per formula. " +
+                "A longer expression makes Excel refuse to open the file.");
+    }
+
+    internal static void ValidateFormulaCellRefs(string formula)
+    {
+        if (string.IsNullOrEmpty(formula)) return;
+        var trimmed = formula.TrimStart('=');
+        var stripped = StripFormulaStringLiterals(trimmed);
+
+        // Formula-length ceiling (8192) — checked before the ref scan so an
+        // oversized expression fails with a clear message instead of Excel's
+        // 0x800A03EC after the fact.
+        ValidateFormulaLength(formula);
+        // R1C1-style references make real Excel refuse the file.
+        ValidateNoR1C1Reference(formula);
+        // Excel caps a function call at 255 arguments; a 256-arg call passes
+        // schema validation but makes real Excel refuse the file (0x800A03EC).
+        ValidateFormulaArgCount(formula);
+>>>>>>> upstream/main
         // Match A1-style refs: optional $ + 1-3 letters + optional $ + 1-8 digits.
         // (Excel's row ceiling 1048576 is 7-digit, but 8-digit numbers like
         // A10000000 must still be caught so they're rejected with the clean
@@ -209,6 +419,19 @@ public partial class ExcelHandler
                 return value;
             if (value.Contains(','))
                 return $"\"{value}\"";
+<<<<<<< HEAD
+=======
+            // A bare unquoted value is valid as a list source if it's a legal
+            // defined-name reference (name token) OR a formula (contains '(',
+            // e.g. INDIRECT(B2)/OFFSET(...)). Anything else — e.g. "hello
+            // world" — is neither a name, a ref, nor a quoted literal, so Excel
+            // refuses the file (0x800A03EC); treat it as a literal single-item
+            // list and quote it. Formulas must NOT be quoted (that would turn
+            // them into a literal string and also block ref shifting).
+            if (!value.Contains('(')
+                && !System.Text.RegularExpressions.Regex.IsMatch(value, @"^[A-Za-z_\\][A-Za-z0-9_.]*$"))
+                return $"\"{value}\"";
+>>>>>>> upstream/main
             return value;
         }
         if (type == DataValidationValues.Time)
@@ -240,6 +463,21 @@ public partial class ExcelHandler
             if (value.StartsWith("="))
                 return value.Substring(1);
         }
+<<<<<<< HEAD
+=======
+        // For non-list numeric/date/text types, formula1/formula2 must be a
+        // number, date/time (handled above), cell/range ref, or a formula — a
+        // bare value containing whitespace (e.g. "hello world") is invalid
+        // OOXML formula syntax and makes real Excel refuse the file
+        // (0x800A03EC). Reject it up front. (Quoted literals and refs pass.)
+        if (type != DataValidationValues.Custom
+            && value.Any(char.IsWhiteSpace)
+            && !value.StartsWith("\"") && !value.StartsWith("=")
+            && !value.Contains('!') && !value.Contains('('))
+            throw new ArgumentException(
+                $"validation formula '{value}' is not valid for this validation type: " +
+                "expected a number, date, cell reference, or formula (a bare value with spaces is not valid formula syntax).");
+>>>>>>> upstream/main
         return value;
     }
 
@@ -333,9 +571,19 @@ public partial class ExcelHandler
             var name = m.Groups[1].Value.Replace("''", "'");
             if (!names.Contains(name)) return true;
         }
+<<<<<<< HEAD
         // Bare form: Name! — letters/digits/underscore/period (Excel allows these unquoted)
         foreach (System.Text.RegularExpressions.Match m in
                  System.Text.RegularExpressions.Regex.Matches(scan, @"(?<![A-Za-z0-9_'.])([A-Za-z_][A-Za-z0-9_.]*)!"))
+=======
+        // Bare form: Name! — letters/digits/underscore/period (Excel allows these
+        // unquoted). '#' in the lookbehind excludes the #REF! ERROR literal
+        // (e.g. `=#REF!*2` after a row/col delete): that is a cell-level error
+        // marker, not a reference to a sheet named "REF" — classifying it as a
+        // missing sheet sent users hunting for a sheet that never existed.
+        foreach (System.Text.RegularExpressions.Match m in
+                 System.Text.RegularExpressions.Regex.Matches(scan, @"(?<![A-Za-z0-9_'.#])([A-Za-z_][A-Za-z0-9_.]*)!"))
+>>>>>>> upstream/main
         {
             if (!names.Contains(m.Groups[1].Value)) return true;
         }
@@ -356,5 +604,108 @@ public partial class ExcelHandler
             throw new ArgumentException(
                 $"Cell value{where} exceeds Excel's {MaxCellTextLength}-character limit (got {value.Length})");
         }
+<<<<<<< HEAD
     }
 }
+=======
+        // XML-illegal control chars / lone surrogates: without this the value
+        // enters the in-memory DOM fine and only fails at close-time save —
+        // "save failed during shutdown", leaving sheetData empty on disk
+        // (total data loss). Same guard Word text paths already use.
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(value,
+            string.IsNullOrEmpty(cellRef) ? "cell value" : $"cell value at {cellRef}");
+    }
+
+    // Numeric literal forms Excel's <v> parser accepts. double.TryParse is
+    // far more lenient (leading '+', thousands separators, padding, currency
+    // NumberStyles) — writing such text verbatim into an untyped (numeric)
+    // <v> makes real Excel refuse the file (0x800A03EC) even though
+    // schema validation stays green.
+    private static readonly System.Text.RegularExpressions.Regex CanonicalNumericLiteral =
+        new(@"^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    internal static bool IsCanonicalNumericText(string text) => CanonicalNumericLiteral.IsMatch(text);
+
+    /// <summary>Shape-check a sparkline data range ("A1:E1" or
+    /// "Sheet1!A1:E1", whole rows/cols allowed). Arbitrary strings written
+    /// into &lt;xne:f&gt; make real Excel refuse the file while schema
+    /// validation stays green.</summary>
+    internal static void ValidateSparklineRange(string range)
+    {
+        var r = (range ?? "").Trim();
+        var bang = r.LastIndexOf('!');
+        if (bang >= 0) r = r[(bang + 1)..];
+        r = r.Replace("$", "");
+        var ok = r.Length > 0 && r.Split(':').All(tok =>
+            System.Text.RegularExpressions.Regex.IsMatch(tok.Trim(), @"^([A-Za-z]{1,3}\d+|[A-Za-z]{1,3}|\d+)$"));
+        if (!ok)
+            throw new ArgumentException(
+                $"Invalid sparkline range '{range}'. Expected an A1 range like A1:E1 (optionally sheet-qualified).");
+        // Grid-bounds check, same family as ValidateSqref: shape-valid B0 or
+        // A99999999 landed verbatim in <xne:f>. Excel tolerates rather than
+        // rejects these, but the sparkline is silently broken — tighten to
+        // the severity every other cell-ref entry point now enforces.
+        foreach (var tok in r.Split(':'))
+        {
+            var tm = System.Text.RegularExpressions.Regex.Match(tok.Trim(),
+                @"^([A-Za-z]{1,3})?(\d+)?$");
+            if (tm.Groups[1].Success && tm.Groups[1].Value.Length > 0)
+            {
+                var colIdx = ColumnNameToIndex(tm.Groups[1].Value.ToUpperInvariant());
+                if (colIdx < 1 || colIdx > 16384)
+                    throw new ArgumentException(
+                        $"Invalid sparkline range '{range}': column '{tm.Groups[1].Value}' is outside Excel's grid (A..XFD).");
+            }
+            if (tm.Groups[2].Success && tm.Groups[2].Value.Length > 0
+                && (!long.TryParse(tm.Groups[2].Value, out var rowN) || rowN < 1 || rowN > 1048576))
+                throw new ArgumentException(
+                    $"Invalid sparkline range '{range}': row '{tm.Groups[2].Value}' is outside Excel's grid (1..1048576).");
+        }
+    }
+
+    /// <summary>Sanity-check a defined-name body. Full formula validation is
+    /// out of scope, but a sheet-qualified reference must name an existing
+    /// sheet and carry a plausible range/name after the '!' — garbage like
+    /// "乱码!!!" written verbatim makes real Excel refuse the file.</summary>
+    internal void ValidateDefinedNameRef(string refText)
+    {
+        // Defined-name bodies are full formulas — validating them properly
+        // is out of scope (functions, unions, cross-part brackets, escaped
+        // apostrophes are all legal). Reject only the empirically fatal
+        // patterns that pass schema validation but make real Excel refuse
+        // the file: doubled/trailing '!' ("乱码!!!") and stray '#' outside
+        // the known error literals ("乱码###").
+        // Formula-length ceiling (8192) applies to defined-name bodies too.
+        ValidateFormulaLength(refText, "defined-name ref");
+        var body = (refText ?? "").TrimStart('=').Trim();
+        if (body.Length == 0) return;
+        if (body.Contains('"')) return; // string literals — leave to Excel
+        // Strip the known error literals first: "#REF!" legitimately ends
+        // with '!' and must not trip the dangling-bang check below.
+        var probe = System.Text.RegularExpressions.Regex.Replace(body,
+            @"#(REF!|N/A|NAME\?|DIV/0!|VALUE!|NULL!|NUM!|SPILL!|CALC!|GETTING_DATA)",
+            "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (probe.Contains('#'))
+            throw new ArgumentException(
+                $"Defined name ref '{refText}' contains '#' outside a known error literal — not valid formula text.");
+        if (probe.Contains("!!") || probe.EndsWith("!", StringComparison.Ordinal))
+            throw new ArgumentException(
+                $"Defined name ref '{refText}' has a dangling '!' — a sheet qualifier must be followed by a range (e.g. Sheet1!$A$1:$B$5).");
+    }
+
+    /// <summary>Text to store in a numeric cell's &lt;v&gt;: the literal digits
+    /// when already canonical (preserves >15-significant-digit values that
+    /// double cannot represent), else the parsed double re-serialized.</summary>
+    internal static string NormalizeNumericCellText(string text, double parsed)
+        => CanonicalNumericLiteral.IsMatch(text)
+            ? text
+            : parsed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Guard for every numeric AUTO-DETECTION on a cell value — see
+    /// <see cref="Core.NumericText"/> for why "1,5" must not become 15.
+    /// </summary>
+    internal static bool HasValidThousandsGrouping(string text)
+        => Core.NumericText.HasValidThousandsGrouping(text);
+}
+>>>>>>> upstream/main

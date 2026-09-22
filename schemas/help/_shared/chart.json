@@ -308,7 +308,11 @@
         "type"
       ],
       "add": true,
+<<<<<<< HEAD
       "set": true,
+=======
+      "set": false,
+>>>>>>> upstream/main
       "get": true,
       "examples": [
         "--prop chartType=column",
@@ -318,6 +322,10 @@
         "--prop chartType=waterfall"
       ],
       "readback": "normalized chartType string without modifiers (modifiers surface as separate flags in later iterations)",
+<<<<<<< HEAD
+=======
+      "setNote": "chart type is fixed at creation; changing it post-hoc would require rebuilding the chart XML (series/axes differ per type). Remove and re-add the chart to change its type, or use combotypes for per-series type overrides.",
+>>>>>>> upstream/main
       "enforcement": "strict"
     },
     "chartareafill": {
@@ -938,7 +946,11 @@
       "add": true,
       "set": true,
       "get": false,
+<<<<<<< HEAD
       "description": "marker symbol for line/scatter/radar series only (other types silently skipped). Format: 'symbol' or 'symbol:size' or 'symbol:size:color'. Symbols: none, auto, circle, square, diamond, triangle, x, plus, star, dash, dot. (picture markers are not implemented.) Chart-level Get does not surface marker because applicability is chart-type-conditional — read per-series via /chart[N]/series[K] (chart-series schema declares marker get:true).",
+=======
+      "description": "marker symbol for line/scatter/radar series only (other types silently skipped). Format: 'symbol' or 'symbol:size' or 'symbol:size:color'. Symbols: none, auto, circle, square, diamond, triangle, x, plus, star, dash, dot. (picture markers are not implemented.) Chart-level Get surfaces a first-series representative value once any series carries a marker (the dump emitter relies on it for uniform-marker charts); the authoritative per-series read is /chart[N]/series[K] (chart-series schema declares marker get:true).",
+>>>>>>> upstream/main
       "examples": [
         "--prop marker=circle",
         "--prop marker=square:8:FF0000"
@@ -1303,7 +1315,11 @@
     },
     "title": {
       "type": "string",
+<<<<<<< HEAD
       "description": "chart title text; pass 'none' to remove an existing title. Get also returns sub-keys title.font, title.size, title.color, title.bold when set; these are get-only readback fields surfaced from chart title runs.",
+=======
+      "description": "chart title text; pass 'none' (case-insensitive) or an empty string to omit/remove the title — on add this skips creating the title element, on set it removes an existing title. Get also returns sub-keys title.font, title.size, title.color, title.bold when set; these are get-only readback fields surfaced from chart title runs.",
+>>>>>>> upstream/main
       "add": true,
       "set": true,
       "get": true,
@@ -1471,4 +1487,8 @@
       ]
     }
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> upstream/main

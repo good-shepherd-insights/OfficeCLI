@@ -5,7 +5,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
+<<<<<<< HEAD
     <Version>1.0.110</Version>
+=======
+    <Version>1.0.152</Version>
+    <Authors>goworm</Authors>
+    <Company>OfficeCLI</Company>
+    <Copyright>Copyright © 2026 OfficeCLI (https://OfficeCLI.AI)</Copyright>
+>>>>>>> upstream/main
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>

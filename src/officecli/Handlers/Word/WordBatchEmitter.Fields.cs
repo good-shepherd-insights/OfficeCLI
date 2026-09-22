@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using OfficeCli.Core;
@@ -17,6 +21,21 @@ public static partial class WordBatchEmitter
     private static readonly HashSet<string> FieldResultFormatKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "bold", "italic", "color", "size", "font", "font.latin", "font.ascii", "font.hAnsi",
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-FIELDHINT: rFonts w:hint (eastAsia / cs) on the cached result
+        // run. Numbered-list fields ( = N \* GB3 → ①②③) carry a hint-only
+        // <w:rFonts w:hint="eastAsia"/> with no face. Dropping it renders the
+        // circled numerals in the Latin face → narrower glyphs → cell text
+        // rewraps → atLeast rows grow → long tables flip pages and reflow.
+        "font.hint",
+        // Theme-bound slots: a header/footer PAGE field whose runs bind the
+        // theme face (minorHAnsi) must keep the binding, or the page number
+        // falls back to the docDefaults font and the footer line height
+        // changes — a borderline table row then flips pages and the whole
+        // document reflows.
+        "font.asciiTheme", "font.hAnsiTheme", "font.eaTheme", "font.csTheme",
+>>>>>>> upstream/main
         "underline", "strike",
         // BUG-DUMP-FIELDVALIGN: field-wide vertical alignment (superscript /
         // subscript) — the common case is a cross-reference citation mark
@@ -25,6 +44,34 @@ public static partial class WordBatchEmitter
         // so capturing it here (and applying it uniformly via AddField below)
         // restores the superscript on round-trip.
         "superscript", "subscript",
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-RPR-CONTAINER: the field result run can carry the full rPr
+        // vocabulary (a formatted REF / STYLEREF / citation result). The flatten
+        // path (single-run, non-rich) previously kept only the slots above and
+        // dropped the rest. Capture them here and apply them in AddField (loop
+        // through ApplyRunFormatting). These also feed ResultRunsAreRich so a
+        // result whose runs differ only in these props is recognised as rich.
+        "caps", "smallCaps", "dstrike", "outline", "shadow", "emboss", "imprint",
+        "vanish", "specVanish", "webHidden",
+        "charSpacing", "w", "kern", "position", "size.cs", "highlight",
+        "em", "lang", "lang.latin", "lang.ea", "lang.cs",
+        "direction", "rtl", "snapToGrid",
+    };
+
+    // BUG-DUMP-RPR-CONTAINER: the subset of FieldResultFormatKeys that AddField
+    // applies through ApplyRunFormatting in a generic loop (the slots NOT already
+    // handled by AddField's dedicated font/bold/italic/underline/strike/color/size/
+    // vertAlign blocks). Exposed so AddField (a different file) shares one source of
+    // truth instead of re-listing them.
+    internal static readonly string[] FieldResultExtraRPrKeys =
+    {
+        "caps", "smallCaps", "dstrike", "outline", "shadow", "emboss", "imprint",
+        "vanish", "specVanish", "webHidden",
+        "charSpacing", "w", "kern", "position", "size.cs", "highlight",
+        "em", "lang", "lang.latin", "lang.ea", "lang.cs",
+        "direction", "rtl", "snapToGrid",
+>>>>>>> upstream/main
     };
 
     // AddField's --prop vocabulary for field-run formatting. A captured result
@@ -34,10 +81,32 @@ public static partial class WordBatchEmitter
     private static readonly HashSet<string> FieldAddSupportedFormatKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "bold", "color", "size", "font", "font.latin", "font.ascii", "font.hAnsi",
+<<<<<<< HEAD
+=======
+        "font.asciiTheme", "font.hAnsiTheme", "font.eaTheme", "font.csTheme",
+        // BUG-DUMP-FIELDHINT: AddField applies font.hint via the per-slot loop,
+        // so a hint-only result run round-trips through the typed `add field`.
+        "font.hint",
+>>>>>>> upstream/main
         // BUG-DUMP-FIELDVALIGN: AddField applies vertAlign (superscript /
         // subscript) uniformly to every rebuilt field run, so these are
         // losslessly expressible through the typed `add field` path.
         "superscript", "subscript",
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R52-FIELDITALIC: AddField now applies these too, so a
+        // single-run italic/underlined/struck field result round-trips through
+        // the typed path instead of silently shedding them.
+        "italic", "underline", "strike",
+        // BUG-DUMP-RPR-CONTAINER: AddField applies these via the FieldResultExtraRPrKeys
+        // loop, so a single-run field result carrying the fuller rPr vocabulary
+        // round-trips through the typed path instead of being warned-and-dropped.
+        "caps", "smallCaps", "dstrike", "outline", "shadow", "emboss", "imprint",
+        "vanish", "specVanish", "webHidden",
+        "charSpacing", "w", "kern", "position", "size.cs", "highlight",
+        "em", "lang", "lang.latin", "lang.ea", "lang.cs",
+        "direction", "rtl", "snapToGrid",
+>>>>>>> upstream/main
     };
 
     private static bool FieldRunHasFormatting(DocumentNode run)
@@ -101,7 +170,53 @@ public static partial class WordBatchEmitter
         }
     }
 
+<<<<<<< HEAD
     private static List<DocumentNode> CollapseFieldChains(List<DocumentNode> children)
+=======
+    // BUG-DUMP-FIELDMARKER-RPR: extract the size/font/bold/italic/color carried
+    // on a field MARKER run's <w:rPr> (begin/instr/end). Navigation does not
+    // surface run typography onto fieldChar/instrText nodes (they are not text
+    // runs), so firstFormattedMarker stays null and a field whose markers carry
+    // an explicit size (e.g. an INCLUDEPICTURE whose runs are sz=24) rebuilt with
+    // bare markers — the hidden field-code line collapsed to the default size,
+    // shrinking the line and reflowing the page. Read the marker's raw rPr and
+    // forward the FieldResultFormatKeys scalars via the same _resultFmt. channel
+    // the cached-result path uses; AddField applies them uniformly to all field
+    // runs. Only fills keys the result/marker-Format path did not already set.
+    private static void ForwardMarkerRprFromRaw(WordHandler word, DocumentNode beginNode, DocumentNode synth)
+    {
+        if (string.IsNullOrEmpty(beginNode.Path)) return;
+        string xml;
+        try { xml = word.RawElementXml(beginNode.Path) ?? ""; }
+        catch { return; }
+        var rprM = System.Text.RegularExpressions.Regex.Match(xml, @"<w:rPr>.*?</w:rPr>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (!rprM.Success) return;
+        var rpr = rprM.Value;
+        void Set(string key, string? val)
+        {
+            if (string.IsNullOrEmpty(val)) return;
+            if (!synth.Format.ContainsKey("_resultFmt." + key)) synth.Format["_resultFmt." + key] = val;
+        }
+        var sz = System.Text.RegularExpressions.Regex.Match(rpr, @"<w:sz w:val=""(\d+)""");
+        if (sz.Success && int.TryParse(sz.Groups[1].Value, out var hp))
+            Set("size", (hp / 2.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt");
+        var fonts = System.Text.RegularExpressions.Regex.Match(rpr, @"<w:rFonts\b[^>]*>");
+        if (fonts.Success)
+        {
+            var ascii = System.Text.RegularExpressions.Regex.Match(fonts.Value, @"w:ascii=""([^""]+)""");
+            if (ascii.Success) Set("font.latin", ascii.Groups[1].Value);
+        }
+        if (System.Text.RegularExpressions.Regex.IsMatch(rpr, @"<w:b(?:\s+w:val=""(?:1|true|on)"")?\s*/>"))
+            Set("bold", "true");
+        if (System.Text.RegularExpressions.Regex.IsMatch(rpr, @"<w:i(?:\s+w:val=""(?:1|true|on)"")?\s*/>"))
+            Set("italic", "true");
+        var col = System.Text.RegularExpressions.Regex.Match(rpr, @"<w:color w:val=""([^""]+)""");
+        if (col.Success && col.Groups[1].Value != "auto") Set("color", col.Groups[1].Value);
+    }
+
+    private static List<DocumentNode> CollapseFieldChains(List<DocumentNode> children, WordHandler word)
+>>>>>>> upstream/main
     {
         var result = new List<DocumentNode>();
         for (int i = 0; i < children.Count; i++)
@@ -138,6 +253,31 @@ public static partial class WordBatchEmitter
             // result-run formatting per segment is rare; we capture the first
             // formatted display run, matching AddField's single-rPr model.)
             DocumentNode? firstFormattedResult = null;
+<<<<<<< HEAD
+=======
+            // A no-result field (e.g. ADVANCE \d12 — moves following content down,
+            // emits nothing) has no post-separate run to read formatting from, so
+            // firstFormattedResult stays null and the field-run rPr is dropped.
+            // The begin/instr marker runs still carry the rPr that sets the field
+            // paragraph's line metrics — most importantly the THEME font slot
+            // (font.asciiTheme/…), which survives RunToNode's TypographyOnlyKeys
+            // strip (only the literal font.ascii/bold/size are removed). Losing it
+            // re-rendered the field line in the docDefaults face, changing the
+            // empty paragraph's height enough to flip a borderline page break and
+            // cascade a whole-document pagination drift. Capture the markers'
+            // formatting as a fallback when no result formatting exists.
+            DocumentNode? firstFormattedMarker = c is not null && FieldRunHasFormatting(c) ? c : null;
+            // BUG-DUMP-FIELD-DELTEXT: is the WHOLE field tracked-deleted? The
+            // begin fldChar carries revision.type=del when the entire field sits
+            // inside a <w:del>. In that case the cached display is legitimately
+            // <w:delText> and must be captured (it round-trips as a deleted
+            // field). Only when the field is LIVE do we skip del result runs as
+            // superseded BEFORE-deletion text. See the result-run branch below.
+            bool fieldIsDeleted = c is not null
+                && c.Format.TryGetValue("revision.type", out var beginRevT)
+                && beginRevT is string beginRevStr
+                && string.Equals(beginRevStr, "del", StringComparison.OrdinalIgnoreCase);
+>>>>>>> upstream/main
             // BUG-DUMP-R26-2: collect EVERY post-separate result run so we can
             // detect a rich (multi-run, heterogeneously-formatted) cached result.
             // AddField's single-rPr model collapses such a result to one run and
@@ -146,6 +286,24 @@ public static partial class WordBatchEmitter
             // distinctly-formatted run, we round-trip the whole field chain
             // verbatim via raw-set instead (see TryEmitFieldRun).
             var resultRuns = new List<DocumentNode>();
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R28-INCLUDEPICTURE: a field whose cached result is a
+            // DRAWING (the canonical case is INCLUDEPICTURE, whose separate→end
+            // span holds a <w:drawing>/<pic:pic> logo) surfaces the drawing as a
+            // type="picture" child. The typed `add field` path has no model for a
+            // drawing result, so it was silently dropped — the rendered logo
+            // vanished. Collect every drawing result child so the field can be
+            // decomposed into raw fldChar/instrText markers + a real picture emit.
+            var resultPictureNodes = new List<DocumentNode>();
+            // BUG-DUMP-FIELD-OMATH: the cached result of a field (e.g. QUOTE) can be
+            // an <m:oMath> OMML equation, surfaced as an `equation` node. The walk
+            // below has no equation branch, so it fell through uncaptured and the
+            // field collapsed to a result-less `add field` — silently dropping the
+            // formula. Capture equation results the same way as picture results and
+            // decompose them (marker-raw fldChar/instrText + a real `add equation`).
+            var resultEquationNodes = new List<DocumentNode>();
+>>>>>>> upstream/main
             // BUG-DUMP-FIELDVALIGN: field-wide vertical alignment (superscript /
             // subscript) is uniform across EVERY run of the field — a citation
             // mark whose begin/instr/separate/result/end runs all carry the same
@@ -161,6 +319,31 @@ public static partial class WordBatchEmitter
             // text content) for a vertAlign and stash it so it rides on the field
             // op even when no formatted post-separate text run exists.
             string? fieldVertAlign = null;
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R72-SETFIELD-BOOKMARK: a SET field (and any field Word
+            // bookmarks) carries a <w:bookmarkStart>/<w:bookmarkEnd> INSIDE the
+            // begin..end span — for SET it wraps the cached result between
+            // separate and end so REF fields can retrieve the stored value. The
+            // walk below has no branch for bookmark nodes, so they were consumed
+            // when `i = end` skips the span and silently dropped (TSMAD29 lost 61
+            // SET-field bookmarks; the SET field itself survived, hiding the loss
+            // from validate/convergence). Flag an inner bookmark so the whole
+            // slice is round-tripped verbatim via the same raw-set passthrough the
+            // rich-result / nested-field cases use, preserving the bookmark in
+            // place byte-for-byte.
+            bool sawInnerBookmark = false;
+            // BUG-DUMP-H78: a LIVE field whose result span contains a tracked
+            // deletion (<w:del> wrapping a <w:delText> run) cannot round-trip via
+            // the typed `add field` path — that path rebuilds a flat result from
+            // the live text only and drops the <w:del> run as "superseded
+            // BEFORE-deletion text" (correct for a result that was *replaced*, but
+            // wrong here: the deletion is genuine tracked-change content, e.g. a
+            // reviewer renumbering a cross-reference). Flag it so the whole field
+            // slice round-trips verbatim via raw-set (same passthrough as a rich
+            // result / inner bookmark), preserving the <w:del>/<w:delText> in place.
+            bool sawInnerDeletion = false;
+>>>>>>> upstream/main
             for (int j = i + 1; j < children.Count; j++)
             {
                 var k = children[j];
@@ -176,6 +359,13 @@ public static partial class WordBatchEmitter
                             instruction += iv.ToString();
                         else if (!string.IsNullOrEmpty(k.Text))
                             instruction += k.Text;
+<<<<<<< HEAD
+=======
+                        // Marker-run formatting fallback (see firstFormattedMarker):
+                        // the instrText run carries the field's theme-font slot.
+                        if (firstFormattedMarker == null && FieldRunHasFormatting(k))
+                            firstFormattedMarker = k;
+>>>>>>> upstream/main
                     }
                 }
                 else if (k.Type == "fieldChar"
@@ -208,6 +398,37 @@ public static partial class WordBatchEmitter
                 }
                 else if ((k.Type == "run" || k.Type == "r") && depth == 1)
                 {
+<<<<<<< HEAD
+=======
+                    // BUG-DUMP-FIELD-DELTEXT: a deleted run INSIDE a live field's
+                    // result span carries <w:delText> (the BEFORE-deletion text),
+                    // which is NOT part of the field's current displayed value.
+                    // Accumulating it alongside the inserted replacement produced
+                    // concatenated garbage ("2.7" + "2.8" = "2.72.8" where the
+                    // current value is "2.8"). Skip such del runs from the
+                    // cached-display accumulation and result-run capture — Word
+                    // renders only the non-deleted runs as the field result.
+                    // (ins / moveTo runs stay; their text is live.)
+                    //
+                    // BUT only when the FIELD ITSELF is live. If the whole field is
+                    // tracked-deleted (its begin fldChar is del), every run is del
+                    // and the cached display IS the deleted text — it must still be
+                    // captured so the field round-trips as <w:delText>/<w:delInstrText>
+                    // (DelInsFieldHyperlinkRoundTripTests). Skipping there would
+                    // resurrect a deleted field as empty/live. So gate the skip on
+                    // the field not being del-wrapped.
+                    if (!fieldIsDeleted
+                        && k.Format.TryGetValue("revision.type", out var revT)
+                        && revT is string revTStr
+                        && string.Equals(revTStr, "del", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // BUG-DUMP-H78: don't let the live displayed value absorb the
+                        // deleted text (that produced "2.72.8" garbage), but DO route
+                        // the whole field to the verbatim slice so the <w:del> survives.
+                        sawInnerDeletion = true;
+                        continue;
+                    }
+>>>>>>> upstream/main
                     // Cached display segments after fldChar(separate). Concatenate
                     // their text. At depth>1 the run belongs to the nested
                     // field's cached display and is consumed by its own collapse
@@ -234,6 +455,37 @@ public static partial class WordBatchEmitter
                             fieldVertAlign = "subscript";
                     }
                 }
+<<<<<<< HEAD
+=======
+                else if (k.Type == "picture" && depth >= 1)
+                {
+                    // BUG-DUMP-R28-INCLUDEPICTURE: the cached result drawing.
+                    // BUG-DUMP-NESTEDQUOTE-IMG: capture at ANY field depth, not just
+                    // the outer depth==1. NESTED QUOTE/INCLUDEPICTURE fields
+                    // (begin QUOTE begin QUOTE <drawing> separate <drawing> end end)
+                    // carry their cached image at depth 2; a depth==1-only capture
+                    // left resultPictureNodes empty so the marker-raw + standalone-
+                    // picture rescue below never fired and the nested field's cached
+                    // images were dropped on round-trip. QUOTE/INCLUDEPICTURE just
+                    // re-quote a static cached result, so the image IS the content —
+                    // flattening the field-code wrapper while keeping every image.
+                    resultPictureNodes.Add(k);
+                }
+                else if (k.Type == "equation" && depth >= 1)
+                {
+                    // BUG-DUMP-FIELD-OMATH: cached OMML result of a QUOTE/field.
+                    // Capture at any depth (mirrors the picture branch) so a nested
+                    // field carrying an equation result is decomposed below instead
+                    // of dropped. The equation IS the field's displayed content.
+                    resultEquationNodes.Add(k);
+                }
+                else if ((k.Type == "bookmark" || k.Type == "bookmarkEnd") && depth == 1)
+                {
+                    // BUG-DUMP-R72-SETFIELD-BOOKMARK: bookmark wrapping the field
+                    // result — route the whole field to a verbatim slice below.
+                    sawInnerBookmark = true;
+                }
+>>>>>>> upstream/main
             }
             if (end < 0)
             {
@@ -248,7 +500,11 @@ public static partial class WordBatchEmitter
                 // is preserved so the paragraph keeps its visible text.
                 var malformedSynth = new DocumentNode
                 {
+<<<<<<< HEAD
                     Path = c.Path,
+=======
+                    Path = c!.Path,
+>>>>>>> upstream/main
                     Type = "field",
                     Text = display,
                     Format = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -260,8 +516,22 @@ public static partial class WordBatchEmitter
                 result.Add(malformedSynth);
                 continue;
             }
+<<<<<<< HEAD
             if (sawNestedField)
             {
+=======
+            if (sawNestedField && resultPictureNodes.Count == 0 && resultEquationNodes.Count == 0)
+            {
+                // BUG-DUMP-NESTEDQUOTE-IMG: a nested field whose cached result is a
+                // DRAWING (nested QUOTE/INCLUDEPICTURE: begin QUOTE begin QUOTE
+                // <drawing> separate <drawing> end end) must NOT take this verbatim
+                // _nestedField slice path — that path's TryEmitFieldRun bails on any
+                // r:embed (HasExternalRelRef treats the image ref as unreconstructable)
+                // and drops the whole field, losing every cached image. Defer to the
+                // resultPictureNodes decomposition below (marker-raw + standalone
+                // add-picture) which preserves the images. Only picture-free nested
+                // fields (IF wrapping PAGE/REF, …) take the verbatim slice here.
+>>>>>>> upstream/main
                 // BUG-DUMP-R43-5: nested-field branch — the AddField rebuild
                 // path rebuilds a FLAT begin/instr/sep/display/end chain and
                 // cannot represent IF/REF/MERGEFIELD with an embedded child
@@ -283,7 +553,11 @@ public static partial class WordBatchEmitter
                 }
                 var rawSynth = new DocumentNode
                 {
+<<<<<<< HEAD
                     Path = c.Path,
+=======
+                    Path = c!.Path,
+>>>>>>> upstream/main
                     Type = "field",
                     Text = display,
                     Format = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -308,7 +582,11 @@ public static partial class WordBatchEmitter
             // ffData props (name, default, maxLength, items, helpText, …).
             // Route to a `formfield` synth instead so TryEmitFieldRun emits
             // `add formfield` carrying the full payload.
+<<<<<<< HEAD
             if (c.Format.TryGetValue("hasFormFieldData", out var hffd)
+=======
+            if (c!.Format.TryGetValue("hasFormFieldData", out var hffd)
+>>>>>>> upstream/main
                 && hffd is bool hffdB && hffdB)
             {
                 var ffSynth = new DocumentNode
@@ -329,10 +607,98 @@ public static partial class WordBatchEmitter
                     if (fk.StartsWith("ff", StringComparison.OrdinalIgnoreCase))
                         ffSynth.Format[fk] = fv;
                 }
+<<<<<<< HEAD
+=======
+                // Field-run formatting (theme/literal fonts, size, bold, …):
+                // the form field's begin/instr/result/end runs carry the host
+                // rPr (a form bound to majorBidi); dropping it re-rendered
+                // the field in the docDefaults face and nudged row heights.
+                foreach (var (fk, fv) in c.Format)
+                {
+                    if (fv == null) continue;
+                    if (FieldResultFormatKeys.Contains(fk) && !ffSynth.Format.ContainsKey(fk))
+                        ffSynth.Format[fk] = fv;
+                }
+>>>>>>> upstream/main
                 result.Add(ffSynth);
                 i = end;
                 continue;
             }
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R28-INCLUDEPICTURE: the cached result holds a drawing
+            // (INCLUDEPICTURE \* MERGEFORMATINET — a header logo fetched from a
+            // URL and cached as an inline <w:drawing>). The typed `add field`
+            // path can only express text results, so the picture was dropped and
+            // the logo disappeared on round-trip. Decompose the begin..end slice
+            // into ordered emit units: each fldChar/instrText marker (and any
+            // text result run) rides a verbatim raw-set; each drawing result run
+            // is re-emitted as a real `picture` node so the picture pipeline
+            // ships the image bytes (data URI) and rebinds the blip rel on
+            // replay. Order is preserved by appending each unit to the same host
+            // paragraph in sequence, so the live INCLUDEPICTURE field structure
+            // (begin/instr/separate/<drawing>/end) AND the rendered logo both
+            // survive. Markers carry no relationships, so the raw-set is safe.
+            if (resultPictureNodes.Count > 0 || resultEquationNodes.Count > 0)
+            {
+                var pendingMarkers = new List<string>();
+                void FlushMarkers()
+                {
+                    if (pendingMarkers.Count == 0) return;
+                    result.Add(new DocumentNode
+                    {
+                        Path = c.Path,
+                        Type = "field",
+                        Format = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["_fieldMarkerRaw"] = true,
+                            ["_markerSlicePaths"] = new List<string>(pendingMarkers),
+                        }
+                    });
+                    pendingMarkers.Clear();
+                }
+                for (int s = i; s <= end; s++)
+                {
+                    var sc = children[s];
+                    // A cached picture OR equation result is re-emitted as a real
+                    // node (add picture / add equation); the surrounding fldChar +
+                    // instrText markers ride along as raw slices so the field
+                    // wrapper round-trips around the restored content.
+                    if (sc.Type == "picture" || sc.Type == "equation")
+                    {
+                        FlushMarkers();
+                        result.Add(sc);
+                    }
+                    else if ((sc.Type == "bookmark" || sc.Type == "bookmarkEnd")
+                             && sc.Format.TryGetValue("id", out var bmIdObj)
+                             && bmIdObj?.ToString() is { Length: > 0 } bmId)
+                    {
+                        // A bookmarkStart/End interleaved with the field markers
+                        // (Word wraps INCLUDEPICTURE results in a bookmark so REF
+                        // fields can target the image). The bookmarkStart node's
+                        // path (/bookmark[@name=…]) does not resolve through
+                        // GetElementXml in the marker-slice pass, so the anchor
+                        // silently vanished, leaving an orphan bookmarkEnd.
+                        // Synthesize the verbatim XML from the node's own id/name
+                        // instead of a path; inline entries are distinguished
+                        // from source paths by the leading '<'.
+                        var bmName = sc.Format.TryGetValue("name", out var bmNameObj)
+                            ? bmNameObj?.ToString() : null;
+                        const string wNs = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+                        pendingMarkers.Add(sc.Type == "bookmark" && !string.IsNullOrEmpty(bmName)
+                            ? $"<w:bookmarkStart w:id=\"{System.Security.SecurityElement.Escape(bmId)}\" w:name=\"{System.Security.SecurityElement.Escape(bmName)}\" xmlns:w=\"{wNs}\" />"
+                            : $"<w:bookmarkEnd w:id=\"{System.Security.SecurityElement.Escape(bmId)}\" xmlns:w=\"{wNs}\" />");
+                    }
+                    else if (!string.IsNullOrEmpty(sc.Path))
+                    {
+                        pendingMarkers.Add(sc.Path);
+                    }
+                }
+                FlushMarkers();
+                i = end;
+                continue;
+            }
+>>>>>>> upstream/main
             var synth = new DocumentNode
             {
                 Path = c.Path,
@@ -350,7 +716,14 @@ public static partial class WordBatchEmitter
             // Flag it and stash the field-slice run paths so TryEmitFieldRun
             // raw-sets the whole begin..end chain verbatim, preserving per-run
             // formatting. Empty / single-run results stay on the typed path.
+<<<<<<< HEAD
             if (sawSeparate && ResultRunsAreRich(resultRuns))
+=======
+            // BUG-DUMP-R72-SETFIELD-BOOKMARK: an inner bookmark also forces the
+            // verbatim slice (same passthrough as a rich result) so the bookmark
+            // wrapping the field result survives in place.
+            if ((sawSeparate && ResultRunsAreRich(resultRuns)) || sawInnerBookmark || sawInnerDeletion)
+>>>>>>> upstream/main
             {
                 var slicePaths = new List<string>();
                 for (int s = i; s <= end; s++)
@@ -362,6 +735,18 @@ public static partial class WordBatchEmitter
                 {
                     synth.Format["_richFieldResult"] = true;
                     synth.Format["_fieldSlicePaths"] = string.Join("\n", slicePaths);
+<<<<<<< HEAD
+=======
+                    // BUG-DUMP-H78: the per-path slice extractor resolves each run
+                    // path to its inner <w:r>, which STRIPS a surrounding <w:del>
+                    // wrapper (a tracked deletion inside the result is a <w:del>
+                    // sibling between two field runs). Force the contiguous
+                    // sibling-range extraction (begin..end) so the <w:del>/<w:delText>
+                    // structure is captured in document order, not flattened to a
+                    // bare delText run.
+                    if (sawInnerDeletion)
+                        synth.Format["_fieldSliceForceRange"] = true;
+>>>>>>> upstream/main
                 }
             }
             // BUG-DUMP-R26-7 (PART B): a field cached result that wraps a
@@ -401,15 +786,35 @@ public static partial class WordBatchEmitter
             // prefix so TryEmitFieldRun can map AddField-supported keys onto the
             // `add field` prop bag. Forwarded verbatim — TryEmitFieldRun decides
             // which keys AddField can honour and which need a raw-set fallback.
+<<<<<<< HEAD
             if (firstFormattedResult != null)
             {
                 foreach (var (fk, fv) in firstFormattedResult.Format)
+=======
+            // Prefer the cached result run's formatting; fall back to the marker
+            // runs' formatting for a no-result field (ADVANCE) so its theme font
+            // (and thus line height) round-trips.
+            var fieldFmtSource = firstFormattedResult ?? firstFormattedMarker;
+            if (fieldFmtSource != null)
+            {
+                foreach (var (fk, fv) in fieldFmtSource.Format)
+>>>>>>> upstream/main
                 {
                     if (fv == null) continue;
                     if (FieldResultFormatKeys.Contains(fk))
                         synth.Format["_resultFmt." + fk] = fv;
                 }
             }
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-FIELDMARKER-RPR: when neither the cached result nor the
+            // marker nodes' Format surfaced run typography (fieldChar/instrText
+            // nodes carry none), recover the marker rPr from the begin run's raw
+            // XML so an explicit size/font on the field markers round-trips and
+            // the hidden field-code line keeps its height.
+            if (!synth.Format.ContainsKey("_resultFmt.size"))
+                ForwardMarkerRprFromRaw(word, c, synth);
+>>>>>>> upstream/main
             // BUG-DUMP-FIELDVALIGN: forward the field-wide vertAlign captured
             // from any result run in the chain. Stash it under the same
             // `_resultFmt.` channel TryEmitFieldRun already drains so it maps

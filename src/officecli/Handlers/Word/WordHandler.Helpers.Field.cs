@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -67,11 +71,37 @@ public partial class WordHandler
             }
             else if (spanStart >= 0)
             {
+<<<<<<< HEAD
                 // A non-paragraph body child (table, sdt, …) interrupts an open
                 // field span. Such a field can't be represented as a run of
                 // consecutive paragraphs — abandon the span so its paragraphs
                 // fall back to the normal per-paragraph emit (degraded but
                 // safe) rather than producing a malformed raw slice.
+=======
+                // A non-paragraph body child interrupts an open field span.
+                // BUG-DUMP-TOC-SDT: the canonical body-level TOC content control
+                // is exactly this shape — the field opens (begin/instr/separate)
+                // in one paragraph, its cached entries live in a top-level
+                // <w:sdt> (Table-of-Contents docPartObj), and the field closes
+                // (end) in a following paragraph. The interrupting <w:sdt> is
+                // raw-passed verbatim by EmitSdt regardless, so keeping the span
+                // OPEN here lets the opener and closer paragraphs round-trip
+                // verbatim via EmitCrossParagraphFieldMember too — preserving the
+                // whole begin…sdt…end field wrapper. Abandoning the span instead
+                // dropped both fldChar paragraphs' markers (the typed `add toc`
+                // fallback could only model a self-contained field), leaving the
+                // TOC entries present but no longer wrapped in a live field —
+                // Word then renders the cached text as plain paragraphs and the
+                // TOC stops updating. SDTs don't carry their own outer field
+                // begin/end, so they don't affect the begin/end balance; leave
+                // `depth` untouched and let the closing paragraph terminate it.
+                if (el is SdtBlock) continue;
+                // Any other non-paragraph child (table, …) genuinely can't be
+                // represented as a run of consecutive paragraphs — abandon the
+                // span so its paragraphs fall back to the normal per-paragraph
+                // emit (degraded but safe) rather than producing a malformed
+                // raw slice.
+>>>>>>> upstream/main
                 depth = 0; spanStart = -1;
             }
         }
@@ -80,6 +110,65 @@ public partial class WordHandler
         return spans;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Same cross-paragraph field-span detection as
+    /// <see cref="GetCrossParagraphFieldSpanRanges"/>, but scoped to the DIRECT
+    /// block children of a block SDT's sdtContent (a TOC content control whose
+    /// cached field straddles all its entry paragraphs). The SDT-unwrap fallback
+    /// re-emits each inner paragraph through the per-paragraph typed path, which
+    /// — exactly like the body path — would collapse the opener and drop the
+    /// field's first cached entry. Returns inclusive 1-based ranges in the SDT's
+    /// paragraph-only ordinal (matching the unwrap's `/sdt[N]/p[K]` counting), so
+    /// the unwrap can raw-pass each span member verbatim instead. Empty when the
+    /// SDT carries no cross-paragraph field.
+    /// </summary>
+    internal List<(int Start, int End)> GetSdtContentCrossParagraphFieldSpanRanges(string sdtPath)
+    {
+        var spans = new List<(int, int)>();
+        OpenXmlElement? element;
+        try { element = NavigateToElement(ParsePath(sdtPath)); }
+        catch { return spans; }
+        var content = (element as SdtBlock)?.SdtContentBlock;
+        if (content == null) return spans;
+
+        int pos = 0, depth = 0, spanStart = -1;
+        foreach (var el in content.ChildElements)
+        {
+            if (el is Paragraph p)
+            {
+                if (IsOMathParaWrapperParagraph(p)) continue;
+                pos++;
+                int begins = 0, ends = 0;
+                foreach (var fc in p.Descendants<FieldChar>())
+                {
+                    if (fc.FieldCharType?.HasValue != true) continue;
+                    var t = fc.FieldCharType.InnerText;
+                    if (t == "begin") begins++;
+                    else if (t == "end") ends++;
+                }
+                if (spanStart < 0)
+                {
+                    if (begins > ends) { spanStart = pos; depth = begins - ends; }
+                }
+                else
+                {
+                    depth += begins - ends;
+                    if (depth <= 0) { spans.Add((spanStart, pos)); depth = 0; spanStart = -1; }
+                }
+            }
+            else if (spanStart >= 0)
+            {
+                // A non-paragraph child interrupts the span — abandon it (the
+                // members fall back to the per-paragraph emit, degraded but safe).
+                depth = 0; spanStart = -1;
+            }
+        }
+        return spans;
+    }
+
+>>>>>>> upstream/main
     // CONSISTENCY(field-cache-stale): true when <paramref name="run"/> sits
     // between an owning field's <w:fldChar w:fldCharType="separate"/> and
     // <w:fldChar w:fldCharType="end"/> — i.e. it is the cached result run
@@ -136,7 +225,11 @@ public partial class WordHandler
         // its `begin` is below us — skip past it. Only the begin at
         // depth 0 is the owner. Use InnerText (not enum equality) since
         // SDK v3 enum equality on FieldCharValues is unreliable (same
+<<<<<<< HEAD
         // trap as LineSpacingRuleValues — see WordHandler CLAUDE.md).
+=======
+        // trap as LineSpacingRuleValues — see the Word handler conventions).
+>>>>>>> upstream/main
         int closedDepth = 0;
         OpenXmlElement? sibling = run.PreviousSibling();
         while (sibling != null)
@@ -209,6 +302,7 @@ public partial class WordHandler
     }
 
     /// <summary>
+<<<<<<< HEAD
     /// Enumerate every part root that can hold revision elements
     /// (body + headers + footers + footnotes + endnotes + comments).
     /// Mirrors the part fan-out in EnsureAllParaIds for the paraId scan.
@@ -216,6 +310,18 @@ public partial class WordHandler
     /// future revision-iteration logic.
     /// </summary>
     private static IEnumerable<OpenXmlElement> EnumerateRevisionRoots(MainDocumentPart mainPart)
+=======
+    /// Enumerate every part root that can hold body-like content
+    /// (body + headers + footers + footnotes + endnotes + comments).
+    /// Single source of truth for "which parts to scan" across all unique-id
+    /// management: paraId/revision pre-registration, plus the sdt / docPr /
+    /// bookmark allocators and their Ensure*Ids dedup passes. Keeping every
+    /// allocator and dedup on this one fan-out prevents the scan-scope drift
+    /// that let ids collide in footnotes/endnotes/comments (and headers/footers
+    /// for the body-only scanners).
+    /// </summary>
+    private static IEnumerable<OpenXmlElement> EnumerateContentRoots(MainDocumentPart mainPart)
+>>>>>>> upstream/main
     {
         if (mainPart.Document != null) yield return mainPart.Document;
         foreach (var hp in mainPart.HeaderParts)
@@ -273,7 +379,20 @@ public partial class WordHandler
         if (mainPart.WordprocessingCommentsPart?.Comments != null)
             allParagraphs = allParagraphs.Concat(mainPart.WordprocessingCommentsPart.Comments.Descendants<Paragraph>());
 
+<<<<<<< HEAD
         var paragraphs = allParagraphs.ToList();
+=======
+        // #336: a floating textbox is written twice — once under mc:Choice
+        // (wps:txbx) and once under mc:Fallback (v:textbox) — and Word gives the
+        // mirrored paragraphs the SAME w14:paraId on purpose (same logical
+        // paragraph). Those are not real duplicates; skip the mc:Fallback copies
+        // so the dedup pass never renumbers a Word-authored Choice/Fallback pair
+        // on an unrelated edit. The mc:Choice copy stays in the collision set, so
+        // genuine paraId collisions elsewhere are still detected.
+        var paragraphs = allParagraphs
+            .Where(p => !p.Ancestors<AlternateContentFallback>().Any())
+            .ToList();
+>>>>>>> upstream/main
 
         // Collect existing IDs, detect duplicates, and track max for deterministic increment
         var paraIdSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -311,7 +430,11 @@ public partial class WordHandler
         // GenerateRevisionId() never picks a number that's already taken by
         // either paraId or another revision id. Decimal revision ids are
         // converted to the same 8-char hex form the pool uses.
+<<<<<<< HEAD
         foreach (var rootElem in EnumerateRevisionRoots(mainPart))
+=======
+        foreach (var rootElem in EnumerateContentRoots(mainPart))
+>>>>>>> upstream/main
         {
             foreach (var elem in rootElem.Descendants())
             {
@@ -390,7 +513,11 @@ public partial class WordHandler
               or TableCellPropertiesChange or TableRowPropertiesChange
               or Inserted or Deleted or MoveFrom or MoveTo;
 
+<<<<<<< HEAD
         var revElems = EnumerateRevisionRoots(mainPart)
+=======
+        var revElems = EnumerateContentRoots(mainPart)
+>>>>>>> upstream/main
             .SelectMany(r => r.Descendants())
             .Where(IsRevisionMarker)
             .ToList();
@@ -442,7 +569,11 @@ public partial class WordHandler
         // name → list of move-run ids bracketed by a range with that name.
         var byName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
+<<<<<<< HEAD
         foreach (var root in EnumerateRevisionRoots(mainPart))
+=======
+        foreach (var root in EnumerateContentRoots(mainPart))
+>>>>>>> upstream/main
         {
             // Active range-marker names keyed by their range id (a
             // moveFrom and moveTo range nest independently but share the
@@ -502,11 +633,19 @@ public partial class WordHandler
 
     /// <summary>
     /// Generate a deterministic unique SdtId by scanning max existing value + 1.
+<<<<<<< HEAD
+=======
+    /// Scans every part that can hold an sdt (body + headers + footers +
+    /// footnotes + endnotes + comments) via <see cref="EnumerateContentRoots"/>,
+    /// not just the body — a body-only scan handed out colliding ids when an
+    /// sdt was added into a header/footer (the counter never saw the sibling).
+>>>>>>> upstream/main
     /// </summary>
     private int NextSdtId()
     {
         const int overflowReset = 872011;
         int maxId = 0;
+<<<<<<< HEAD
         var body = _doc.MainDocumentPart?.Document?.Body;
         if (body != null)
         {
@@ -515,6 +654,17 @@ public partial class WordHandler
                 if (sdtId.Val?.HasValue == true && sdtId.Val.Value > maxId)
                     maxId = sdtId.Val.Value;
             }
+=======
+        var main = _doc.MainDocumentPart;
+        if (main != null)
+        {
+            foreach (var root in EnumerateContentRoots(main))
+                foreach (var sdtId in root.Descendants<SdtId>())
+                {
+                    if (sdtId.Val?.HasValue == true && sdtId.Val.Value > maxId)
+                        maxId = sdtId.Val.Value;
+                }
+>>>>>>> upstream/main
         }
         var next = maxId + 1;
         return next > int.MaxValue - 1 ? overflowReset : next;
@@ -539,6 +689,7 @@ public partial class WordHandler
         var mainPart = _doc.MainDocumentPart;
         if (mainPart?.Document?.Body == null) return;
 
+<<<<<<< HEAD
         var allDocProps = mainPart.Document.Body.Descendants<DW.DocProperties>().ToList();
 
         foreach (var headerPart in mainPart.HeaderParts)
@@ -547,6 +698,13 @@ public partial class WordHandler
         foreach (var footerPart in mainPart.FooterParts)
             if (footerPart.Footer != null)
                 allDocProps.AddRange(footerPart.Footer.Descendants<DW.DocProperties>());
+=======
+        // Scan every part that can host a <w:drawing> (body + headers + footers
+        // + footnotes + endnotes + comments) — matches NextDocPropId's allocator
+        // scan so dedup covers the same id space the allocator does.
+        var allDocProps = EnumerateContentRoots(mainPart)
+            .SelectMany(r => r.Descendants<DW.DocProperties>()).ToList();
+>>>>>>> upstream/main
 
         var usedIds = new HashSet<uint>();
         var duplicates = new List<DW.DocProperties>();
@@ -580,6 +738,7 @@ public partial class WordHandler
         var mainPart = _doc.MainDocumentPart;
         if (mainPart?.Document?.Body == null) return;
 
+<<<<<<< HEAD
         var allSdtIds = mainPart.Document.Body.Descendants<SdtId>().ToList();
         foreach (var headerPart in mainPart.HeaderParts)
             if (headerPart.Header != null)
@@ -587,6 +746,13 @@ public partial class WordHandler
         foreach (var footerPart in mainPart.FooterParts)
             if (footerPart.Footer != null)
                 allSdtIds.AddRange(footerPart.Footer.Descendants<SdtId>());
+=======
+        // Scan every part that can hold an sdt (body + headers + footers +
+        // footnotes + endnotes + comments) — a 3-part scan left sdt ids in
+        // footnotes/endnotes/comments out of the collision set.
+        var allSdtIds = EnumerateContentRoots(mainPart)
+            .SelectMany(r => r.Descendants<SdtId>()).ToList();
+>>>>>>> upstream/main
 
         var usedIds = new HashSet<int>();
         var duplicates = new List<SdtId>();
@@ -606,4 +772,91 @@ public partial class WordHandler
             sid.Val = newId;
         }
     }
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// Ensure all bookmark ids (<c>w:bookmarkStart/@w:id</c> and the paired
+    /// <c>w:bookmarkEnd/@w:id</c>) are unique. Sibling of
+    /// <see cref="EnsureDocPropIds"/> / <see cref="EnsureSdtIds"/>.
+    /// AddBookmark allocates max+1 by scanning the body's existing
+    /// bookmarkStarts, but a raw-set (e.g. a verbatim &lt;w:sdt&gt; cover-page
+    /// block) can inject a bookmark whose id collides with one a structured
+    /// add already used — the source id-1 bookmark inside the SDT and a freshly
+    /// added id-1 bookmark both land on disk, which the validator rejects as a
+    /// duplicate w:id. Re-pair each start with its end (most-recent open start
+    /// wins, so ranges nest correctly) and renumber every duplicate pair as a
+    /// unit so the start and its end stay in sync. Bookmark cross-references
+    /// (REF / TOC / hyperlink anchors) key off the bookmark NAME, never the id,
+    /// so renumbering is invisible to them.
+    /// </summary>
+    private void EnsureBookmarkIds()
+    {
+        var mainPart = _doc.MainDocumentPart;
+        if (mainPart?.Document?.Body == null) return;
+
+        // Scan every part that can hold a bookmark (body + headers + footers +
+        // footnotes + endnotes + comments) — a 3-part scan left bookmark ids in
+        // footnotes/endnotes/comments out of the collision set.
+        var roots = EnumerateContentRoots(mainPart).ToList();
+
+        // Pair start→end in document order per part; collect pairs globally.
+        var pairs = new List<(BookmarkStart start, BookmarkEnd? end, int? id)>();
+        foreach (var root in roots)
+        {
+            var open = new Dictionary<string, Stack<BookmarkStart>>(StringComparer.Ordinal);
+            var endOf = new Dictionary<BookmarkStart, BookmarkEnd>();
+            var startsInOrder = new List<BookmarkStart>();
+            foreach (var bm in root.Descendants())
+            {
+                if (bm is BookmarkStart bs)
+                {
+                    startsInOrder.Add(bs);
+                    var key = bs.Id?.Value ?? "";
+                    if (!open.TryGetValue(key, out var st)) { st = new Stack<BookmarkStart>(); open[key] = st; }
+                    st.Push(bs);
+                }
+                else if (bm is BookmarkEnd be)
+                {
+                    var key = be.Id?.Value ?? "";
+                    if (open.TryGetValue(key, out var st) && st.Count > 0) endOf[st.Pop()] = be;
+                }
+            }
+            foreach (var bs in startsInOrder)
+                pairs.Add((bs, endOf.TryGetValue(bs, out var e) ? e : null,
+                           int.TryParse(bs.Id?.Value, out var pid) ? pid : (int?)null));
+        }
+
+        // Keep the first occurrence of each valid id; renumber later duplicates
+        // (and any missing/unparseable id) to the lowest free value.
+        var usedIds = new HashSet<int>();
+        foreach (var (start, end, id) in pairs)
+        {
+            if (id.HasValue && usedIds.Add(id.Value)) continue;
+            int newId = 1;
+            while (!usedIds.Add(newId)) newId++;
+            start.Id = newId.ToString();
+            if (end != null) end.Id = newId.ToString();
+        }
+
+        // BUG-DUMP-BMORPHAN: a content-wrapping bookmark whose <w:bookmarkEnd>
+        // was lost on round-trip — its end fell outside the cross-paragraph
+        // field-span / raw-set fragment that carried only the start (a TOC
+        // heading bookmark split across raw-set-before-sectPr members) — replays
+        // as an UNCLOSED bookmark. Word then renders every PAGEREF/TOC entry to
+        // it as the localized "Error! Bookmark not defined." Close each orphan
+        // start with a zero-length end right after it: the reference resolves to
+        // the start's page (the heading sits there), and it is harmless for the
+        // invisible _Hlk edit-location markers that make up most orphans. Runs at
+        // batch finalization after every raw-set is in place; idempotent — a
+        // re-run finds no orphans because the end now exists.
+        foreach (var (start, end, _) in pairs)
+        {
+            if (end != null || start.Parent == null) continue;
+            var startId = start.Id?.Value;
+            if (string.IsNullOrEmpty(startId)) continue;
+            start.InsertAfterSelf(new BookmarkEnd { Id = startId });
+        }
+    }
+>>>>>>> upstream/main
 }

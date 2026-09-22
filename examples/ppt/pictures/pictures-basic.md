@@ -273,7 +273,11 @@ officecli validate pictures-basic.pptx
 
 ```bash
 # List pictures on slide 1
+<<<<<<< HEAD
 officecli query pictures-basic.pptx '/slide[1]' picture
+=======
+officecli query pictures-basic.pptx '/slide[1]/picture'
+>>>>>>> upstream/main
 
 # Get full properties including src, alt, name on slide 1
 officecli get pictures-basic.pptx '/slide[1]/picture[1]'

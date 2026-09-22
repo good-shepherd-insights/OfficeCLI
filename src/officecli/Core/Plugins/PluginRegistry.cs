@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
@@ -264,6 +268,12 @@ public static class PluginRegistry
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
+<<<<<<< HEAD
+=======
+                    // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
+>>>>>>> upstream/main
                     CreateNoWindow = true,
                 }
             };

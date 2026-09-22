@@ -231,8 +231,13 @@ officecli validate tables-basic.pptx
 
 ```bash
 # List tables on each slide
+<<<<<<< HEAD
 officecli query tables-basic.pptx '/slide[1]' table
 officecli query tables-basic.pptx '/slide[3]' table
+=======
+officecli query tables-basic.pptx '/slide[1]/table'
+officecli query tables-basic.pptx '/slide[3]/table'
+>>>>>>> upstream/main
 
 # Get fill properties on slide 3
 officecli get tables-basic.pptx '/slide[3]/table[1]/tr[2]/tc[2]'

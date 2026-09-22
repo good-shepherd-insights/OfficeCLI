@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -155,12 +159,30 @@ static partial class CommandBuilder
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
+<<<<<<< HEAD
+=======
+                    // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
+>>>>>>> upstream/main
                     CreateNoWindow = true,
                 }
             };
             p.Start();
+<<<<<<< HEAD
             var rawManifest = p.StandardOutput.ReadToEnd();
             if (!p.WaitForExit(5000)) { try { p.Kill(true); } catch { } }
+=======
+            // Async-drain BOTH streams before waiting — the synchronous
+            // stdout-only read deadlocked when a plugin emitted verbose
+            // diagnostics on stderr (same pitfall PluginRegistry.TryReadManifest
+            // documents), and the Kill fallback sat unreachable behind it.
+            var manifestTask = p.StandardOutput.ReadToEndAsync();
+            var drainErrTask = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(5000)) { try { p.Kill(true); } catch { } }
+            var rawManifest = manifestTask.Result;
+            _ = drainErrTask.Result;
+>>>>>>> upstream/main
 
             if (json)
             {
@@ -412,7 +434,11 @@ static partial class CommandBuilder
     private sealed record LintFinding(int Index, string Type, string Element, string Prop);
 
     private static string TruncateForLint(string s, int max) =>
+<<<<<<< HEAD
         s.Length <= max ? s : s.Substring(0, max) + "...";
+=======
+        OfficeCli.Core.DisplayText.Truncate(s, max, "...");
+>>>>>>> upstream/main
 
     /// <summary>
     /// Best-effort extraction of the leaf element type from a path like

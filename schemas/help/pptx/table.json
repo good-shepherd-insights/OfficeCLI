@@ -19,7 +19,11 @@
       "/slide[N]/table[M]"
     ]
   },
+<<<<<<< HEAD
   "note": "GraphicFrame wrapping Drawing.Table. Seed data inline via `data` (semicolons split rows, commas split cells) or per-cell via `r{R}c{C}` props. `get /slide[N]/table[K]` defaults to --depth=1 (table + row stubs only; large tables at depth=2 dominate the response). Use --depth 2 or address cells directly via `/slide[N]/table[K]/row[R]/cell[C]`.",
+=======
+  "note": "GraphicFrame wrapping Drawing.Table. Seed data inline via `data` (semicolons split rows, commas split cells) or per-cell via `r{R}c{C}` props. `get /slide[N]/table[K]` defaults to --depth=1 (table + row stubs only; large tables at depth=2 dominate the response). Use --depth 2 or address cells directly via `/slide[N]/table[K]/row[R]/cell[C]`. A table-level `fill=COLOR` fans the fill out to every cell (there is no separate table-level fill readback — read the per-cell fill).",
+>>>>>>> upstream/main
   "children": [
     {
       "element": "row",
@@ -49,12 +53,21 @@
     },
     "zorder": {
       "type": "number",
+<<<<<<< HEAD
       "description": "1-based z-order in slide shape tree. On add, positions the table within the shape tree (1 = back). Post-creation reordering is not supported via Set; use Move/Swap on the table graphic frame, or raw-set the spTree child order.",
       "aliases": ["z-order", "order"],
       "add": true,
       "set": false,
       "get": true,
       "examples": ["--prop zorder=1"],
+=======
+      "description": "z-order in slide shape tree. On add, positions the table (1 = back). On set, re-stacks it: front/back/forward/backward, +1/-1, or a 1-based absolute index.",
+      "aliases": ["z-order", "order"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop zorder=1", "--prop zorder=front"],
+>>>>>>> upstream/main
       "readback": "1-based integer (1 = back)",
       "enforcement": "report"
     },
@@ -94,12 +107,20 @@
     },
     "rowHeight": {
       "type": "length",
+<<<<<<< HEAD
       "description": "uniform row height (EMU). If unspecified, derived from 'height' / rows.",
+=======
+      "description": "uniform row height (EMU). On add, if unspecified it's derived from 'height' / rows. On set, applies the given height to EVERY row (a convenience for `tr[R] --prop height` on each); read individual heights back per-row via `tr[R]`.",
+>>>>>>> upstream/main
       "aliases": [
         "rowheight"
       ],
       "add": true,
+<<<<<<< HEAD
       "set": false,
+=======
+      "set": true,
+>>>>>>> upstream/main
       "get": false,
       "examples": [
         "--prop rowHeight=1cm"
@@ -114,7 +135,11 @@
         "colwidths"
       ],
       "add": true,
+<<<<<<< HEAD
       "set": false,
+=======
+      "set": true,
+>>>>>>> upstream/main
       "get": true,
       "examples": [
         "--prop colWidths=2cm,3cm,2cm",

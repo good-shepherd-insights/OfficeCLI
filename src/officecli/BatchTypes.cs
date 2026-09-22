@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.Json;
@@ -11,9 +15,29 @@ internal class LenientStringDictionaryConverter : JsonConverter<Dictionary<strin
     public override Dictionary<string, string>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null) return null;
-        if (reader.TokenType != JsonTokenType.StartObject)
-            throw new JsonException("Expected object for props");
         var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Array form: ["key=value", ...]. This mirrors the single-command MCP
+        // `props` argument and the CLI `--prop key=value` flag, so an agent that
+        // learned props from `set`/`add` produces the same shape inside a batch
+        // item. Before this, batch props was object-only and every array-form
+        // batch failed with "Expected object for props" — observed as a 100%
+        // batch-failure for models that (correctly) reused the single-command
+        // props shape. Lenient split on the first '=' matches McpServer.ParseProps.
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray) return dict;
+                if (reader.TokenType != JsonTokenType.String)
+                    throw new JsonException("Expected \"key=value\" string in props array");
+                var kv = reader.GetString()!;
+                var eq = kv.IndexOf('=');
+                if (eq > 0) dict[kv[..eq]] = kv[(eq + 1)..];  // skip malformed, as ParseProps does
+            }
+            throw new JsonException("Unexpected end of JSON");
+        }
+        if (reader.TokenType != JsonTokenType.StartObject)
+            throw new JsonException("Expected object or [\"key=value\"] array for props");
         while (reader.Read())
         {
             if (reader.TokenType == JsonTokenType.EndObject) return dict;
@@ -75,6 +99,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
                 case "after": item.After = reader.GetString(); break;
                 case "before": item.Before = reader.GetString(); break;
                 case "to": item.To = reader.GetString(); break;
+                case "path2": item.Path2 = reader.GetString(); break;
                 case "props": item.Props = PropsConverter.Read(ref reader, typeof(Dictionary<string, string>), options); break;
                 case "selector": item.Selector = reader.GetString(); break;
                 case "text": item.Text = reader.GetString(); break;
@@ -84,6 +109,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
                 case "xpath": item.Xpath = reader.GetString(); break;
                 case "action": item.Action = reader.GetString(); break;
                 case "xml": item.Xml = reader.GetString(); break;
+                case "dumpversion": item.DumpVersion = reader.TokenType == JsonTokenType.Null ? null : reader.GetInt32(); break;
                 default: reader.Skip(); break;
             }
         }
@@ -102,6 +128,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
         if (value.After != null) writer.WriteString("after", value.After);
         if (value.Before != null) writer.WriteString("before", value.Before);
         if (value.To != null) writer.WriteString("to", value.To);
+        if (value.Path2 != null) writer.WriteString("path2", value.Path2);
         if (value.Props != null) { writer.WritePropertyName("props"); PropsConverter.Write(writer, value.Props, options); }
         if (value.Selector != null) writer.WriteString("selector", value.Selector);
         if (value.Text != null) writer.WriteString("text", value.Text);
@@ -111,6 +138,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
         if (value.Xpath != null) writer.WriteString("xpath", value.Xpath);
         if (value.Action != null) writer.WriteString("action", value.Action);
         if (value.Xml != null) writer.WriteString("xml", value.Xml);
+        if (value.DumpVersion.HasValue) writer.WriteNumber("dumpVersion", value.DumpVersion.Value);
         writer.WriteEndObject();
     }
 }
@@ -127,6 +155,11 @@ public class BatchItem
     public string? After { get; set; }
     public string? Before { get; set; }
     public string? To { get; set; }
+    // swap's second element. Canonical name across the single-command MCP tool
+    // and the CLI (`swap path1 path2`); a batch swap that reused that name was
+    // previously dropped (BatchItem had no path2), so swap only worked via the
+    // off-name `to`. Accept both — see the swap case in ExecuteBatchItem.
+    public string? Path2 { get; set; }
     public Dictionary<string, string>? Props { get; set; }
     public string? Selector { get; set; }
     public string? Text { get; set; }
@@ -136,11 +169,25 @@ public class BatchItem
     public string? Xpath { get; set; }
     public string? Action { get; set; }
     public string? Xml { get; set; }
+    // NEWLINE-SEMANTICS-V2: dumps are versioned via a leading
+    // {"command":"meta","dumpVersion":2} item. v2 encodes soft line breaks
+    // as '\v' in text props ('\n' means a paragraph boundary). A batch that
+    // EXPLICITLY declares a version below 2 opts back into the pre-v2 reading
+    // and BatchCompat rewrites its '\n' to '\v' on replay; a batch with NO
+    // meta item follows current semantics, because a hand-written batch
+    // carries no meta either and reading those as legacy made one batch item
+    // behave differently from the identical single command.
+    public int? DumpVersion { get; set; }
 
     internal static readonly HashSet<string> KnownFields = new(StringComparer.OrdinalIgnoreCase)
     {
+<<<<<<< HEAD
         "command", "op", "path", "parent", "type", "from", "index", "after", "before", "to",
         "props", "selector", "text", "mode", "depth", "part", "xpath", "action", "xml"
+=======
+        "command", "op", "path", "parent", "type", "from", "index", "after", "before", "to", "path2",
+        "props", "selector", "text", "mode", "depth", "part", "xpath", "action", "xml", "dumpversion"
+>>>>>>> upstream/main
     };
 
     public ResidentRequest ToResidentRequest()
@@ -155,6 +202,7 @@ public class BatchItem
         if (After != null) req.Args["after"] = After;
         if (Before != null) req.Args["before"] = Before;
         if (To != null) req.Args["to"] = To;
+        if (Path2 != null) req.Args["path2"] = Path2;
         if (Selector != null) req.Args["selector"] = Selector;
         if (Text != null) req.Args["text"] = Text;
         if (Mode != null) req.Args["mode"] = Mode;
@@ -178,8 +226,16 @@ public class BatchResult
     public bool Success { get; set; }
     public string? Output { get; set; }
     public string? Error { get; set; }
+    /// <summary>
+    /// Machine-readable error code for a failed item (same closed list as the
+    /// envelope-level error.code). Null when the failure is unclassified —
+    /// consumers fall back to the Error text. Purely additive field.
+    /// </summary>
+    public string? Code { get; set; }
     /// <summary>The original batch item, included when the command fails so the agent can inspect/retry.</summary>
     public BatchItem? Item { get; set; }
+    /// <summary>Advisory diagnostics produced while executing this item.</summary>
+    internal List<OfficeCli.Core.CliWarning>? Warnings { get; set; }
 }
 
 /// <summary>
@@ -197,7 +253,10 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
         if (root.TryGetProperty("success", out var suc)) result.Success = suc.GetBoolean();
         if (root.TryGetProperty("output", out var outp)) result.Output = outp.ValueKind == JsonValueKind.String ? outp.GetString() : outp.GetRawText();
         if (root.TryGetProperty("error", out var err)) result.Error = err.GetString();
+        if (root.TryGetProperty("code", out var cod)) result.Code = cod.GetString();
         if (root.TryGetProperty("item", out var itm)) result.Item = JsonSerializer.Deserialize(itm.GetRawText(), BatchJsonContext.Default.BatchItem);
+        if (root.TryGetProperty("warnings", out var wrn))
+            result.Warnings = JsonSerializer.Deserialize(wrn.GetRawText(), OfficeCli.Core.AppJsonContext.Default.ListCliWarning);
         return result;
     }
 
@@ -223,11 +282,18 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
         if (value.Error != null)
         {
             writer.WriteString("error", value.Error);
+            if (value.Code != null)
+                writer.WriteString("code", value.Code);
             if (value.Item != null)
             {
                 writer.WritePropertyName("item");
                 JsonSerializer.Serialize(writer, value.Item, BatchJsonContext.Default.BatchItem);
             }
+        }
+        if (value.Warnings is { Count: > 0 })
+        {
+            writer.WritePropertyName("warnings");
+            JsonSerializer.Serialize(writer, value.Warnings, OfficeCli.Core.AppJsonContext.Default.ListCliWarning);
         }
         writer.WriteEndObject();
     }

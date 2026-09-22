@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -15,6 +19,7 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
+<<<<<<< HEAD
 
     /// <summary>
     /// Parse a print-margin value into inches (PageMargins schema unit).
@@ -33,6 +38,68 @@ public partial class ExcelHandler
         }
         if (v.EndsWith("cm"))
         {
+=======
+    /// <summary>
+    /// CONSISTENCY(axis-ref-compat): Excel-style whole-column (`B:B`, `A:C`)
+    /// and whole-row (`1:1`, `2:5`) references are accepted as lenient input
+    /// aliases for the canonical col[X]/row[N] path segments — same policy as
+    /// A1-style ranges (`A1:D10`), which the path grammar already accepts.
+    /// Returns the expanded canonical segments in axis order (one per
+    /// column/row in the span), or null when the segment is not an axis
+    /// reference. Canonical readback paths remain col[X]/row[N].
+    /// Spans wider than 1024 are rejected — a set over B:XFD (16k columns)
+    /// is almost certainly a mistake, not intent.
+    /// </summary>
+    private static List<string>? TryExpandAxisRef(string cellRef)
+    {
+        var colRef = System.Text.RegularExpressions.Regex.Match(
+            cellRef, @"^([A-Za-z]{1,3}):([A-Za-z]{1,3})$");
+        if (colRef.Success)
+        {
+            var from = ColumnNameToIndex(colRef.Groups[1].Value.ToUpperInvariant());
+            var to = ColumnNameToIndex(colRef.Groups[2].Value.ToUpperInvariant());
+            if (from > to) (from, to) = (to, from);
+            if (to - from + 1 > 1024)
+                throw new ArgumentException(
+                    $"Column span {cellRef} covers {to - from + 1} columns (limit 1024). Narrow the span or address columns individually as col[X].");
+            var cols = new List<string>();
+            for (var i = from; i <= to; i++) cols.Add($"col[{IndexToColumnName(i)}]");
+            return cols;
+        }
+        var rowRef = System.Text.RegularExpressions.Regex.Match(cellRef, @"^(\d+):(\d+)$");
+        if (rowRef.Success
+            && uint.TryParse(rowRef.Groups[1].Value, out var r1) && r1 >= 1
+            && uint.TryParse(rowRef.Groups[2].Value, out var r2) && r2 >= 1)
+        {
+            if (r1 > r2) (r1, r2) = (r2, r1);
+            if (r2 - r1 + 1 > 1024)
+                throw new ArgumentException(
+                    $"Row span {cellRef} covers {r2 - r1 + 1} rows (limit 1024). Narrow the span or address rows individually as row[N].");
+            var rows = new List<string>();
+            for (var i = r1; i <= r2; i++) rows.Add($"row[{i}]");
+            return rows;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Parse a print-margin value into inches (PageMargins schema unit).
+    /// Accepts "1in", "2.5cm", "1.27cm", "72pt", "10mm", or a bare number (inches).
+    /// </summary>
+    internal static double ParseMarginInches(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("Invalid margin: empty value.");
+        var v = value.Trim().ToLowerInvariant();
+        double num;
+        if (v.EndsWith("in"))
+        {
+            num = double.Parse(v[..^2].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+            return num;
+        }
+        if (v.EndsWith("cm"))
+        {
+>>>>>>> upstream/main
             num = double.Parse(v[..^2].Trim(), System.Globalization.CultureInfo.InvariantCulture);
             return num / 2.54;
         }
@@ -242,8 +309,36 @@ public partial class ExcelHandler
         return value.StartsWith("#") ? value.Substring(1) : value;
     }
 
+<<<<<<< HEAD
     private static bool IsTextNumberFormat(Dictionary<string, string> styleProps)
     {
+=======
+    /// <summary>
+    /// Instance-aware internal-hyperlink resolution: everything
+    /// <see cref="TryParseInternalHyperlinkLocation"/> accepts, plus a bare
+    /// token that names an existing workbook defined name. Without the
+    /// defined-name check, link=MyRange fell through to the external-URL
+    /// path and produced a relationship targeting the literal string
+    /// "MyRange" — a hyperlink that tries to open a file of that name.
+    /// A '#'-prefixed defined name (#MyRange) also resolves here.
+    /// </summary>
+    private string? ResolveInternalHyperlinkLocation(string value)
+    {
+        var loc = TryParseInternalHyperlinkLocation(value);
+        if (loc != null) return loc;
+        if (string.IsNullOrEmpty(value)) return null;
+        var bare = value.StartsWith('#') ? value[1..] : value;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(bare, @"^[\p{L}_\\][\p{L}\p{N}_.\\]*$"))
+            return null;
+        var isDefinedName = GetWorkbook().GetFirstChild<DefinedNames>()?
+            .Elements<DefinedName>()
+            .Any(d => d.Name?.Value?.Equals(bare, StringComparison.OrdinalIgnoreCase) == true) == true;
+        return isDefinedName ? bare : null;
+    }
+
+    private static bool IsTextNumberFormat(Dictionary<string, string> styleProps)
+    {
+>>>>>>> upstream/main
         foreach (var key in new[] { "numberformat", "numfmt", "format" })
         {
             if (styleProps.TryGetValue(key, out var v) && v != null

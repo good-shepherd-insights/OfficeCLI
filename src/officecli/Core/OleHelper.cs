@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml.Packaging;
@@ -167,8 +171,18 @@ internal static class OleHelper
         var isSelfEmbed = hostDocumentPath != null && IsSameFile(srcPath, hostDocumentPath);
         if (!isSelfEmbed && new FileInfo(srcPath).Length == 0)
         {
+<<<<<<< HEAD
             Console.Error.WriteLine(
                 $"Warning: OLE source file is empty (0 bytes): {srcPath}. Document will embed an empty payload.");
+=======
+            var emptyMsg = $"OLE source file is empty (0 bytes): {srcPath}. Document will embed an empty payload.";
+            // CONSISTENCY(numfmt-warning): JSON mode → envelope warnings[];
+            // plain mode keeps the stderr line.
+            if (WarningContext.IsActive)
+                WarningContext.Add(emptyMsg, "empty_ole_source");
+            else
+                Console.Error.WriteLine($"Warning: {emptyMsg}");
+>>>>>>> upstream/main
         }
 
         var kind = ClassifyKind(srcPath);
@@ -285,9 +299,19 @@ internal static class OleHelper
     /// <paramref name="oleKind"/> ("package"/"object"), <paramref name="contentType"/>
     /// and <paramref name="embedExt"/> come from the source part so the rebuilt
     /// relationship type, content type and target extension match byte-for-byte.
+<<<<<<< HEAD
     /// </summary>
     public static (string RelId, OpenXmlPart Part) AddEmbeddedPartFromBytes(
         OpenXmlPart host, byte[] raw, string oleKind, string contentType, string? embedExt)
+=======
+    /// <paramref name="relId"/>, when set, pins the relationship id — required
+    /// by carriers whose host XML is replayed verbatim (the r:id references
+    /// inside it cannot be rewritten to an SDK-assigned id).
+    /// </summary>
+    public static (string RelId, OpenXmlPart Part) AddEmbeddedPartFromBytes(
+        OpenXmlPart host, byte[] raw, string oleKind, string contentType, string? embedExt,
+        string? relId = null)
+>>>>>>> upstream/main
     {
         var isPackage = string.Equals(oleKind, "package", StringComparison.OrdinalIgnoreCase);
         OpenXmlPart part;
@@ -298,6 +322,7 @@ internal static class OleHelper
             // so legacy (.xls → application/vnd.ms-excel) and modern formats
             // alike round-trip without a hardcoded content-type table.
             var pt = new PartTypeInfo(contentType, string.IsNullOrEmpty(embedExt) ? "bin" : embedExt);
+<<<<<<< HEAD
             part = host switch
             {
                 MainDocumentPart mdp => mdp.AddEmbeddedPackagePart(pt),
@@ -305,6 +330,20 @@ internal static class OleHelper
                 SlidePart sp => sp.AddEmbeddedPackagePart(pt),
                 HeaderPart hp => hp.AddEmbeddedPackagePart(pt),
                 FooterPart fp => fp.AddEmbeddedPackagePart(pt),
+=======
+            part = (host, relId) switch
+            {
+                (MainDocumentPart mdp, null) => mdp.AddEmbeddedPackagePart(pt),
+                (MainDocumentPart mdp, _) => mdp.AddEmbeddedPackagePart(pt, relId),
+                (WorksheetPart wp, null) => wp.AddEmbeddedPackagePart(pt),
+                (WorksheetPart wp, _) => wp.AddEmbeddedPackagePart(pt, relId),
+                (SlidePart sp, null) => sp.AddEmbeddedPackagePart(pt),
+                (SlidePart sp, _) => sp.AddEmbeddedPackagePart(pt, relId),
+                (HeaderPart hp, null) => hp.AddEmbeddedPackagePart(pt),
+                (HeaderPart hp, _) => hp.AddEmbeddedPackagePart(pt, relId),
+                (FooterPart fp, null) => fp.AddEmbeddedPackagePart(pt),
+                (FooterPart fp, _) => fp.AddEmbeddedPackagePart(pt, relId),
+>>>>>>> upstream/main
                 _ => throw new InvalidOperationException(
                     $"Host part type {host.GetType().Name} does not support embedded packages"),
             };
@@ -314,6 +353,7 @@ internal static class OleHelper
             var ct = string.IsNullOrEmpty(contentType)
                 ? "application/vnd.openxmlformats-officedocument.oleObject"
                 : contentType;
+<<<<<<< HEAD
             part = host switch
             {
                 MainDocumentPart mdp => mdp.AddEmbeddedObjectPart(ct),
@@ -321,6 +361,20 @@ internal static class OleHelper
                 SlidePart sp => sp.AddEmbeddedObjectPart(ct),
                 HeaderPart hp => hp.AddEmbeddedObjectPart(ct),
                 FooterPart fp => fp.AddEmbeddedObjectPart(ct),
+=======
+            part = (host, relId) switch
+            {
+                (MainDocumentPart mdp, null) => mdp.AddEmbeddedObjectPart(ct),
+                (MainDocumentPart mdp, _) => mdp.AddEmbeddedObjectPart(ct, relId),
+                (WorksheetPart wp, null) => wp.AddEmbeddedObjectPart(ct),
+                (WorksheetPart wp, _) => wp.AddEmbeddedObjectPart(ct, relId),
+                (SlidePart sp, null) => sp.AddEmbeddedObjectPart(ct),
+                (SlidePart sp, _) => sp.AddEmbeddedObjectPart(ct, relId),
+                (HeaderPart hp, null) => hp.AddEmbeddedObjectPart(ct),
+                (HeaderPart hp, _) => hp.AddEmbeddedObjectPart(ct, relId),
+                (FooterPart fp, null) => fp.AddEmbeddedObjectPart(ct),
+                (FooterPart fp, _) => fp.AddEmbeddedObjectPart(ct, relId),
+>>>>>>> upstream/main
                 _ => throw new InvalidOperationException(
                     $"Host part type {host.GetType().Name} does not support embedded objects"),
             };
@@ -528,6 +582,22 @@ internal static class OleHelper
         // contentType + embedExt let AddOle rebuild the exact part class /
         // content type / target extension without classifying by file ext.
         "oleKind", "olekind", "contentType", "contenttype", "embedExt", "embedext",
+<<<<<<< HEAD
+=======
+        // Frame/preview carrier keys: the verbatim floating v:shape style, the
+        // w:object native box (dxaOrig/dyaOrig), and the VML <v:imagedata> crop
+        // rectangle. All are written by the OLE dump and consumed by AddOle so a
+        // floating, cropped object round-trips at its original size.
+        "shapeStyle", "shapestyle", "dxaOrig", "dxaorig", "dyaOrig", "dyaorig", "crop",
+        // The OLE run's own <w:rPr> (font/border/size). The wrapping run can carry
+        // a <w:bdr> border box or rFonts/sz that set the host line height; AddOle
+        // re-applies it so the object's border + line metrics round-trip.
+        "runRpr", "runrpr",
+        // Tracked-change attribution: a deleted/inserted/moved OLE object carries
+        // its revision wrapper through dump→batch so AddOle re-wraps the run in
+        // <w:del>/<w:ins>/move (else a deleted figure resurrects as live content).
+        "revision.type", "revision.author", "revision.date", "revision.id",
+>>>>>>> upstream/main
     };
 
     /// <summary>
@@ -545,6 +615,12 @@ internal static class OleHelper
         foreach (var key in properties.Keys)
         {
             if (!KnownOleProps.Contains(key))
+<<<<<<< HEAD
+=======
+                // stderr only — the generic unsupported-prop machinery already
+                // puts an unsupported_property warning in the JSON envelope;
+                // queueing here too would duplicate it.
+>>>>>>> upstream/main
                 Console.Error.WriteLine($"warning: unknown ole property '{key}' — ignored");
         }
     }

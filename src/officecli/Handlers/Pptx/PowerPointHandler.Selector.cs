@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -14,6 +18,7 @@ public partial class PowerPointHandler
         string? FontEquals, string? FontNotEquals, bool? IsTitle, bool? HasAlt,
         Dictionary<string, (string Value, bool Negate)>? Attributes = null);
 
+<<<<<<< HEAD
     private static bool ContainsTopLevelComma(string selector)
     {
         int depthBracket = 0, depthParen = 0;
@@ -55,6 +60,14 @@ public partial class PowerPointHandler
         parts.Add(selector.Substring(start));
         return parts;
     }
+=======
+    // Shared with the Excel query path — see Core/SelectorCommaSplit.cs.
+    private static bool ContainsTopLevelComma(string selector)
+        => Core.SelectorCommaSplit.ContainsTopLevelComma(selector);
+
+    private static List<string> SplitTopLevelCommas(string selector)
+        => Core.SelectorCommaSplit.SplitTopLevelCommas(selector);
+>>>>>>> upstream/main
 
     private static string? FindUnsupportedCombinator(string selector)
     {

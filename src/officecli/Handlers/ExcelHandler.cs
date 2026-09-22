@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -9,9 +13,11 @@ using OfficeCli.Core;
 
 namespace OfficeCli.Handlers;
 
-public partial class ExcelHandler : IDocumentHandler
+public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
 {
     private readonly SpreadsheetDocument _doc;
+
+    object? Rendering.IRenderModelHost.RenderModel => _doc;
     private readonly string _filePath;
     private readonly HashSet<string> _initialSheetNames;
     private readonly HashSet<WorksheetPart> _dirtyWorksheets = new();
@@ -23,6 +29,16 @@ public partial class ExcelHandler : IDocumentHandler
     // mid-session `save` snapshots to be useful to third-party consumers
     // (issue #114).
     private FileStream? _backingStream;
+<<<<<<< HEAD
+=======
+    // Issue #149: when the package contained bloat-filtered worksheets the
+    // SDK is opened over this slimmed in-memory copy instead of the backing
+    // FileStream (which stays open purely for locking + write-back).
+    // See Core/WorksheetBloatFilter.cs for the removal rules and why this
+    // is semantically lossless.
+    private MemoryStream? _filteredPackageStream;
+    private readonly bool _editable;
+>>>>>>> upstream/main
     // Row index cache: SheetData → sorted map of rowIndex → Row.
     // Turns the O(n) linear scan in FindOrCreateCell into O(1) lookup + O(log n) insert.
     // Invalidated by InvalidateRowIndex() whenever rows are structurally modified (shift, remove).
@@ -38,16 +54,101 @@ public partial class ExcelHandler : IDocumentHandler
     /// trail. Pure Get/Query sessions leave this false.
     /// </summary>
     internal bool Modified { get; set; }
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// Run a mutation with <see cref="Modified"/> raised, and put the flag back
+    /// the way it was if the mutation throws. Add/Set/Remove/RawSet used to set
+    /// the flag on entry, before any validation, so a command the handler
+    /// refused (unknown sheet, bad path) still took the Modified branch of
+    /// <see cref="Dispose"/>: the whole package was re-serialized, the
+    /// OfficeCLI.* audit stamp was written, and the file's hash changed for a
+    /// command that did nothing. A refused command must leave the file exactly
+    /// as it found it — the <c>!Modified</c> byte-preserving path in Dispose
+    /// already guarantees that once the flag is honest.
+    ///
+    /// This is all-or-nothing per command: a mutation that throws after
+    /// touching part of the DOM (a comma-list merge whose second range
+    /// overlaps) also persists nothing, which is what its success=false
+    /// envelope promises. Under a resident the partially touched in-memory DOM
+    /// is flushed by the next successful command — the batch path's
+    /// DiscardOnDispose rollback is the atomic mechanism there.
+    /// </summary>
+    private T MarkModified<T>(Func<T> mutation)
+    {
+        var wasModified = Modified;
+        Modified = true;
+        try { return mutation(); }
+        catch { Modified = wasModified; throw; }
+    }
+
+    private void MarkModified(Action mutation)
+        => MarkModified(() => { mutation(); return true; });
+
+    /// <summary>
+    /// Number of bare empty cell declarations removed at open by
+    /// <see cref="OfficeCli.Core.WorksheetBloatFilter"/> (issue #149).
+    /// Zero for normal files.
+    /// </summary>
+    public long BloatCellsRemoved { get; private set; }
+>>>>>>> upstream/main
 
     public ExcelHandler(string filePath, bool editable)
     {
         _filePath = filePath;
+        _editable = editable;
         try
         {
             var share = editable ? FileShare.Read : FileShare.ReadWrite;
             var access = editable ? FileAccess.ReadWrite : FileAccess.Read;
             _backingStream = new FileStream(filePath, FileMode.Open, access, share);
+<<<<<<< HEAD
             _doc = SpreadsheetDocument.Open(_backingStream, editable);
+=======
+
+            // Issue #149: sheets that declare millions of empty cells make
+            // the SDK DOM balloon to GBs. Filter them out (lossless —
+            // spreadsheet applications discard such cells on load) before the
+            // SDK ever parses the part. Gated: normal files take the
+            // original path untouched.
+            var bloat = OfficeCli.Core.WorksheetBloatFilter.TryFilter(_backingStream);
+            if (bloat.Package != null)
+            {
+                _filteredPackageStream = bloat.Package;
+                BloatCellsRemoved = bloat.RemovedCells;
+                try
+                {
+                    Console.Error.WriteLine(
+                        $"warning: {Path.GetFileName(filePath)} declares {bloat.RemovedCells:N0} empty cells " +
+                        $"with no value, formula or style ({string.Join(", ", bloat.FilteredParts)}); " +
+                        "they were skipped on load and will be omitted on save (other spreadsheet applications do the same).");
+                }
+                catch { /* stderr unavailable (resident) — property still set */ }
+            }
+            else if (editable)
+            {
+                // Crash-atomic saves: an editable session works against an
+                // in-memory copy of the package so the on-disk file is only ever
+                // swapped atomically (temp + File.Replace in
+                // WriteBackFilteredPackage), never rewritten in place. Without
+                // this, _doc.Save() rewrites the backing file directly, and a
+                // process death mid-write leaves a truncated, unopenable file with
+                // no fallback (the original bytes are already gone). Read-only
+                // sessions skip this and keep streaming from the FileStream — they
+                // never write, so there is nothing to make atomic and no reason to
+                // pay the in-memory copy. The bloat-filter branch above already
+                // routes editable bloated files through the same in-memory model.
+                _backingStream.Position = 0;
+                var mem = new MemoryStream();
+                _backingStream.CopyTo(mem);
+                mem.Position = 0;
+                _filteredPackageStream = mem;
+            }
+
+            _doc = SpreadsheetDocument.Open(
+                (Stream?)_filteredPackageStream ?? _backingStream, editable);
+>>>>>>> upstream/main
             // Force early validation: access WorkbookPart to catch corrupt packages now
             _ = _doc.WorkbookPart?.Workbook;
             // Capture initial sheet names to detect duplicate additions
@@ -145,8 +246,11 @@ public partial class ExcelHandler : IDocumentHandler
             var chartIdx = int.Parse(chartMatch.Groups[2].Value);
             var chartWs = FindWorksheet(chartSheetName)
                 ?? throw SheetNotFoundException(chartSheetName);
-            var chartPart = GetChartPart(chartWs, chartIdx);
-            return chartPart.ChartSpace!.OuterXml;
+            // Resolve via GetExcelCharts (document order, both legacy ChartPart and
+            // extended cx ChartPart) so `raw` reaches the same charts `query`/`get`
+            // list. The legacy-only GetChartPart missed funnel/treemap/sunburst/
+            // boxWhisker/waterfall/histogram (all ExtendedChartPart) → "out of range".
+            return GetChartSpaceOuterXml(chartWs.DrawingsPart, chartIdx);
         }
 
         // Global chart: /chart[N] — searches all sheets
@@ -154,8 +258,12 @@ public partial class ExcelHandler : IDocumentHandler
         if (globalChartMatch.Success)
         {
             var chartIdx = int.Parse(globalChartMatch.Groups[1].Value);
-            var chartPart = GetGlobalChartPart(chartIdx);
-            return chartPart.ChartSpace!.OuterXml;
+            var all = new List<ExcelChartInfo>();
+            foreach (var (_, wsp) in GetWorksheets())
+                if (wsp.DrawingsPart != null) all.AddRange(ChartsForRaw(wsp.DrawingsPart));
+            if (all.Count == 0)
+                throw new ArgumentException("No charts found in workbook");
+            return ChartSpaceOuterXmlAt(all, chartIdx);
         }
 
         // Try as sheet name
@@ -250,8 +358,14 @@ public partial class ExcelHandler : IDocumentHandler
     }
 
     public void RawSet(string partPath, string xpath, string action, string? xml)
+        => MarkModified(() => RawSetCore(partPath, xpath, action, xml));
+
+    private void RawSetCore(string partPath, string xpath, string action, string? xml)
     {
+<<<<<<< HEAD
         Modified = true;
+=======
+>>>>>>> upstream/main
         if (partPath == null) throw new ArgumentNullException(nameof(partPath));
         var workbookPart = _doc.WorkbookPart
             ?? throw new InvalidOperationException("No workbook part");
@@ -315,8 +429,10 @@ public partial class ExcelHandler : IDocumentHandler
                 var chartIdx = int.Parse(chartMatch.Groups[2].Value);
                 var chartWs = FindWorksheet(chartSheetName)
                     ?? throw SheetNotFoundException(chartSheetName);
-                var chartPart = GetChartPart(chartWs, chartIdx);
-                rootElement = chartPart.ChartSpace!;
+                // Resolve via GetExcelCharts so raw-set writes reach extended (cx)
+                // charts too — mirrors the Raw() read path. GetChartPart was
+                // legacy-only and 422'd cx charts with "out of range".
+                rootElement = GetChartSpaceElement(chartWs.DrawingsPart, chartIdx);
             }
             else
             {
@@ -324,8 +440,12 @@ public partial class ExcelHandler : IDocumentHandler
                 if (globalChartMatch.Success)
                 {
                     var chartIdx = int.Parse(globalChartMatch.Groups[1].Value);
-                    var chartPart = GetGlobalChartPart(chartIdx);
-                    rootElement = chartPart.ChartSpace!;
+                    var all = new List<ExcelChartInfo>();
+                    foreach (var (_, wsp) in GetWorksheets())
+                        if (wsp.DrawingsPart != null) all.AddRange(ChartsForRaw(wsp.DrawingsPart));
+                    if (all.Count == 0)
+                        throw new ArgumentException("No charts found in workbook");
+                    rootElement = ChartSpaceElementAt(all, chartIdx);
                 }
                 else
                 {
@@ -345,7 +465,20 @@ public partial class ExcelHandler : IDocumentHandler
         _ = affected;
     }
 
+<<<<<<< HEAD
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc, _filePath);
+=======
+    public List<ValidationError> Validate()
+    {
+        // Mutations defer worksheet child reordering (CF / mergeCells /
+        // hyperlinks / rowBreaks land in insertion order) to FlushDirtyParts,
+        // which Save() runs before writing. Validating the raw in-memory tree
+        // mid-session therefore reported schema-sequence errors on documents
+        // that were perfectly fine once saved. Flush first, same as Save().
+        FlushDirtyParts();
+        return RawXmlHelper.ValidateDocument(_doc, _filePath);
+    }
+>>>>>>> upstream/main
 
     public void Save()
     {
@@ -360,13 +493,75 @@ public partial class ExcelHandler : IDocumentHandler
             catch { /* best-effort audit trail */ }
         }
         _doc.Save();
+<<<<<<< HEAD
         _backingStream?.Flush();
     }
 
+=======
+        WriteBackFilteredPackage();
+        _backingStream?.Flush();
+    }
+
+    // Issue #149: when the SDK operates on the bloat-filtered in-memory
+    // copy, saves land in that MemoryStream — push the bytes out to the
+    // backing FileStream so mid-session `save` snapshots (issue #114) and
+    // final closes hit the disk file exactly like the direct-stream path.
+    // Read-only sessions never write back: the disk file stays untouched.
+    private void WriteBackFilteredPackage()
+    {
+        if (_filteredPackageStream == null || _backingStream == null || !_editable)
+            return;
+        // Crash-atomic write-back (temp + File.Replace). The old path truncated
+        // the original in place (SetLength(0)) then copied the new bytes over it,
+        // so a process death between the two left the original already gone and
+        // only a partial file on disk — unrecoverable. See AtomicPackageWriter.
+        OfficeCli.Core.AtomicPackageWriter.Flush(
+            _filteredPackageStream, _filePath,
+            releaseLock: () => { _backingStream!.Dispose(); _backingStream = null; },
+            reopenLock: () => { _backingStream = new FileStream(_filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); });
+    }
+
+    /// <summary>See <see cref="OfficeCli.Handlers.WordHandler.DiscardOnDispose"/> —
+    /// atomic-batch rollback: drop the in-memory DOM without serializing.</summary>
+    public bool DiscardOnDispose { get; set; }
+
+>>>>>>> upstream/main
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+<<<<<<< HEAD
+=======
+        if (DiscardOnDispose)
+        {
+            // Never serialize the poisoned DOM. Close the disk-backed streams
+            // first so the package's dispose-time autosave has nowhere to
+            // write (the filtered-package path autosaves into its
+            // MemoryStream, which is discarded — WriteBackFilteredPackage is
+            // the only disk write there and is skipped).
+            _backingStream?.Dispose();
+            _backingStream = null;
+            try { _doc.Dispose(); } catch { /* autosave hit the closed stream — intended */ }
+            _filteredPackageStream?.Dispose();
+            _filteredPackageStream = null;
+            return;
+        }
+        if (!Modified)
+        {
+            // A read-only inspection must be byte-preserving even when a caller
+            // accidentally opened the handler in editable mode. Open XML SDK
+            // serializes package relationships during Save/Dispose, which can
+            // discard DrawingML hyperlink relationships it cannot round-trip.
+            // Close the backing stream first so any dispose-time autosave has
+            // nowhere to write, then discard the in-memory package.
+            _backingStream?.Dispose();
+            _backingStream = null;
+            try { _doc.Dispose(); } catch { /* autosave hit the closed stream — intended */ }
+            _filteredPackageStream?.Dispose();
+            _filteredPackageStream = null;
+            return;
+        }
+>>>>>>> upstream/main
         try { FlushDirtyParts(); } catch { /* best-effort */ }
         // Mirror the PPT/Word pattern: when we own the backing FileStream the
         // package would otherwise leave the on-disk file in whatever state
@@ -377,7 +572,18 @@ public partial class ExcelHandler : IDocumentHandler
             catch { /* best-effort audit trail */ }
         }
         try { _doc.Save(); } catch { /* read-only or already disposed */ }
+<<<<<<< HEAD
         _doc.Dispose();
+=======
+        // Write back while the MemoryStream is guaranteed alive — the SDK
+        // may close the stream it was opened over during _doc.Dispose().
+        // After _doc.Save() the in-memory zip is complete (same contract
+        // the direct FileStream path relies on for mid-session saves).
+        try { WriteBackFilteredPackage(); } catch { /* best-effort */ }
+        _doc.Dispose();
+        _filteredPackageStream?.Dispose();
+        _filteredPackageStream = null;
+>>>>>>> upstream/main
         _backingStream?.Dispose();
         _backingStream = null;
     }

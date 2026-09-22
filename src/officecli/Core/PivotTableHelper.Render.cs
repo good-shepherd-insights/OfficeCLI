@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml.Packaging;
@@ -36,6 +40,78 @@ internal static partial class PivotTableHelper
         List<int>? filterFieldIndices = null,
         uint?[]? columnStyleIds = null)
     {
+<<<<<<< HEAD
+=======
+        RenderPivotIntoSheetCore(targetSheet, position, headers, columnData,
+            rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, columnStyleIds);
+        // Every specialized renderer appends fresh <row>/<c> elements without
+        // probing for pre-existing ones. When the pivot's footprint lands on
+        // rows/cells that already exist (e.g. the anchor overlaps the source
+        // range on the same sheet), that leaves duplicate row indices and —
+        // fatally — duplicate cell references, which real Excel refuses
+        // (0x800A03EC) while the CLI reported success. Merge duplicates
+        // (pivot output wins, it was appended last) and restore row order.
+        NormalizeRenderedSheetData(targetSheet);
+    }
+
+    /// <summary>Merge duplicate-RowIndex rows (later cells win per reference)
+    /// and re-sort rows/cells, so a pivot rendered over existing content
+    /// yields valid OOXML instead of duplicate r= entries.</summary>
+    private static void NormalizeRenderedSheetData(WorksheetPart targetSheet)
+    {
+        var sheetData = targetSheet.Worksheet?.GetFirstChild<SheetData>();
+        if (sheetData == null) return;
+        var byIdx = new Dictionary<uint, Row>();
+        foreach (var row in sheetData.Elements<Row>().ToList())
+        {
+            var idx = row.RowIndex?.Value ?? 0;
+            if (!byIdx.TryGetValue(idx, out var first))
+            {
+                byIdx[idx] = row;
+                continue;
+            }
+            foreach (var cell in row.Elements<Cell>().ToList())
+            {
+                cell.Remove();
+                var cr = cell.CellReference?.Value;
+                if (cr != null)
+                    first.Elements<Cell>()
+                        .FirstOrDefault(c => string.Equals(c.CellReference?.Value, cr, StringComparison.OrdinalIgnoreCase))
+                        ?.Remove();
+                first.AppendChild(cell);
+            }
+            row.Remove();
+        }
+        // Restore row order and per-row cell column order.
+        var orderedRows = sheetData.Elements<Row>()
+            .OrderBy(r => r.RowIndex?.Value ?? 0).ToList();
+        foreach (var r in orderedRows) r.Remove();
+        foreach (var r in orderedRows)
+        {
+            var orderedCells = r.Elements<Cell>()
+                .OrderBy(c =>
+                {
+                    var v = c.CellReference?.Value;
+                    if (string.IsNullOrEmpty(v)) return int.MaxValue;
+                    try { return ColToIndex(ParseCellRef(v!).col); }
+                    catch { return int.MaxValue; }
+                })
+                .ToList();
+            foreach (var c in orderedCells) c.Remove();
+            foreach (var c in orderedCells) r.AppendChild(c);
+            sheetData.AppendChild(r);
+        }
+    }
+
+    private static void RenderPivotIntoSheetCore(
+        WorksheetPart targetSheet, string position,
+        string[] headers, List<string[]> columnData,
+        List<int> rowFieldIndices, List<int> colFieldIndices,
+        List<(int idx, string func, string showAs, string name)> valueFields,
+        List<int>? filterFieldIndices = null,
+        uint?[]? columnStyleIds = null)
+    {
+>>>>>>> upstream/main
         // Per-data-field style index: pivot value cells for data field d inherit
         // the source column's StyleIndex (number format). A null entry means the
         // source cell had no explicit style → pivot cell stays General.
@@ -105,9 +181,16 @@ internal static partial class PivotTableHelper
             // re-adds values cleanly.
             if (valueFields.Count == 0)
             {
+<<<<<<< HEAD
                 Console.Error.WriteLine(
                     "WARNING: pivot has no value fields; skipping cell render. " +
                     "Add a value field to materialize the table.");
+=======
+                WarnRenderAdvisory(
+                    "pivot has no value fields; skipping cell render. " +
+                    "Add a value field to materialize the table.",
+                    "pivot_render_skipped");
+>>>>>>> upstream/main
                 return;
             }
             RenderGeneralPivot(targetSheet, position, headers, columnData,
@@ -141,10 +224,18 @@ internal static partial class PivotTableHelper
         bool rowsOnly = rowFieldIndices.Count == 1 && colFieldIndices.Count == 0 && valueFields.Count >= 1;
         if (!rowsOnly && (rowFieldIndices.Count != 1 || colFieldIndices.Count != 1 || valueFields.Count < 1))
         {
+<<<<<<< HEAD
             Console.Error.WriteLine(
                 "WARNING: pivot rendering currently supports 1×0×K, 1×1×K, 2×1×1, or 1×2×1 field combinations. " +
                 "The file will open but the pivot will appear empty. " +
                 "Use Excel's Refresh button to populate it manually.");
+=======
+            WarnRenderAdvisory(
+                "pivot rendering currently supports 1×0×K, 1×1×K, 2×1×1, or 1×2×1 field combinations. " +
+                "The file will open but the pivot will appear empty. " +
+                "Use Excel's Refresh button to populate it manually.",
+                "pivot_render_skipped");
+>>>>>>> upstream/main
             return;
         }
 
@@ -465,12 +556,22 @@ internal static partial class PivotTableHelper
             }
             else
             {
+<<<<<<< HEAD
                 Console.Error.WriteLine(
                     $"WARNING: pivot at {position} has {filterFieldIndices.Count} page filter(s) " +
                     $"but only {anchorRow - 1} row(s) of headroom above. " +
                     "Filter cells will not be visible in the host sheet, but the filter dropdowns " +
                     "will still appear in Excel's pivot UI. Move the pivot to a lower anchor row " +
                     $"(at least row {requiredHeadroom + 1}) to render the filter cells.");
+=======
+                WarnRenderAdvisory(
+                    $"pivot at {position} has {filterFieldIndices.Count} page filter(s) " +
+                    $"but only {anchorRow - 1} row(s) of headroom above. " +
+                    "Filter cells will not be visible in the host sheet, but the filter dropdowns " +
+                    "will still appear in Excel's pivot UI. Move the pivot to a lower anchor row " +
+                    $"(at least row {requiredHeadroom + 1}) to render the filter cells.",
+                    "pivot_filter_cells_skipped");
+>>>>>>> upstream/main
             }
         }
 
@@ -2593,4 +2694,17 @@ internal static partial class PivotTableHelper
         return cell;
     }
 
+<<<<<<< HEAD
+=======
+    // CONSISTENCY(numfmt-warning): JSON mode queues the advisory for the
+    // envelope's warnings[]; plain mode keeps the stderr line (which the
+    // resident server lifts via BuildWarnings).
+    private static void WarnRenderAdvisory(string message, string code)
+    {
+        if (WarningContext.IsActive)
+            WarningContext.Add(message, code);
+        else
+            Console.Error.WriteLine($"WARNING: {message}");
+    }
+>>>>>>> upstream/main
 }

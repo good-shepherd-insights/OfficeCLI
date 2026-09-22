@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -16,8 +20,15 @@ namespace OfficeCli.Handlers;
 public partial class WordHandler
 {
     public string? Remove(string path, Dictionary<string, string>? properties = null)
+<<<<<<< HEAD
     {
         Modified = true;
+=======
+        => MarkModified(() => RemoveCore(path, properties));
+
+    private string? RemoveCore(string path, Dictionary<string, string>? properties)
+    {
+>>>>>>> upstream/main
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
 
         // Phase 4: remove + trackChange.* → produce w:del wrapper(s) instead
@@ -107,6 +118,10 @@ public partial class WordHandler
             if (target == null) return null; // soft success on missing
             target.Remove();
             stylesPart!.Save();
+<<<<<<< HEAD
+=======
+            InvalidateStyleIndex(); // removed StyleId must drop out of FindStyleById
+>>>>>>> upstream/main
             return null;
         }
 
@@ -353,6 +368,19 @@ public partial class WordHandler
         var element = NavigateToElement(parts, out var ctx)
             ?? throw new ArgumentException($"Path not found: {path}" + (ctx != null ? $". {ctx}" : ""));
 
+        // A /body/group[N] path navigates to the inner <wpg:wgp>; removing just
+        // that element leaves an empty <w:drawing>/<wp:anchor> husk behind (a
+        // dangling floating anchor). Redirect the removal to the whole enclosing
+        // <w:drawing> so the group vanishes cleanly (mirrors the pptx group
+        // remove). The empty-wrapper-paragraph cleanup below then drops the
+        // now-empty carrier paragraph the diagram was emitted into.
+        if (element.LocalName == "wgp"
+            && element.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup")
+        {
+            var enclosingDrawing = element.Ancestors<Drawing>().FirstOrDefault();
+            if (enclosingDrawing != null) element = enclosingDrawing;
+        }
+
         // Clean up ImageParts referenced by any inline/anchor pictures in the element
         var mainPart2 = _doc.MainDocumentPart;
         if (mainPart2 != null)
@@ -415,6 +443,38 @@ public partial class WordHandler
                 }
             }
 
+<<<<<<< HEAD
+=======
+            // R40: clean up ChartParts referenced by chart drawings nested
+            // inside the removed element. The /chart[N] path above already
+            // handles this for explicit chart removals; mirror the same
+            // reference-counted DeletePart here so removing a wrapping
+            // paragraph / run also drops the backing word/charts/chartN.xml.
+            foreach (var chartRef in element.Descendants<C.ChartReference>())
+            {
+                var chartRid = chartRef.Id?.Value;
+                if (string.IsNullOrEmpty(chartRid)) continue;
+                OpenXmlPart chartHost = mainPart2;
+                if (chartRef.Ancestors<DocumentFormat.OpenXml.Wordprocessing.Header>().FirstOrDefault() is { } chHdr)
+                    chartHost = (OpenXmlPart?)mainPart2.HeaderParts.FirstOrDefault(p => p.Header == chHdr) ?? mainPart2;
+                else if (chartRef.Ancestors<DocumentFormat.OpenXml.Wordprocessing.Footer>().FirstOrDefault() is { } chFtr)
+                    chartHost = (OpenXmlPart?)mainPart2.FooterParts.FirstOrDefault(p => p.Footer == chFtr) ?? mainPart2;
+                // Reference-count across body + headers + footers so a chart
+                // referenced by multiple drawings (unusual but legal) isn't
+                // dropped while a sibling drawing still points at it.
+                int chartRefCount = mainPart2.Document!.Descendants<C.ChartReference>()
+                    .Count(cr => cr.Id?.Value == chartRid);
+                foreach (var hp in mainPart2.HeaderParts)
+                    chartRefCount += hp.Header?.Descendants<C.ChartReference>().Count(cr => cr.Id?.Value == chartRid) ?? 0;
+                foreach (var fp in mainPart2.FooterParts)
+                    chartRefCount += fp.Footer?.Descendants<C.ChartReference>().Count(cr => cr.Id?.Value == chartRid) ?? 0;
+                if (chartRefCount <= 1)
+                {
+                    try { chartHost.DeletePart(chartRid); } catch { }
+                }
+            }
+
+>>>>>>> upstream/main
             // BUG-R3-09: clean up dead HyperlinkRelationship entries.
             // Each w:hyperlink carries an r:id pointing at a HyperlinkRelationship
             // (an external rel, NOT a part). Deleting the containing element
@@ -568,6 +628,20 @@ public partial class WordHandler
         var wrapperPara = (element is M.Paragraph && element.Parent is Paragraph wp
             && wp.ChildElements.All(c => c == element || c is ParagraphProperties))
             ? wp : null;
+
+        // A floating diagram group is emitted into a dedicated <w:p><w:r><w:drawing/>.
+        // Once the drawing is removed, that run and paragraph hold nothing else —
+        // drop the wrapper paragraph too so no zombie empty paragraph is left
+        // where the diagram was. Only when the run and paragraph carry no other
+        // content (a diagram sharing a paragraph with text keeps the paragraph).
+        if (wrapperPara == null && element is Drawing wrapDraw
+            && wrapDraw.Parent is Run wrapRun
+            && wrapRun.Parent is Paragraph wrapPara
+            && wrapRun.ChildElements.All(c => c == wrapDraw || c is RunProperties)
+            && wrapPara.ChildElements.All(c => c == wrapRun || c is ParagraphProperties))
+        {
+            wrapperPara = wrapPara;
+        }
 
         // Refresh textId on parent paragraph if removing a child element (e.g. run)
         var parentPara = element.Ancestors<Paragraph>().FirstOrDefault();
@@ -978,7 +1052,15 @@ public partial class WordHandler
         var tables = body.Elements<Table>().ToList();
         if (tableIdx < 1 || tableIdx > tables.Count)
             throw new ArgumentException($"Table index {tableIdx} out of range");
+<<<<<<< HEAD
         var table = tables[tableIdx - 1];
+=======
+        var table = tables[PathIndex.ToArrayIndex(tableIdx)];
+
+        // Same ordinal-vs-grid-slot hazard as the physical column ops: a
+        // preceding gridSpan would mark the wrong cell with <w:cellDel>.
+        GuardNoMergesInColumn(table, colIdx, "remove");
+>>>>>>> upstream/main
 
         properties.TryGetValue("revision.author", out var aRaw);
         properties.TryGetValue("revision.date", out var dRaw);
@@ -990,7 +1072,11 @@ public partial class WordHandler
         {
             var cells = row.Elements<TableCell>().ToList();
             if (colIdx < 1 || colIdx > cells.Count) continue; // skip short rows
+<<<<<<< HEAD
             var cell = cells[colIdx - 1];
+=======
+            var cell = cells[PathIndex.ToArrayIndex(colIdx)];
+>>>>>>> upstream/main
             var tcPr = cell.GetFirstChild<TableCellProperties>()
                       ?? cell.PrependChild(new TableCellProperties());
             tcPr.AppendChild(new CellDeletion
@@ -1147,6 +1233,12 @@ public partial class WordHandler
     }
 
     public string Move(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties = null)
+<<<<<<< HEAD
+=======
+        => MarkModified(() => MoveCore(sourcePath, targetParentPath, position, properties));
+
+    private string MoveCore(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties)
+>>>>>>> upstream/main
     {
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
         // Detect track-change branch: any trackChange.author/date/id signals
@@ -1170,6 +1262,49 @@ public partial class WordHandler
         var element = NavigateToElement(srcParts)
             ?? throw new ArgumentException($"Source not found: {sourcePath}");
 
+<<<<<<< HEAD
+=======
+        // A display equation lives as <w:p><m:oMathPara/></w:p>. The path
+        // `/body/oMathPara[N]` navigates to the INNER oMathPara, whose only
+        // sibling is the paragraph's pPr — so reordering it within its sole
+        // wrapper is a silent no-op (it re-appends to the same <w:p> and still
+        // reports "Moved"). Redirect the move to the wrapping paragraph so a
+        // body-level reorder actually repositions the equation. Skipped when the
+        // wrapper also carries other content (inline math among text), where
+        // moving just the oMathPara is the intended operation.
+        if (element is DocumentFormat.OpenXml.Math.Paragraph
+            && element.Parent is Paragraph mathWrapPara
+            && mathWrapPara.ChildElements.All(c =>
+                c is DocumentFormat.OpenXml.Math.Paragraph || c is ParagraphProperties))
+        {
+            element = mathWrapPara;
+        }
+
+        // A diagram group (<wpg:wgp>) lives in <w:drawing> inside a run inside a
+        // paragraph. Moving the bare wgp relocates it as a direct <w:body> child
+        // — schema-invalid. The diagram is emitted into its own paragraph, so
+        // redirect the move to that wrapping paragraph (same shape as the
+        // oMathPara redirect above). If the paragraph also carries other content,
+        // reject rather than move the neighbours with it.
+        if (element.LocalName == "wgp"
+            && element.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup")
+        {
+            var wgpPara = element.Ancestors<Drawing>().FirstOrDefault()
+                ?.Ancestors<Paragraph>().FirstOrDefault();
+            if (wgpPara != null && wgpPara.ChildElements.All(c =>
+                    c is ParagraphProperties
+                    || (c is Run r && r.ChildElements.All(rc => rc is Drawing || rc is RunProperties))))
+            {
+                element = wgpPara;
+            }
+            else
+            {
+                throw new ArgumentException(
+                    $"Cannot move '{sourcePath}': a diagram group lives inside a paragraph; move the containing paragraph (e.g. /body/p[N]) instead.");
+            }
+        }
+
+>>>>>>> upstream/main
         // Infer --to from --after/--before full path if not specified
         var anchorFullPath = position?.After ?? position?.Before;
         if (string.IsNullOrEmpty(targetParentPath) && anchorFullPath != null && anchorFullPath.StartsWith("/"))
@@ -1198,6 +1333,23 @@ public partial class WordHandler
                 ?? throw new ArgumentException($"Before anchor not found: {position.Before}");
         }
 
+<<<<<<< HEAD
+=======
+        // Symmetric to the source-wrapper redirect above: a `/body/oMathPara[N]`
+        // anchor resolves to the INNER m:oMathPara, but its body-level sibling is
+        // the wrapping <w:p>. Insert relative to the wrapper — otherwise
+        // InsertBefore/AfterSelf nests the moved paragraph INSIDE the anchor's
+        // <w:p> (schema-invalid <w:p><w:p>…) and the sibling equations are lost.
+        static OpenXmlElement RedirectToMathWrapper(OpenXmlElement a) =>
+            a is DocumentFormat.OpenXml.Math.Paragraph
+                && a.Parent is Paragraph awp
+                && awp.ChildElements.All(c =>
+                    c is DocumentFormat.OpenXml.Math.Paragraph || c is ParagraphProperties)
+                ? awp : a;
+        if (afterAnchor != null) afterAnchor = RedirectToMathWrapper(afterAnchor);
+        if (beforeAnchor != null) beforeAnchor = RedirectToMathWrapper(beforeAnchor);
+
+>>>>>>> upstream/main
         // Determine target parent
         string effectiveParentPath;
         OpenXmlElement targetParent;
@@ -1274,13 +1426,47 @@ public partial class WordHandler
         }
         else
         {
-            targetParent.AppendChild(element);
+            // AppendToParent (not raw AppendChild): a body-level append must land
+            // BEFORE the trailing w:sectPr, which must remain the last child of
+            // w:body. `move … --to /body` with no anchor/index otherwise placed
+            // the element after sectPr → schema-invalid ("unexpected child").
+            AppendToParent(targetParent, element);
         }
 
         SaveDoc();
+<<<<<<< HEAD
+=======
+
+        // A moved display-equation wrapper <w:p> is addressed as
+        // /parent/oMathPara[N] (the resolver flattens these wrappers to
+        // oMathPara), not /parent/p[N] which would not resolve. Mirror
+        // AddEquation's ordinal counting (bare m:oMathPara + wrapper w:p's).
+        if (element is Paragraph movedWrap && IsOMathParaWrapperParagraph(movedWrap))
+        {
+            // Body/SdtBlock flatten oMathPara-wrapper w:p's to /parent/oMathPara[N]
+            // (matching AddEquation + the resolver). Every OTHER container
+            // (footnote/endnote/header/footer/textbox/comment/sdtContent) keeps the
+            // wrapper addressable as /parent/p[@paraId=X]/oMathPara[1]; emitting the
+            // flattened form there produced an unresolvable path.
+            if (targetParent is Body or SdtBlock)
+            {
+                var ord = 0;
+                foreach (var el in targetParent.ChildElements)
+                {
+                    if (el is DocumentFormat.OpenXml.Math.Paragraph) ord++;
+                    else if (el is Paragraph wpp && IsOMathParaWrapperParagraph(wpp)) ord++;
+                    if (ReferenceEquals(el, element)) break;
+                }
+                return $"{effectiveParentPath}/oMathPara[{ord}]";
+            }
+            var pPos = targetParent.Elements<Paragraph>().ToList()
+                .FindIndex(p => ReferenceEquals(p, movedWrap)) + 1;
+            return $"{effectiveParentPath}/{BuildParaPathSegment(movedWrap, pPos)}/oMathPara[1]";
+        }
+>>>>>>> upstream/main
 
         var siblings = targetParent.ChildElements.Where(e => e.LocalName == element.LocalName).ToList();
-        var newIdx = siblings.IndexOf(element) + 1;
+        var newIdx = PathIndex.FromArrayIndex(siblings.IndexOf(element));
         return $"{effectiveParentPath}/{element.LocalName}[{newIdx}]";
     }
 
@@ -1290,6 +1476,7 @@ public partial class WordHandler
     /// uses OrdinalIgnoreCase but plugin/JSON paths may not.
     /// </summary>
     private static bool HasTrackChangeMoveProps(Dictionary<string, string> props)
+<<<<<<< HEAD
     {
         foreach (var key in props.Keys)
         {
@@ -1475,6 +1662,196 @@ public partial class WordHandler
 
     public (string NewPath1, string NewPath2) Swap(string path1, string path2)
     {
+=======
+    {
+        foreach (var key in props.Keys)
+        {
+            var k = key.ToLowerInvariant();
+            if (k == "revision.author" || k == "revision.date" || k == "revision.id")
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// High-level run-level move + trackChange: source stays in place wrapped
+    /// in &lt;w:moveFrom&gt; (with w:t→w:delText conversion); dest is a clone
+    /// of the source content wrapped in &lt;w:moveTo&gt; appended to target
+    /// paragraph. Both share the same w:id so Word recognises the pair.
+    /// Returns the dest path.
+    /// </summary>
+    private string MoveWithTrackChange(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string> properties)
+    {
+        var srcParts = ParsePath(sourcePath);
+        var element = NavigateToElement(srcParts)
+            ?? throw new ArgumentException($"Source not found: {sourcePath}");
+
+        // Run-level only (paragraph-level move tracking needs different
+        // OOXML — w:moveFromRangeStart/End + w:moveToRangeStart/End markers
+        // outside the paragraph boundary; out of scope for Phase 3).
+        if (element.LocalName != "r")
+            throw new ArgumentException(
+                $"move + trackChange is supported for run-level paths only (got {element.LocalName}). "
+                + "Paragraph-level move tracking (moveFromRangeStart/End markers) is not yet supported.");
+
+        // Reject re-moving an element already inside a moveFrom/moveTo —
+        // would produce nested move markers which Word treats as malformed.
+        if (element.Ancestors<MoveFromRun>().Any() || element.Ancestors<MoveToRun>().Any())
+            throw new InvalidOperationException(
+                "Source run is already inside a moveFrom/moveTo wrapper; nested move tracking is not supported.");
+
+        // Resolve target parent (--to is required for trackChange branch).
+        var anchorFullPath = position?.After ?? position?.Before;
+        if (string.IsNullOrEmpty(targetParentPath) && anchorFullPath != null && anchorFullPath.StartsWith("/"))
+        {
+            var lastSlash = anchorFullPath.LastIndexOf('/');
+            if (lastSlash > 0)
+                targetParentPath = anchorFullPath[..lastSlash];
+        }
+        if (string.IsNullOrEmpty(targetParentPath))
+            throw new ArgumentException(
+                "move + trackChange requires --to <paragraph-path>; reordering within the same parent is not meaningful for run-level move tracking.");
+
+        OpenXmlElement targetParent;
+        var tgtParts = ParsePath(targetParentPath);
+        targetParent = NavigateToElement(tgtParts)
+            ?? throw new ArgumentException($"Target parent not found: {targetParentPath}");
+
+        if (targetParent.LocalName != "p")
+            throw new ArgumentException(
+                $"move + trackChange target parent must be a paragraph (got {targetParent.LocalName}). "
+                + "Runs must live inside a paragraph.");
+
+        // Pull trackChange.* props (case-insensitive lookup).
+        string? tcAuthor = null, tcDate = null, tcId = null;
+        foreach (var kv in properties)
+        {
+            var k = kv.Key.ToLowerInvariant();
+            if (k == "revision.author") tcAuthor = kv.Value;
+            else if (k == "revision.date") tcDate = kv.Value;
+            else if (k == "revision.id") tcId = kv.Value;
+        }
+        if (string.IsNullOrEmpty(tcAuthor)) tcAuthor = "OfficeCLI";
+        DateTime tcDt = DateTime.UtcNow;
+        if (!string.IsNullOrEmpty(tcDate))
+            DateTime.TryParse(tcDate, out tcDt);
+        var sharedId = !string.IsNullOrEmpty(tcId) ? tcId! : GenerateRevisionId();
+
+        // Build the moveTo side first using a deep clone of the source run
+        // (keep <w:t> intact). Append it to target paragraph at the requested
+        // position. We compute the new path before wrapping the source so
+        // r-index counts on the source side don't drift.
+        var destRun = (Run)element.CloneNode(deep: true);
+        var moveTo = new MoveToRun
+        {
+            Id = sharedId,
+            Author = tcAuthor,
+            Date = tcDt,
+        };
+        moveTo.AppendChild(destRun);
+
+        // Resolve insert anchors for the dest side (relative to targetParent).
+        OpenXmlElement? afterAnchor = null, beforeAnchor = null;
+        if (position?.After != null)
+        {
+            var anchorPath = position.After;
+            if (!anchorPath.StartsWith("/"))
+                anchorPath = targetParentPath!.TrimEnd('/') + "/" + anchorPath;
+            afterAnchor = NavigateToElement(ParsePath(anchorPath))
+                ?? throw new ArgumentException($"After anchor not found: {position.After}");
+        }
+        else if (position?.Before != null)
+        {
+            var anchorPath = position.Before;
+            if (!anchorPath.StartsWith("/"))
+                anchorPath = targetParentPath!.TrimEnd('/') + "/" + anchorPath;
+            beforeAnchor = NavigateToElement(ParsePath(anchorPath))
+                ?? throw new ArgumentException($"Before anchor not found: {position.Before}");
+        }
+
+        if (afterAnchor != null) afterAnchor.InsertAfterSelf(moveTo);
+        else if (beforeAnchor != null) beforeAnchor.InsertBeforeSelf(moveTo);
+        else if (position?.Index is int idx)
+        {
+            var sameTypeSiblings = targetParent.ChildElements
+                .Where(e => e.LocalName == "r" || e is MoveToRun || e is MoveFromRun).ToList();
+            if (idx >= 0 && idx < sameTypeSiblings.Count)
+                sameTypeSiblings[idx].InsertBeforeSelf(moveTo);
+            else
+                targetParent.AppendChild(moveTo);
+        }
+        else targetParent.AppendChild(moveTo);
+
+        // Wrap the source in moveFrom. Per ECMA-376 §17.3.3.34 w:delText
+        // is only valid inside <w:del>, never inside <w:moveFrom> — Word
+        // renders strikethrough for moveFrom content from the moveFrom
+        // wrapper itself. The earlier t→delText conversion here tripped
+        // Word's "found unreadable content" recovery (Word re-wrapped
+        // the orphan delText in a synthetic <w:del w:author="Unknown">).
+        var srcParent = element.Parent
+            ?? throw new InvalidOperationException("Source run has no parent");
+        var moveFrom = new MoveFromRun
+        {
+            Id = sharedId,
+            Author = tcAuthor,
+            Date = tcDt,
+        };
+        srcParent.ReplaceChild(moveFrom, element);
+        moveFrom.AppendChild(element);
+
+        // Range markers bracket each half of the move pair. Without them
+        // Word does not recognise the moveFrom/moveTo runs as a "move" —
+        // on open it pops "found unreadable content" and silently demotes
+        // the pair to del+ins (the inner w:id pair is lost). Schema
+        // permits the markers to be omitted (validate stays green), but
+        // Word's UI keys off the shared `w:name` between MoveFromRangeStart
+        // and MoveToRangeStart to bind the two halves. Per ECMA-376 §17.13.5.20-23.
+        //
+        // Convention:
+        //   - moveFromRangeStart / moveToRangeStart carry w:name="Move_{id}";
+        //     identical on both sides so Word pairs them.
+        //   - The four range markers reuse `sharedId` as their `w:id` so
+        //     accept/reject can find them by id alongside the inner runs.
+        var moveName = $"Move_{sharedId}";
+        var mfRangeStart = new MoveFromRangeStart
+        {
+            Id = sharedId,
+            Author = tcAuthor,
+            Date = tcDt,
+            Name = moveName,
+        };
+        var mfRangeEnd = new MoveFromRangeEnd { Id = sharedId };
+        moveFrom.InsertBeforeSelf(mfRangeStart);
+        moveFrom.InsertAfterSelf(mfRangeEnd);
+
+        var mtRangeStart = new MoveToRangeStart
+        {
+            Id = sharedId,
+            Author = tcAuthor,
+            Date = tcDt,
+            Name = moveName,
+        };
+        var mtRangeEnd = new MoveToRangeEnd { Id = sharedId };
+        moveTo.InsertBeforeSelf(mtRangeStart);
+        moveTo.InsertAfterSelf(mtRangeEnd);
+
+        SaveDoc();
+
+        // Path to dest run: moveTo is now a sibling among target paragraph's
+        // children. The Run lives inside it; the watcher / GetAllRuns model
+        // descends into MoveToRun (Descendants<Run>()), so the run keeps a
+        // stable r[N] index in the target paragraph's run list.
+        var allRunsInTarget = targetParent.Descendants<Run>().ToList();
+        var rIdx = PathIndex.FromArrayIndex(allRunsInTarget.IndexOf(destRun));
+        return $"{targetParentPath.TrimEnd('/')}/r[{rIdx}]";
+    }
+
+    public (string NewPath1, string NewPath2) Swap(string path1, string path2)
+        => MarkModified(() => SwapCore(path1, path2));
+
+    private (string NewPath1, string NewPath2) SwapCore(string path1, string path2)
+    {
+>>>>>>> upstream/main
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
         var parts1 = ParsePath(path1);
         var elem1 = NavigateToElement(parts1)
@@ -1495,14 +1872,64 @@ public partial class WordHandler
         var parentPath = lastSlash > 0 ? path1[..lastSlash] : "/body";
 
         var siblings1 = parent.ChildElements.Where(e => e.LocalName == elem1.LocalName).ToList();
-        var newIdx1 = siblings1.IndexOf(elem1) + 1;
+        var newIdx1 = PathIndex.FromArrayIndex(siblings1.IndexOf(elem1));
         var siblings2 = parent.ChildElements.Where(e => e.LocalName == elem2.LocalName).ToList();
-        var newIdx2 = siblings2.IndexOf(elem2) + 1;
+        var newIdx2 = PathIndex.FromArrayIndex(siblings2.IndexOf(elem2));
         return ($"{parentPath}/{elem1.LocalName}[{newIdx1}]", $"{parentPath}/{elem2.LocalName}[{newIdx2}]");
     }
 
+<<<<<<< HEAD
     public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
     {
+=======
+    // Re-point every relationship-backed reference (r:embed / r:id / r:link) in
+    // a freshly cloned element from the source part's relationship ids to
+    // equivalents on the target part. Part-based targets (images, media,
+    // charts, OLE) are shared via a fresh relationship to the same part;
+    // hyperlink / external targets get an equivalent external relationship.
+    // No-op when the two parts are the same (the id already resolves there).
+    private static void RehomeCrossPartRelationships(
+        OpenXmlElement clone, OpenXmlPart sourcePart, OpenXmlPart targetPart)
+    {
+        if (ReferenceEquals(sourcePart, targetPart)) return;
+        const string rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        foreach (var el in clone.Descendants().Prepend(clone).ToList())
+        {
+            foreach (var attr in el.GetAttributes().ToList())
+            {
+                if (attr.NamespaceUri != rNs || string.IsNullOrEmpty(attr.Value)) continue;
+                var oldRid = attr.Value;
+                string? newRid = null;
+
+                OpenXmlPart? refPart = null;
+                try { refPart = sourcePart.GetPartById(oldRid); } catch { }
+                if (refPart != null)
+                {
+                    try { newRid = targetPart.GetIdOfPart(refPart); }
+                    catch (ArgumentException) { newRid = targetPart.CreateRelationshipToPart(refPart); }
+                }
+                else if (sourcePart.HyperlinkRelationships.FirstOrDefault(r => r.Id == oldRid) is { } hl)
+                {
+                    newRid = targetPart.AddHyperlinkRelationship(hl.Uri, hl.IsExternal).Id;
+                }
+                else if (sourcePart.ExternalRelationships.FirstOrDefault(r => r.Id == oldRid) is { } ext)
+                {
+                    newRid = targetPart.AddExternalRelationship(ext.RelationshipType, ext.Uri).Id;
+                }
+
+                if (newRid != null && newRid != oldRid)
+                    el.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute(
+                        attr.Prefix, attr.LocalName, attr.NamespaceUri, newRid));
+            }
+        }
+    }
+
+    public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
+        => MarkModified(() => CopyFromCore(sourcePath, targetParentPath, position));
+
+    private string CopyFromCore(string sourcePath, string targetParentPath, InsertPosition? position)
+    {
+>>>>>>> upstream/main
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
         // Virtual table column clone — same-table only.
         var colCopyMatch = Regex.Match(sourcePath, @"^/body/tbl\[(\d+)\]/col\[(\d+)\]$");
@@ -1563,6 +1990,21 @@ public partial class WordHandler
             throw new ArgumentException(
                 $"Cannot clone '{sourcePath}': equation content lives inside a paragraph; clone /body/p[N] instead.");
         }
+<<<<<<< HEAD
+=======
+        // A wpg group (a `diagram`) lives inside <w:drawing>/<wp:anchor> in a
+        // run, not as a direct <w:body> child. Cloning the bare <wpg:wgp> drops
+        // a schema-invalid group straight under the body (Word repairs/rejects
+        // the file). Direct the user to clone the containing paragraph, which
+        // duplicates the whole drawing with fresh docPr/paraId ids correctly.
+        // Mirrors the oMathPara / oMath rejection above.
+        if (element.LocalName == "wgp"
+            && element.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup")
+        {
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}': a diagram group lives inside a paragraph; clone the containing paragraph (e.g. /body/p[N]) instead.");
+        }
+>>>>>>> upstream/main
 
         OpenXmlElement targetParent;
         if (targetParentPath is "/" or "" or "/body")
@@ -1613,6 +2055,7 @@ public partial class WordHandler
             p.TextId = GenerateParaId();
         }
 
+<<<<<<< HEAD
         // Regenerate bookmark ids/names so a cloned paragraph containing
         // <w:bookmarkStart>/<w:bookmarkEnd> doesn't introduce duplicate
         // numeric ids or duplicate names (the latter silently breaks
@@ -1669,6 +2112,84 @@ public partial class WordHandler
             }
         }
 
+=======
+        // Regenerate sdt ids on cloned content controls. CloneNode copies the
+        // source <w:sdtPr><w:id> verbatim, and Ensure*Ids does not run after a
+        // typed mutation, so without this an `add --from` of an sdt (or content
+        // containing one) lands a duplicate sdt id on disk. Mirrors the paraId /
+        // bookmark regen below. NextSdtId scans the whole doc for max+1 (the
+        // clone is not inserted yet), then we increment for each nested sdt.
+        var sdtIdsInClone = clone.Descendants<SdtId>().ToArray();
+        if (sdtIdsInClone.Length > 0)
+        {
+            var nextSdtId = NextSdtId();
+            foreach (var sid in sdtIdsInClone)
+                sid.Val = nextSdtId++;
+        }
+
+        // Regenerate bookmark ids/names so a cloned paragraph containing
+        // <w:bookmarkStart>/<w:bookmarkEnd> doesn't introduce duplicate
+        // numeric ids or duplicate names (the latter silently breaks
+        // hyperlink/ref resolution, the former is a schema violation).
+        var docBody = _doc.MainDocumentPart?.Document?.Body;
+        if (docBody != null)
+        {
+            // Scan bookmarks across every part (body + headers + footers +
+            // footnotes + endnotes + comments), not just body, so a clone copied
+            // into a header/note can't collide with a bookmark elsewhere.
+            var mainForCopy = _doc.MainDocumentPart!;
+            var allOtherStarts = EnumerateContentRoots(mainForCopy)
+                .SelectMany(r => r.Descendants<BookmarkStart>())
+                .Where(b => !ReferenceEquals(b, clone) && !b.Ancestors().Contains(clone))
+                .ToList();
+            var existingIds = allOtherStarts
+                .Select(b => int.TryParse(b.Id?.Value, out var id) ? id : 0);
+            var existingNames = new HashSet<string>(
+                allOtherStarts
+                    .Select(b => b.Name?.Value ?? "")
+                    .Where(n => n.Length > 0));
+            var nextId = existingIds.Any() ? existingIds.Max() + 1 : 1;
+
+            // Collect pairs inside the clone (by matching old Id).
+            var startsInClone = clone is BookmarkStart bsSelf
+                ? new[] { bsSelf }
+                : clone.Descendants<BookmarkStart>().ToArray();
+            var endsInClone = clone is BookmarkEnd beSelf
+                ? new[] { beSelf }
+                : clone.Descendants<BookmarkEnd>().ToArray();
+
+            foreach (var bs in startsInClone)
+            {
+                var oldId = bs.Id?.Value;
+                var newId = nextId++.ToString();
+                bs.Id = newId;
+                var name = bs.Name?.Value ?? "";
+                if (string.IsNullOrEmpty(name) || existingNames.Contains(name))
+                {
+                    var baseName = string.IsNullOrEmpty(name) ? "bm" : name;
+                    var candidate = $"{baseName}_{newId}";
+                    while (existingNames.Contains(candidate))
+                        candidate = $"{baseName}_{nextId++}";
+                    bs.Name = candidate;
+                    existingNames.Add(candidate);
+                }
+                else
+                {
+                    existingNames.Add(name);
+                }
+                // Retarget matching ends.
+                if (oldId != null)
+                {
+                    foreach (var be in endsInClone)
+                    {
+                        if (be.Id?.Value == oldId)
+                            be.Id = newId;
+                    }
+                }
+            }
+        }
+
+>>>>>>> upstream/main
         // Regenerate revision ids on cloned <w:ins>/<w:del> elements so the
         // clone doesn't collide with the source (or any other in-doc) w:id.
         // Semantic validators reject duplicate ins/del ids and Word treats
@@ -1743,6 +2264,18 @@ public partial class WordHandler
             }
         }
 
+<<<<<<< HEAD
+=======
+        // #265-class fix: a clone copied into a DIFFERENT package part
+        // (header/footer has its own .rels) still carries the SOURCE part's
+        // relationship ids on its r:embed / r:id / r:link references — a
+        // picture, hyperlink, chart or OLE cloned from the body into a header
+        // would dangle, which `validate` cannot see and Word offers to repair.
+        // Re-home the references onto the target part. No-op for the common
+        // body->body clone, where source and target share a part.
+        RehomeCrossPartRelationships(clone, ResolveHostPart(element), ResolveHostPart(targetParent));
+
+>>>>>>> upstream/main
         // Handle find: anchor sentinel up front — Add() uses AddAtFindPosition
         // to split the paragraph at a text-match point, but CopyFrom has no
         // analogous split-based insertion path. The common case (e.g. cloning
@@ -1774,7 +2307,11 @@ public partial class WordHandler
 
                 SaveDoc();
                 var fSiblings = targetParent.ChildElements.Where(e => e.LocalName == clone.LocalName).ToList();
+<<<<<<< HEAD
                 var fNewIdx = fSiblings.IndexOf(clone) + 1;
+=======
+                var fNewIdx = PathIndex.FromArrayIndex(fSiblings.IndexOf(clone));
+>>>>>>> upstream/main
                 return $"{targetParentPath}/{clone.LocalName}[{fNewIdx}]";
             }
         }
@@ -1789,7 +2326,7 @@ public partial class WordHandler
         SaveDoc();
 
         var siblings = targetParent.ChildElements.Where(e => e.LocalName == clone.LocalName).ToList();
-        var newIdx = siblings.IndexOf(clone) + 1;
+        var newIdx = PathIndex.FromArrayIndex(siblings.IndexOf(clone));
         return $"{targetParentPath}/{clone.LocalName}[{newIdx}]";
     }
 
@@ -2303,7 +2840,11 @@ public partial class WordHandler
         var tables = body.Elements<Table>().ToList();
         if (tableIdx < 1 || tableIdx > tables.Count)
             throw new ArgumentException($"Table {tableIdx} not found at /body (total: {tables.Count})");
+<<<<<<< HEAD
         var table = tables[tableIdx - 1];
+=======
+        var table = tables[PathIndex.ToArrayIndex(tableIdx)];
+>>>>>>> upstream/main
         var grid = table.GetFirstChild<TableGrid>()
             ?? throw new InvalidOperationException("Table has no <w:tblGrid>");
         return (table, grid);
@@ -2324,6 +2865,7 @@ public partial class WordHandler
         return null;
     }
 
+<<<<<<< HEAD
     private static void GuardNoMergesInColumn(Table table, int colIdx, string action)
     {
         // gridSpan/vMerge in the affected column slot would silently break.
@@ -2343,6 +2885,57 @@ public partial class WordHandler
         }
     }
 
+=======
+    // BUG-COLOP-GRIDIDX: column add/remove/move/copy address cells by their
+    // ORDINAL position in the row (cells[PathIndex.ToArrayIndex(colIdx)]). That equals the grid slot
+    // ONLY when no preceding cell in the row horizontally spans (gridSpan). A
+    // gridSpan before the target column shifts the ordinal, so the op silently
+    // targets the WRONG cell — removing/marking/cloning a different column's
+    // data (data corruption). A gridSpan/vMerge AT the target slot likewise
+    // can't be column-addressed. Detect both per row and reject (the callers'
+    // contract is already "unmerge before column-level operations"), turning
+    // silent corruption into a safe, actionable error. Same class as the
+    // tcW-from-grid derivation fix (cell ordinal ≠ grid column index).
+    private static void GuardColumnSlotAddressable(Table table, int slot, string action)
+    {
+        int human = slot + 1;
+        foreach (var row in table.Elements<TableRow>())
+        {
+            var tcs = row.Elements<TableCell>().ToList();
+            if (tcs.Count == 0) continue;
+            int acc = 0;
+            bool found = false;
+            for (int ord = 0; ord < tcs.Count; ord++)
+            {
+                var tcPr = tcs[ord].GetFirstChild<TableCellProperties>();
+                int span = tcPr?.GetFirstChild<GridSpan>()?.Val?.Value ?? 1;
+                if (slot >= acc && slot < acc + span)
+                {
+                    found = true;
+                    if (span > 1 || tcPr?.GetFirstChild<VerticalMerge>() != null)
+                        throw new ArgumentException(
+                            $"Cannot {action} column {human}: a row contains a merged cell (gridSpan/vMerge) " +
+                            "spanning that column. Unmerge before performing column-level operations.");
+                    if (ord != slot)
+                        throw new ArgumentException(
+                            $"Cannot {action} column {human}: a row contains a horizontally merged cell before " +
+                            "that column, so the column cannot be addressed by position. Unmerge before " +
+                            "performing column-level operations.");
+                    break;
+                }
+                acc += span;
+            }
+            if (!found)
+                throw new ArgumentException(
+                    $"Cannot {action} column {human}: a row does not cleanly span that column (merged cells " +
+                    "present). Unmerge before performing column-level operations.");
+        }
+    }
+
+    private static void GuardNoMergesInColumn(Table table, int colIdx, string action)
+        => GuardColumnSlotAddressable(table, colIdx - 1, action);
+
+>>>>>>> upstream/main
     private void RemoveTableColumn(Match colMatch)
     {
         var tableIdx = int.Parse(colMatch.Groups[1].Value);
@@ -2354,12 +2947,20 @@ public partial class WordHandler
 
         GuardNoMergesInColumn(table, colIdx, "remove");
 
+<<<<<<< HEAD
         gridCols[colIdx - 1].Remove();
+=======
+        gridCols[PathIndex.ToArrayIndex(colIdx)].Remove();
+>>>>>>> upstream/main
         foreach (var row in table.Elements<TableRow>())
         {
             var cells = row.Elements<TableCell>().ToList();
             if (colIdx - 1 < cells.Count)
+<<<<<<< HEAD
                 cells[colIdx - 1].Remove();
+=======
+                cells[PathIndex.ToArrayIndex(colIdx)].Remove();
+>>>>>>> upstream/main
         }
     }
 
@@ -2404,7 +3005,11 @@ public partial class WordHandler
         if (targetIdx == -1)
             return $"/body/tbl[{tableIdx}]/col[{colIdx}]";
 
+<<<<<<< HEAD
         var movingGridCol = gridCols[colIdx - 1];
+=======
+        var movingGridCol = gridCols[PathIndex.ToArrayIndex(colIdx)];
+>>>>>>> upstream/main
         movingGridCol.Remove();
         var movingCells = new List<TableCell>();
         foreach (var row in table.Elements<TableRow>())
@@ -2412,8 +3017,13 @@ public partial class WordHandler
             var cells = row.Elements<TableCell>().ToList();
             if (colIdx - 1 < cells.Count)
             {
+<<<<<<< HEAD
                 movingCells.Add(cells[colIdx - 1]);
                 cells[colIdx - 1].Remove();
+=======
+                movingCells.Add(cells[PathIndex.ToArrayIndex(colIdx)]);
+                cells[PathIndex.ToArrayIndex(colIdx)].Remove();
+>>>>>>> upstream/main
             }
             else
             {
@@ -2440,7 +3050,11 @@ public partial class WordHandler
 
         SaveDoc();
         var newGridCols = grid.Elements<GridColumn>().ToList();
+<<<<<<< HEAD
         var newColIdx = newGridCols.IndexOf(movingGridCol) + 1;
+=======
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(movingGridCol));
+>>>>>>> upstream/main
         return $"/body/tbl[{tableIdx}]/col[{newColIdx}]";
     }
 
@@ -2466,13 +3080,21 @@ public partial class WordHandler
 
         var targetIdx = ResolveSameTableColumnAnchor(position, tableIdx, sourceColIdx: null);
 
+<<<<<<< HEAD
         var clonedGridCol = (GridColumn)gridCols[colIdx - 1].CloneNode(true);
+=======
+        var clonedGridCol = (GridColumn)gridCols[PathIndex.ToArrayIndex(colIdx)].CloneNode(true);
+>>>>>>> upstream/main
         var clonedCells = new List<TableCell>();
         foreach (var row in table.Elements<TableRow>())
         {
             var cells = row.Elements<TableCell>().ToList();
             clonedCells.Add(colIdx - 1 < cells.Count
+<<<<<<< HEAD
                 ? (TableCell)cells[colIdx - 1].CloneNode(true)
+=======
+                ? (TableCell)cells[PathIndex.ToArrayIndex(colIdx)].CloneNode(true)
+>>>>>>> upstream/main
                 : new TableCell(new Paragraph()));
         }
 
@@ -2500,7 +3122,11 @@ public partial class WordHandler
 
         SaveDoc();
         var newGridCols = grid.Elements<GridColumn>().ToList();
+<<<<<<< HEAD
         var newColIdx = newGridCols.IndexOf(clonedGridCol) + 1;
+=======
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(clonedGridCol));
+>>>>>>> upstream/main
         return $"/body/tbl[{tableIdx}]/col[{newColIdx}]";
     }
 }

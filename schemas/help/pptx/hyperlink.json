@@ -2,7 +2,12 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "hyperlink",
+<<<<<<< HEAD
   "parent": "shape|run",
+=======
+  "elementAliases": ["hlink"],
+  "parent": "shape",
+>>>>>>> upstream/main
   "operations": {
     "add": true,
     "set": true,
@@ -16,7 +21,11 @@
       "/slide[N]/shape[M]/p[K]/r[L]/hyperlink"
     ]
   },
+<<<<<<< HEAD
   "note": "Aliases: link. Attached to a shape (shape-wide link) or to a run (inline link). Internal slide jumps use link=slide[N]; named actions use link=firstslide|lastslide|nextslide|previousslide|endshow.",
+=======
+  "note": "Aliases: link. add attaches a shape-wide link only; inline run links are created via `set /slide[N]/shape[M]/p[K]/r[L] link=...`. Internal slide jumps use link=slide[N]; named actions use link=firstslide|lastslide|nextslide|previousslide|endshow.",
+>>>>>>> upstream/main
   "extends": "_shared/hyperlink",
   "properties": {
     "link": {
@@ -36,7 +45,11 @@
     },
     "tooltip": {
       "type": "string",
+<<<<<<< HEAD
       "description": "hover-text shown by PowerPoint when the link is moused over. Paired with 'link'; standalone tooltip changes are a no-op.",
+=======
+      "description": "hover-text shown by PowerPoint when the link is moused over. Usually paired with 'link'; a tooltip-only set on a run that already has a link updates the existing tooltip.",
+>>>>>>> upstream/main
       "add": true,
       "set": true,
       "get": true,

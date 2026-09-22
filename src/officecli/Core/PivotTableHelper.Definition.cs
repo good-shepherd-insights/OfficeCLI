@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -231,6 +235,10 @@ internal static partial class PivotTableHelper
         for (int i = 0; i < headers.Length; i++)
         {
             var pf = new PivotField { ShowAll = false };
+<<<<<<< HEAD
+=======
+            bool needsFillDownExt = false; // repeatItemLabels ext, appended after <items>
+>>>>>>> upstream/main
             // Layout-dependent per-field attributes.
             // Compact: compact=default(true), outline=default(true)
             // Outline: compact=false, outline=default(true)
@@ -301,6 +309,7 @@ internal static partial class PivotTableHelper
                         // emit. Earlier officecli wrote 'repeatItemLabels'
                         // directly, which is NOT a valid x14:pivotField
                         // attribute and the validator rightly rejected it.
+<<<<<<< HEAD
                         const string x14Ns = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
                         var pfExt = new PivotFieldExtension
                         {
@@ -313,6 +322,14 @@ internal static partial class PivotTableHelper
                         var pfExtLst = pf.GetFirstChild<PivotFieldExtensionList>()
                             ?? pf.AppendChild(new PivotFieldExtensionList());
                         pfExtLst.AppendChild(pfExt);
+=======
+                        // Defer the actual extLst append until AFTER <items>
+                        // is populated below — CT_PivotField requires child
+                        // order items → autoSortScope → extLst, and appending
+                        // it here (before items) produces XML real Excel
+                        // refuses to open (0x800A03EC).
+                        needsFillDownExt = true;
+>>>>>>> upstream/main
                     }
                 }
             }
@@ -361,6 +378,26 @@ internal static partial class PivotTableHelper
 
             _ = isNumeric; // kept for readability; consumed only by data fields above
 
+<<<<<<< HEAD
+=======
+            // fillDownLabels (repeatItemLabels) x14 ext MUST be the last child
+            // of the pivotField — appended here, after <items> and any
+            // subtotal attrs, so CT_PivotField's items→autoSortScope→extLst
+            // order holds (out-of-order extLst → 0x800A03EC in real Excel).
+            if (needsFillDownExt)
+            {
+                const string x14Ns = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
+                var pfExt = new PivotFieldExtension { Uri = "{2946ED86-A175-432a-8AC1-64E0C546D7DE}" };
+                var x14Pf = new OpenXmlUnknownElement("x14", "pivotField", x14Ns);
+                x14Pf.SetAttribute(new OpenXmlAttribute("fillDownLabels", "", "1"));
+                x14Pf.AddNamespaceDeclaration("x14", x14Ns);
+                pfExt.AppendChild(x14Pf);
+                var pfExtLst = pf.GetFirstChild<PivotFieldExtensionList>()
+                    ?? pf.AppendChild(new PivotFieldExtensionList());
+                pfExtLst.AppendChild(pfExt);
+            }
+
+>>>>>>> upstream/main
             pivotFields.AppendChild(pf);
         }
         pivotDef.PivotFields = pivotFields;
@@ -420,8 +457,12 @@ internal static partial class PivotTableHelper
 
         // ColumnItems — same shape as RowItems but for the column-label layout.
         // Even when there are NO column fields, ECMA-376 requires a <colItems> with one
+<<<<<<< HEAD
         // empty <i/> placeholder; common writers' empty-case branch
         // (xepivotxml.cxx:1008-1014) writes exactly that.
+=======
+        // empty <i/> placeholder; common writers emit exactly that in the empty case.
+>>>>>>> upstream/main
         pivotDef.ColumnItems = (ColumnItems)BuildAxisItems(
             colFieldIndices, columnData, isRow: false, dataFieldCount: valueFields.Count);
 
@@ -519,8 +560,13 @@ internal static partial class PivotTableHelper
     ///   </colItems>
     /// Verified against multi_data_authored.xlsx (a 1×1×2 pivot from real Excel).
     ///
+<<<<<<< HEAD
     /// Empty axis: single &lt;i/&gt; placeholder (writeRowColumnItems
     /// empty-case branch in xepivotxml.cxx:1008-1014).
+=======
+    /// Empty axis: single &lt;i/&gt; placeholder (the empty-case branch
+    /// common writers emit).
+>>>>>>> upstream/main
     ///
     /// Limitation: still only single-axis-field cases are correct. Multi-row-field
     /// cartesian-product layouts need a deeper expansion tracked as v2.

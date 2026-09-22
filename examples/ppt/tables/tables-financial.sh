@@ -3,8 +3,14 @@
 # Combines: built-in style, header banding, per-cell fills for traffic-light
 # status, gridSpan section headers, right-aligned numbers, totals row.
 
+<<<<<<< HEAD
 set -e
 
+=======
+# NOTE: intentionally NO `set -e`. Like the SDK twin's doc.batch, this script
+# tolerates forward-compat 'UNSUPPORTED props' warnings (officecli exit 2) and
+# keeps building so the full document is produced.
+>>>>>>> upstream/main
 DIR="$(dirname "$0")"
 PPTX="$DIR/tables-financial.pptx"
 
@@ -17,7 +23,11 @@ NAVY=1F3864; STEEL=2E75B6; PALE=DEEAF6
 GREEN=00B050; AMBER=FFC000; RED=C00000
 
 # --- Slide 1: Title ---
+<<<<<<< HEAD
 officecli add "$PPTX" /presentation/slides --type slide
+=======
+officecli add "$PPTX" / --type slide
+>>>>>>> upstream/main
 officecli add "$PPTX" '/slide[1]' --type shape \
     --prop text="Q4 2025 Financial Review" --prop size=44 --prop bold=true --prop color="$NAVY" \
     --prop x=1in --prop y=2.5in --prop width=11in --prop height=1.2in --prop align=center
@@ -26,7 +36,11 @@ officecli add "$PPTX" '/slide[1]' --type shape \
     --prop x=1in --prop y=4in --prop width=11in --prop height=0.8in --prop align=center
 
 # --- Slide 2: Quarterly P&L (sections via gridSpan) ---
+<<<<<<< HEAD
 officecli add "$PPTX" /presentation/slides --type slide
+=======
+officecli add "$PPTX" / --type slide
+>>>>>>> upstream/main
 officecli add "$PPTX" '/slide[2]' --type shape \
     --prop text="Quarterly P&L (USD, thousands)" --prop size=28 --prop bold=true --prop color="$NAVY" \
     --prop x=0.5in --prop y=0.3in --prop width=12in --prop height=0.6in
@@ -85,7 +99,11 @@ for entry in "2:700" "3:790" "4:895" "5:1,040" "6:3,425"; do
 done
 
 # --- Slide 3: Risk register (traffic-light fills) ---
+<<<<<<< HEAD
 officecli add "$PPTX" /presentation/slides --type slide
+=======
+officecli add "$PPTX" / --type slide
+>>>>>>> upstream/main
 officecli add "$PPTX" '/slide[3]' --type shape \
     --prop text="Risk Register" --prop size=28 --prop bold=true --prop color="$NAVY" \
     --prop x=0.5in --prop y=0.3in --prop width=12in --prop height=0.6in
@@ -108,7 +126,11 @@ officecli set "$PPTX" '/slide[3]/table[1]/tr[6]/tc[5]' \
     --prop text="On track" --prop fill="$GREEN" --prop color=FFFFFF --prop bold=true --prop align=center
 
 # --- Slide 4: KPI summary (small table) ---
+<<<<<<< HEAD
 officecli add "$PPTX" /presentation/slides --type slide
+=======
+officecli add "$PPTX" / --type slide
+>>>>>>> upstream/main
 officecli add "$PPTX" '/slide[4]' --type shape \
     --prop text="KPI Summary" --prop size=28 --prop bold=true --prop color="$NAVY" \
     --prop x=0.5in --prop y=0.3in --prop width=12in --prop height=0.6in

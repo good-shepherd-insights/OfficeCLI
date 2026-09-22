@@ -1,6 +1,11 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace OfficeCli;
@@ -10,9 +15,58 @@ namespace OfficeCli;
 /// </summary>
 public static class McpInstaller
 {
+<<<<<<< HEAD
     private static string OfficecliPath =>
         Environment.ProcessPath ?? (OperatingSystem.IsWindows() ? "officecli.exe" : "officecli");
 
+=======
+    // Path to record as the MCP server command. Must stay valid across
+    // upgrades, so resolve to a STABLE location in priority order:
+    //   1. The canonical self-install path (~/.local/bin/officecli) — self-
+    //      install overwrites that file in place, so the path never changes.
+    //   2. `officecli` as found on PATH. For a package-manager install this is
+    //      the stable wrapper/symlink (e.g. /opt/homebrew/bin/officecli), which
+    //      `brew upgrade` repoints without changing the path. We must NOT use
+    //      Environment.ProcessPath here: it resolves the symlink to the
+    //      versioned target (…/Cellar/officecli/1.0.106/…) which rots on upgrade.
+    //   3. The running binary — last resort for a download/dev build that has
+    //      not been installed anywhere on PATH yet.
+    private static string OfficecliPath
+    {
+        get
+        {
+            var exe = OperatingSystem.IsWindows() ? "officecli.exe" : "officecli";
+
+            var installed = Core.Installer.InstalledBinaryPath;
+            if (File.Exists(installed))
+                return installed;
+
+            var onPath = ResolveOnPath(exe);
+            if (onPath != null)
+                return onPath;
+
+            return Environment.ProcessPath ?? exe;
+        }
+    }
+
+    /// <summary>First <paramref name="exe"/> found across PATH entries, or null.
+    /// Returns the PATH-relative location verbatim (a symlink is NOT resolved),
+    /// mirroring `which` — so package-manager wrappers stay version-stable.</summary>
+    private static string? ResolveOnPath(string exe)
+    {
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(pathEnv)) return null;
+        foreach (var dir in pathEnv.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrEmpty(dir)) continue;
+            string candidate;
+            try { candidate = Path.Combine(dir, exe); } catch { continue; }
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
+>>>>>>> upstream/main
     /// <summary>Returns true if the target was recognized; false on unknown
     /// target (so the CLI can surface a non-zero exit code).</summary>
     public static bool Install(string target)
@@ -60,7 +114,11 @@ public static class McpInstaller
                 UninstallLmStudio();
                 return true;
             case "claude" or "claude-code":
+<<<<<<< HEAD
                 UninstallJson("claude", GetClaudeSettingsPath(), "mcpServers");
+=======
+                UninstallClaude();
+>>>>>>> upstream/main
                 return true;
             case "cursor":
                 UninstallJson("cursor", GetCursorMcpPath(), "mcpServers");
@@ -117,11 +175,101 @@ public static class McpInstaller
 
     // ==================== Claude Code ====================
 
-    private static string GetClaudeSettingsPath() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "settings.json");
+    // Claude Code reads user-scoped MCP servers from ~/.claude.json (top-level
+    // "mcpServers"), NOT from ~/.claude/settings.json — settings.json has no
+    // mcpServers key and Claude Code silently ignores it (the server never
+    // appears in `claude mcp list`). This is the same file `claude mcp add -s
+    // user` writes to, which is why the status check reads it directly.
+    private static string GetClaudeConfigPath() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude.json");
 
-    private static void InstallClaude() =>
-        InstallJson("Claude Code", GetClaudeSettingsPath(), "mcpServers");
+    // Prefer the official `claude` CLI: it owns ~/.claude.json's format and
+    // handles concurrent writes from a running Claude Code instance — unlike
+    // the static config files of the other targets, ~/.claude.json is live
+    // state we don't own. Fall back to a direct write only when `claude` isn't
+    // on PATH, so registration still works without the CLI installed.
+    private static void InstallClaude()
+    {
+        // Idempotent re-register: drop any stale entry first so re-running picks
+        // up the current binary path (`claude mcp add` errors if the name
+        // exists). A false return means `claude` isn't on PATH → fall back.
+        if (!TryClaudeCli(["mcp", "remove", "-s", "user", "officecli"], out _, out _, out _))
+        {
+            InstallJson("Claude Code", GetClaudeConfigPath(), "mcpServers");
+            return;
+        }
+
+        if (TryClaudeCli(["mcp", "add", "-s", "user", "officecli", "--", OfficecliPath, "mcp"],
+                out var stdout, out var stderr, out var code) && code == 0)
+        {
+            Console.WriteLine("Registered officecli MCP in Claude Code.");
+            Console.WriteLine("  Via: claude mcp add -s user (config: ~/.claude.json)");
+            return;
+        }
+
+        var msg = (string.IsNullOrWhiteSpace(stderr) ? stdout : stderr).Trim();
+        if (msg.Length > 0)
+            Console.Error.WriteLine($"  claude CLI present but `mcp add` failed: {msg}");
+        Console.Error.WriteLine("  Falling back to direct ~/.claude.json write.");
+        InstallJson("Claude Code", GetClaudeConfigPath(), "mcpServers");
+    }
+
+    private static void UninstallClaude()
+    {
+        // `claude mcp remove` returns non-zero when no such server exists; in
+        // that case still sweep ~/.claude.json directly, covering entries an
+        // older officecli wrote without the CLI.
+        if (TryClaudeCli(["mcp", "remove", "-s", "user", "officecli"], out _, out _, out var code)
+            && code == 0)
+        {
+            Console.WriteLine("Removed officecli MCP from Claude Code.");
+            return;
+        }
+        UninstallJson("Claude Code", GetClaudeConfigPath(), "mcpServers");
+    }
+
+    /// <summary>Runs `claude` with the given args. Returns false only when the
+    /// process could not be started (claude not on PATH); true otherwise, with
+    /// the captured streams and exit code.</summary>
+    private static bool TryClaudeCli(string[] args, out string stdout, out string stderr, out int exitCode)
+    {
+        stdout = ""; stderr = ""; exitCode = -1;
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "claude",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
+                UseShellExecute = false,
+            };
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi);
+            if (p == null) return false;
+            // Async-drain both streams and bound the wait: the serial
+            // ReadToEnd pair deadlocked when the child CLI interleaved large
+            // stderr output with stdout, and the unbounded WaitForExit hung
+            // officecli for as long as the child lived.
+            var outTask = p.StandardOutput.ReadToEndAsync();
+            var errTask = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(30_000))
+            {
+                try { p.Kill(true); } catch { }
+                return false;
+            }
+            stdout = outTask.Result;
+            stderr = errTask.Result;
+            exitCode = p.ExitCode;
+            return true;
+        }
+        catch
+        {
+            return false; // claude not found / not executable
+        }
+    }
 
     // ==================== Cursor ====================
 
@@ -236,14 +384,17 @@ public static class McpInstaller
                 {
                     if (prop.Name == serversKey && prop.Value.ValueKind == JsonValueKind.Object)
                     {
+                        // Drop the serversKey entirely if officecli was the only
+                        // server — avoid leaving an empty "mcpServers": {} residue.
+                        var remaining = prop.Value.EnumerateObject()
+                            .Where(s => s.Name != "officecli").ToList();
+                        if (remaining.Count == 0)
+                            continue;
                         w.WriteStartObject(serversKey);
-                        foreach (var server in prop.Value.EnumerateObject())
+                        foreach (var server in remaining)
                         {
-                            if (server.Name != "officecli")
-                            {
-                                w.WritePropertyName(server.Name);
-                                server.Value.WriteTo(w);
-                            }
+                            w.WritePropertyName(server.Name);
+                            server.Value.WriteTo(w);
                         }
                         w.WriteEndObject();
                     }
@@ -274,7 +425,7 @@ public static class McpInstaller
         CheckStatus("LM Studio", Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".cache", "lm-studio", "extensions", "plugins", "mcp", "officecli", "manifest.json"));
-        CheckJsonStatus("Claude Code", GetClaudeSettingsPath());
+        CheckJsonStatus("Claude Code", GetClaudeConfigPath());
         CheckJsonStatus("Cursor", GetCursorMcpPath());
         CheckJsonStatus("VS Code", GetVsCodeMcpPath());
 

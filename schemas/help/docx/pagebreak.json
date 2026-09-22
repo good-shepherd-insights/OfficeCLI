@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "pagebreak",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["break", "columnbreak"],
+>>>>>>> upstream/main
   "parent": "paragraph|body",
   "operations": {
     "add": true,

@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "equation",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["formula", "math"],
+>>>>>>> upstream/main
   "parent": "slide|shape",
   "operations": {
     "add": true,

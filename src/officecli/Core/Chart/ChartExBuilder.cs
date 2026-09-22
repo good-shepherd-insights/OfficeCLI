@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -167,8 +171,23 @@ internal static partial class ChartExBuilder
                         new CX.Formula($"Sheet1!${seriesNameCol}$1"),
                         new CX.VXsdstring(seriesData[si].name))));
 
+<<<<<<< HEAD
                 // Per-series solid fill
                 if (seriesColors != null && si < seriesColors.Length && !string.IsNullOrEmpty(seriesColors[si]))
+=======
+                // CONSISTENCY(chart-series-color): a single-series cx chart
+                // (funnel / treemap / sunburst) with a multi-colour palette
+                // paints each DATA POINT individually — mirrors the cChart
+                // single-series → per-point dPt rule. With >1 series the palette
+                // is one colour per series (below).
+                bool perPointColors = seriesData.Count == 1
+                    && seriesColors != null && seriesColors.Length > 1;
+
+                // Per-series solid fill (skipped when per-point colouring drives
+                // the palette, so the series-level fill doesn't mask the points).
+                if (!perPointColors && seriesColors != null && si < seriesColors.Length
+                    && !string.IsNullOrEmpty(seriesColors[si]))
+>>>>>>> upstream/main
                 {
                     var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(seriesColors[si]);
                     series.AppendChild(new CX.ShapeProperties(
@@ -184,6 +203,28 @@ internal static partial class ChartExBuilder
                 if (!string.IsNullOrEmpty(seriesShadow))
                     ApplyCxSeriesShadow(series, seriesShadow);
 
+<<<<<<< HEAD
+=======
+                // Per-point fills. Schema order: … spPr → valueColors →
+                // valueColorPositions → dataPt* → dataLabels → …, so these
+                // append after any series spPr and before the data labels.
+                if (perPointColors)
+                {
+                    var pointCount = seriesData[si].values.Length;
+                    for (int pi = 0; pi < pointCount; pi++)
+                    {
+                        var c = seriesColors![pi % seriesColors.Length];
+                        if (string.IsNullOrEmpty(c)) continue;
+                        var (prgb, _) = ParseHelpers.SanitizeColorForOoxml(c);
+                        var dp = new CX.DataPoint { Idx = (uint)pi };
+                        dp.AppendChild(new CX.ShapeProperties(
+                            new Drawing.SolidFill(
+                                new Drawing.RgbColorModelHex { Val = prgb })));
+                        series.AppendChild(dp);
+                    }
+                }
+
+>>>>>>> upstream/main
                 // Data labels (value count above each bar). chartEx data
                 // labels do NOT carry a `pos` attribute on funnels/treemaps/
                 // sunburst — emitting OutEnd causes PowerPoint to treat the
@@ -486,7 +527,35 @@ internal static partial class ChartExBuilder
         var effects = new Drawing.EffectList();
         effects.AppendChild(DrawingEffectsHelper.BuildOuterShadow(
             value, DrawingEffectsHelper.BuildRgbColor));
+<<<<<<< HEAD
         rPr.AppendChild(effects);
+=======
+        // CT_TextCharacterProperties order: ln, fill, effectLst|effectDag,
+        // highlight, uLn/u, strike, latin, ea, cs, sym, hlinkClick,
+        // hlinkMouseOver, rtl, extLst. effectLst MUST precede the
+        // highlight/underline/latin/ea/cs group — appending after latin
+        // makes the validator report "unexpected child element
+        // 'a:effectLst'". Insert before the first element that schema-orders
+        // after effectLst.
+        OpenXmlElement? insertBefore =
+            (OpenXmlElement?)rPr.GetFirstChild<Drawing.Highlight>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.UnderlineFollowsText>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.Underline>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.UnderlineFill>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.UnderlineFillText>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.LatinFont>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.EastAsianFont>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.ComplexScriptFont>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.SymbolFont>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.HyperlinkOnClick>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.HyperlinkOnHover>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.RightToLeft>()
+            ?? (OpenXmlElement?)rPr.GetFirstChild<Drawing.ExtensionList>();
+        if (insertBefore != null)
+            rPr.InsertBefore(effects, insertBefore);
+        else
+            rPr.AppendChild(effects);
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -556,6 +625,7 @@ internal static partial class ChartExBuilder
         }
         spPr.RemoveAllChildren<Drawing.SolidFill>();
         spPr.RemoveAllChildren<Drawing.NoFill>();
+<<<<<<< HEAD
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
             spPr.PrependChild(new Drawing.NoFill());
@@ -564,6 +634,14 @@ internal static partial class ChartExBuilder
         var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
         spPr.PrependChild(new Drawing.SolidFill(
             new Drawing.RgbColorModelHex { Val = rgb }));
+=======
+        spPr.RemoveAllChildren<Drawing.GradientFill>();
+        spPr.RemoveAllChildren<Drawing.PatternFill>();
+        // Share the cChart fill vocabulary: solid, "c1-c2[:angle]" gradient,
+        // "pattern:..." or "none". Previously cx accepted only a solid color
+        // (SanitizeColorForOoxml rejected the gradient spec regular charts take).
+        spPr.PrependChild(ChartHelper.BuildFillElement(value));
+>>>>>>> upstream/main
     }
 
     /// <summary>

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -73,7 +77,14 @@ public partial class WordHandler
 
             sb.Append($"<div style=\"margin:0.5em 0;text-align:center\">");
             if (!string.IsNullOrEmpty(info.Title))
-                sb.Append($"<div style=\"font-weight:bold;margin-bottom:4px;font-size:{info.TitleFontSize}\">{HtmlEncode(info.Title)}</div>");
+            {
+                double.TryParse(info.TitleFontSize.Replace("pt", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var wTitlePt);
+                sb.Append($"<div style=\"font-weight:bold;margin-bottom:4px;font-size:{info.TitleFontSize}\">{ChartSvgRenderer.BuildTitleInnerHtml(info, "inherit", info.TitleBold, wTitlePt > 0 ? wTitlePt : 12)}</div>");
+            }
+
+            // Top legend prints above the SVG, side legends share a flex row.
+            if (info.HasLegend && legendAbove)
+                renderer.RenderLegendHtml(sb, info, "#333");
 
             // Top legend prints above the SVG, side legends share a flex row.
             if (info.HasLegend && legendAbove)
@@ -150,7 +161,14 @@ public partial class WordHandler
 
             sb.Append("<div style=\"margin:0.5em 0;text-align:center\">");
             if (!string.IsNullOrEmpty(info.Title))
+<<<<<<< HEAD
                 sb.Append($"<div style=\"font-weight:bold;margin-bottom:4px;font-size:{info.TitleFontSize}\">{HtmlEncode(info.Title)}</div>");
+=======
+            {
+                double.TryParse(info.TitleFontSize.Replace("pt", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var wTitlePt);
+                sb.Append($"<div style=\"font-weight:bold;margin-bottom:4px;font-size:{info.TitleFontSize}\">{ChartSvgRenderer.BuildTitleInnerHtml(info, "inherit", info.TitleBold, wTitlePt > 0 ? wTitlePt : 12)}</div>");
+            }
+>>>>>>> upstream/main
             sb.Append($"<svg width=\"{svgW}\" height=\"{chartSvgH}\" xmlns=\"http://www.w3.org/2000/svg\" style=\"background:white;\">");
             renderer.RenderChartSvgContent(sb, info, svgW, chartSvgH);
             sb.Append("</svg>");

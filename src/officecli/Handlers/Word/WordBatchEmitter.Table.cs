@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using OfficeCli.Core;
@@ -64,6 +68,44 @@ public static partial class WordBatchEmitter
         return null;
     }
 
+<<<<<<< HEAD
+=======
+    // BUG-DUMP-H84: true when the table has a ROW-LEVEL <w:sdt> — a content
+    // control that is a DIRECT child of <w:tbl> (sibling of <w:tr>), wrapping one
+    // or more rows. The canonical case is a <w15:repeatingSection> form template
+    // (often with a <w15:repeatingSectionItem> SDT per row). EmitTable enumerates
+    // bare <w:tr> children and has no carrier for such a wrapper, so it would be
+    // silently flattened to a static table. Depth-scan mirrors
+    // EnumerateCellDirectChildren: the <w:tbl> wrapper is depth 0, its direct
+    // children at depth 0; a <w:sdt> seen at depth 0 is row-level (a cell-level
+    // SDT sits inside <w:tc>, depth > 0, and must NOT trigger this).
+    private static bool TableHasRowLevelSdt(string? tblXml)
+    {
+        if (string.IsNullOrEmpty(tblXml)
+            || !tblXml!.Contains("<w:sdt", StringComparison.Ordinal))
+            return false;
+        int depth = -1;
+        bool seenWrapper = false;
+        foreach (System.Text.RegularExpressions.Match m in
+                 System.Text.RegularExpressions.Regex.Matches(
+                     tblXml!, @"<(/?)w:([A-Za-z]+)\b[^>]*?(/?)>"))
+        {
+            var closing = m.Groups[1].Value == "/";
+            var name = m.Groups[2].Value;
+            var selfClose = m.Groups[3].Value == "/";
+            if (!seenWrapper)
+            {
+                if (!closing) { seenWrapper = true; depth = 0; }
+                continue;
+            }
+            if (closing) { depth--; continue; }
+            if (depth == 0 && name == "sdt") return true;
+            if (!selfClose) depth++;
+        }
+        return false;
+    }
+
+>>>>>>> upstream/main
     private static void EmitTable(WordHandler word, string sourcePath, int targetIndex,
                                   List<BatchItem> items, BodyEmitContext? ctx = null,
                                   string? parentTablePath = null,
@@ -83,6 +125,55 @@ public static partial class WordBatchEmitter
         if (ctx != null) tableOrdinal = ++ctx.TableOrdinalBox[0];
 
         var tableNode = word.Get(sourcePath);
+<<<<<<< HEAD
+=======
+
+        // BUG-DUMP-H84: a table whose rows are wrapped by a row-level <w:sdt>
+        // (a <w15:repeatingSection> form template / per-row repeatingSectionItem)
+        // can't round-trip through the typed `add table` path below — EmitTable
+        // enumerates bare <w:tr> children and has no carrier for the wrapping
+        // control, so the repeating-section structure was silently flattened to a
+        // static table (markers 1→0, no warning). Route the whole <w:tbl> verbatim
+        // via raw-set, mirroring the rich block-SDT path (EmitSdt). Restricted to
+        // body tables with no external relationship (the common form-template
+        // shape — verbatim injection can't recreate dangling rels); other cases
+        // warn and fall through (rows + content survive as a static table, no
+        // longer a silent loss).
+        var tblRawXml = word.RawElementXml(sourcePath);
+        if (!string.IsNullOrEmpty(tblRawXml) && TableHasRowLevelSdt(tblRawXml))
+        {
+            if (containerPath == "/body" && !HasExternalRelRef(tblRawXml!))
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "raw-set",
+                    Part = "/document",
+                    Xpath = "//w:body/w:sectPr",
+                    Action = "insertbefore",
+                    Xml = tblRawXml!
+                });
+                // CONSISTENCY(tbl-ordinal): the verbatim table (and any nested
+                // <w:tbl> in its cells) ships WITHOUT routing through EmitTable, so
+                // EmitTable's `++TableOrdinalBox` (line above) counted only the
+                // outer table. Bump by the shipped XML's remaining table count so
+                // later `(//w:tbl)[N]` selectors stay in lockstep with replay.
+                // Mirrors the EmitSdt verbatim / textbox carrier adjustment.
+                if (ctx != null)
+                {
+                    int shipped = System.Text.RegularExpressions.Regex
+                        .Matches(tblRawXml!, "<w:tbl[ >]").Count;
+                    if (shipped > 1) ctx.TableOrdinalBox[0] += shipped - 1;
+                }
+                return;
+            }
+            ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                Element: "table.rowSdt",
+                Path: sourcePath,
+                Reason: "table rows wrapped by a content control (e.g. repeatingSection) — the wrapping control is dropped on dump→batch; the rows and their content are preserved as a static table"));
+            // fall through to the typed table emit (content survives)
+        }
+
+>>>>>>> upstream/main
         var rows = (tableNode.Children ?? new List<DocumentNode>())
             .Where(c => c.Type == "row")
             .ToList();
@@ -147,6 +238,41 @@ public static partial class WordBatchEmitter
         // "element already has a pending tblPrChange" guard.
         tableProps.Remove("tblPrChange.author");
         tableProps.Remove("tblPrChange.date");
+<<<<<<< HEAD
+=======
+        // BUG-R24-TBLLOOK: the table node surfaces BOTH the authoritative hex
+        // tblLook bitmask AND the decomposed boolean facets (firstRow / lastRow /
+        // … — emitted only for the facets that are ON, see Navigation BUG-R3-01).
+        // Forwarding both to AddTable produces a MIXED
+        // <w:tblLook w:val="04A0" w:firstRow="true" w:firstColumn="true" …/> that
+        // lists only the enabled facets and omits the disabled ones. Word DEFAULTS
+        // an omitted tblLook facet to ON, so a table whose source explicitly
+        // disabled lastRow (w:lastRow="0") had the last-row conditional style
+        // (e.g. a GridTable lastRow bold) wrongly applied on rebuild — the last
+        // row rendered bold and reflowed. The hex val encodes every facet
+        // authoritatively and Word reads it correctly on its own, so drop the
+        // redundant decomposed keys and let the bare val drive AddTable.
+        if (tableProps.ContainsKey("tblLook"))
+        {
+            tableProps.Remove("firstRow");
+            tableProps.Remove("lastRow");
+            tableProps.Remove("firstCol");
+            tableProps.Remove("lastCol");
+            tableProps.Remove("bandedRows");
+            tableProps.Remove("bandedCols");
+        }
+        else
+        {
+            // BUG-DUMP-TBLLOOK-INJECT: source <w:tblPr> had no <w:tblLook>.
+            // AddTable's style-case seeds a default 04A0 (firstRow+firstColumn)
+            // so interactive `add table style=…` applies built-in banding — but
+            // on replay that injects first-row/first-column conditional
+            // formatting onto a table whose source never had a tblLook, shifting
+            // every styled table's first row/column. Signal AddTable to leave
+            // tblLook absent. Mirrors the gridCols=0 / skipTblW opt-out flags.
+            tableProps["skipTblLook"] = "true";
+        }
+>>>>>>> upstream/main
         tableProps["rows"] = rows.Count.ToString();
         tableProps["cols"] = cols.ToString();
         // Source had no <w:tblGrid> or an empty one — cells (if any) carry
@@ -237,6 +363,7 @@ public static partial class WordBatchEmitter
             }
             else if (presentSides < 6 && !hasBorderAll)
             {
+<<<<<<< HEAD
                 // Use the canonical "style;size" form: ApplyTableBorders'
                 // ParseBorderValue defaults size=4 for `none`, so writing
                 // `none;4` matches what the round-trip produces (six explicit
@@ -245,6 +372,29 @@ public static partial class WordBatchEmitter
                 // and the SECOND dump emits `border=none;4` — non-idempotent
                 // value shape.
                 tableProps["border"] = "none;4";
+=======
+                // BUG-BORDER-NONE-INJECT: source <w:tblBorders> defined only a
+                // SUBSET of the six sides (e.g. just insideH on a horizontal-
+                // rule table), or had no <w:tblBorders> at all. The absent
+                // sides emit no key — Word leaves them undefined, which on a
+                // style-less table renders as no line. The old fix prepended a
+                // `border=none;4` all-sides wipe so AddTable's default 6-single
+                // seed wouldn't paint a generic grid; but that FABRICATES five
+                // explicit <w:none> sides the source never had. Visually
+                // identical (none == absent on a style-less table), yet a
+                // re-dump reads the stamped none sides back as five extra
+                // per-side `border.*=none;4` rows the first dump didn't emit —
+                // a non-idempotent +5/+6 length asymmetry per table (frc tbl0:
+                // insideH-only → 5 spurious none rows on the second dump).
+                //
+                // Suppress AddTable's default-border seed instead, so the
+                // absent sides stay absent in the rebuilt XML, byte-matching
+                // the source. The real per-side keys still overlay via
+                // ApplyTableBorders. Same mechanism the styled-table branch
+                // above already uses — extended to the style-less subset case.
+                // CONSISTENCY(border-default-overlay).
+                tableProps["skipDefaultBorders"] = "true";
+>>>>>>> upstream/main
             }
             // Symmetric collapse: when all 6 sides carry the IDENTICAL folded
             // value (same style + sz + color + space), prefer the compact
@@ -331,12 +481,36 @@ public static partial class WordBatchEmitter
             var tblPrBeforeXml = TryStringFormat(tableNode.Format, "tblPrChange.beforeXml");
             if (tblPrBeforeXml != null)
                 tableSetProps["revision.beforeXml"] = tblPrBeforeXml;
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R71-TBLPREX-CASCADE: suppress the apply-side per-row
+            // tblPrEx cascade. That cascade is an interactive Mac-Word
+            // visibility hack; on round-trip the source's real per-row tblPrEx
+            // already replay verbatim via per-row `set tr --prop tblPrEx`, so
+            // letting the cascade also run injects spurious tblPrEx into every
+            // row (tables with a table-level tblPrChange but no per-row
+            // exceptions went 0 → rows×2 tblPrEx and failed validation).
+            tableSetProps["revision.skipRowCascade"] = "true";
+>>>>>>> upstream/main
         }
         else
         {
             tableAddProps = tableProps;
         }
 
+<<<<<<< HEAD
+=======
+        // Pin the column direction explicitly. AddTable's interactive
+        // convenience auto-stamps <w:bidiVisual/> when the surrounding
+        // context is RTL and no direction was passed — correct for a user
+        // typing `add table` into an Arabic document, wrong for replay: a
+        // source table WITHOUT bidiVisual (LTR columns inside an RTL doc)
+        // came back visually mirrored. The reader emits direction=rtl only
+        // when bidiVisual is present, so absence here means LTR — say so.
+        if (!tableAddProps.ContainsKey("direction"))
+            tableAddProps["direction"] = "ltr";
+
+>>>>>>> upstream/main
         items.Add(new BatchItem
         {
             Command = "add",
@@ -346,7 +520,11 @@ public static partial class WordBatchEmitter
         });
 
         // BUG-R3 (nested-table multi-instance): a single cell may hold MORE
+<<<<<<< HEAD
         // THAN ONE nested table stacked back-to-back (LibreOffice export
+=======
+        // THAN ONE nested table stacked back-to-back (some editors' export
+>>>>>>> upstream/main
         // splits a logical table across several <w:tbl> siblings). The old
         // `tbl[1]` target hardcoded the FIRST nested table for every nested
         // emit, so the 2nd..Nth tables' per-cell `set tc[K]` ops resolved
@@ -378,7 +556,25 @@ public static partial class WordBatchEmitter
         // schema order on save, so append is safe. Only emitted when the grid
         // doesn't already carry a tblGridChange from a width-Set side effect
         // (the snapshot here is the authoritative source state).
+<<<<<<< HEAD
         if (containerPath == "/body"
+=======
+        // BUG-DUMP-R71-TBLGRIDCHANGE-DUP: when the table also carries a
+        // tracked table-properties change (hasTblPrChange), the follow-up
+        // `set` step replays the source colWidths under track-changes, and the
+        // colWidths-Set-under-revision side effect ALREADY re-creates the
+        // <w:tblGridChange> in the grid (see RestorePropsFromChange/gridChange
+        // in Set.Revision.cs). Appending the verbatim snapshot here too then
+        // duplicates it — two <w:tblGridChange> in one <w:tblGrid>, which
+        // CT_TblGrid (gridCol* + tblGridChange?) rejects. Only emit the raw-set
+        // append when the set side effect won't produce one (no tblPrChange, or
+        // no colWidths to drive the grid change).
+        bool gridChangeFromSetSideEffect = hasTblPrChange
+            && tableSetProps != null
+            && (tableSetProps.ContainsKey("colWidths") || tableSetProps.ContainsKey("colwidths"));
+        if (containerPath == "/body"
+            && !gridChangeFromSetSideEffect
+>>>>>>> upstream/main
             && tableNode.Format.TryGetValue("tblGridChange.xml", out var gridChangeRaw)
             && gridChangeRaw?.ToString() is { Length: > 0 } gridChangeXml)
         {
@@ -433,12 +629,31 @@ public static partial class WordBatchEmitter
                 // EmitParagraph's inline raw-set fallbacks (rich field result,
                 // nested SDT, VML textbox) to append verbatim content into the
                 // correct cell instead of falling back to the lossy typed emit.
+<<<<<<< HEAD
                 // Only carried for /document-hosted (body) tables — the same
                 // restriction the cell-SDT raw-set's rawPart uses; header/footer
                 // -hosted cell raw-set targeting is out of scope this round.
                 string? cellRawXPath = containerPath == "/body"
                     ? $"(//w:tbl)[{tableOrdinal}]/w:tr[{r + 1}]/w:tc[{c + 1}]"
                     : null;
+=======
+                // BUG-DUMP-R35-HFCELL: carried for body AND header/footer-hosted
+                // tables. For a header/footer part the hfCtx's TableOrdinalBox is
+                // fresh per part, so `(//w:tbl)[tableOrdinal]` is the part-local
+                // DFS index the raw-set resolves against (same form the cell-SDT
+                // block raw-set already uses with rawPart=containerPath). The
+                // owning part travels alongside in cellRawPart so the cell raw-set
+                // sites below — and ResolveRawSetHost for inline SDTs — target the
+                // header/footer part instead of hardcoding "/document". Other
+                // containers (footnote/endnote parts threaded as "/body") keep the
+                // body form; their cell raw-set targeting is unchanged.
+                bool cellRawAddressable = containerPath == "/body"
+                    || IsHeaderFooterHost(containerPath);
+                string? cellRawXPath = cellRawAddressable
+                    ? $"(//w:tbl)[{tableOrdinal}]/w:tr[{r + 1}]/w:tc[{c + 1}]"
+                    : null;
+                string cellRawPart = containerPath == "/body" ? "/document" : containerPath;
+>>>>>>> upstream/main
 
                 // Cell-level tcPr properties (fill, valign, width, borders,
                 // padding, colspan, …) are surfaced on cellNode.Format but
@@ -481,12 +696,28 @@ public static partial class WordBatchEmitter
                 // BUG-DUMP-R32-3: re-apply a <w:cellMerge> tracked-change marker
                 // (cell split/merge under Track Changes) verbatim. It is not a
                 // curated tcPr Set key, so it round-trips via raw-set into the
+<<<<<<< HEAD
                 // cell's <w:tcPr>. The SDK reorders tcPr children to schema order
                 // on save, so appending is safe regardless of insertion point.
                 // When the cell already got a tcPr from the cellProps `set` above
                 // (emitted earlier in item order), append into that existing
                 // tcPr; otherwise wrap the marker in a fresh <w:tcPr> appended to
                 // the cell. Guarded to body-hosted tables (cellRawXPath != null),
+=======
+                // cell's <w:tcPr>. Appending INTO an existing tcPr is safe
+                // (cellMerge ranks near the end of CT_TcPr), but a fresh tcPr
+                // must be PREPENDED to the cell: CT_Tc requires tcPr as the
+                // first child, and raw-set does not reorder tc children —
+                // appending placed it after <w:p>, which the schema validator
+                // rejects ("unexpected child element tcPr").
+                // CONSISTENCY(tcpr-first): mirrors the
+                // `cell.PrependChild(new TableCellProperties())` pattern used
+                // by every tcPr-creation site in Add.Table/Set.Element.
+                // When the cell already got a tcPr from the cellProps `set` above
+                // (emitted earlier in item order), append into that existing
+                // tcPr; otherwise wrap the marker in a fresh <w:tcPr> prepended
+                // to the cell. Guarded to body-hosted tables (cellRawXPath != null),
+>>>>>>> upstream/main
                 // matching the cell-SDT raw-set restriction; header/footer cells
                 // emit a warning instead so the loss is never silent.
                 if (cellNode.Format.TryGetValue("cellMerge.xml", out var cellMergeRaw)
@@ -499,7 +730,11 @@ public static partial class WordBatchEmitter
                             ? new BatchItem
                             {
                                 Command = "raw-set",
+<<<<<<< HEAD
                                 Part = "/document",
+=======
+                                Part = cellRawPart,
+>>>>>>> upstream/main
                                 Xpath = $"{cellRawXPath}/w:tcPr",
                                 Action = "append",
                                 Xml = cellMergeXml,
@@ -507,9 +742,15 @@ public static partial class WordBatchEmitter
                             : new BatchItem
                             {
                                 Command = "raw-set",
+<<<<<<< HEAD
                                 Part = "/document",
                                 Xpath = cellRawXPath,
                                 Action = "append",
+=======
+                                Part = cellRawPart,
+                                Xpath = cellRawXPath,
+                                Action = "prepend",
+>>>>>>> upstream/main
                                 Xml = $"<w:tcPr>{cellMergeXml}</w:tcPr>",
                             });
                     }
@@ -537,6 +778,28 @@ public static partial class WordBatchEmitter
                 int cellParaIdx = 0;
                 int nestedTblIdx = 0;
                 bool firstParaSeen = false;
+<<<<<<< HEAD
+=======
+                bool cellSdtLeftSeed = false; // BUG-DUMP-R36-CELLSDT: SDT raw-set ahead of the cell's auto-seed paragraph
+                // BUG-DUMP-CELLSDT-TRAILP: the typed `add sdt` path (plain /
+                // text-shaped block SDT) CONSUMES the cell's auto-seed paragraph,
+                // unlike the raw-set insert-before-seed path (cellSdtLeftSeed)
+                // which preserves it. When the seed is consumed before any real
+                // paragraph claims it, a following sibling paragraph must be a
+                // fresh `add p` — otherwise it inherits autoPresent=true and its
+                // `set p[last()]` targets a paragraph that no longer exists, the
+                // step fails, and the trailing cell paragraph is silently dropped.
+                bool cellSdtConsumedSeed = false;
+                // BUG-DUMP-CELLSDT-2ND: EmitCellSdt's `cellHasContent` decides
+                // insert-before-the-auto-seed (false) vs append (true). It was fed
+                // `firstParaSeen`, which only tracks PARAGRAPHS — so a second SDT
+                // after a first SDT (or after a nested table) still tried to insert
+                // before the cell's seed <w:p>, but that seed was already consumed
+                // (typed `add sdt`) or displaced, so the raw-set targeted a missing
+                // paragraph and the SDT was dropped. Track ANY emitted cell content
+                // (paragraph / table / SDT) so a non-leading SDT appends instead.
+                bool cellHasAnyContent = false;
+>>>>>>> upstream/main
 
                 // BUG-DUMP-R27-6: a block-level <w:customXml> wrapper that is a
                 // DIRECT cell child is omitted from cellNode.Children (Navigation
@@ -573,6 +836,21 @@ public static partial class WordBatchEmitter
                     break;
                 }
 
+<<<<<<< HEAD
+=======
+                // Cross-paragraph field spans INSIDE this cell (a TOC whose
+                // fldChar begin lives in the first cell paragraph and its end
+                // paragraphs later). The per-paragraph field collapse cannot
+                // pair them, so the begin chain was warn-dropped and the end
+                // silently filtered — the rebuilt TOC lost its field wrapper
+                // (entries restyled as bare hyperlinks, lead text duplicated).
+                // Mirror the body-level span machinery: raw-set each member
+                // paragraph verbatim into the cell.
+                var cellSpanParas = cellRawXPath != null
+                    ? GetCellCrossParagraphFieldParaOrdinals(word, cellChildren)
+                    : new HashSet<int>();
+
+>>>>>>> upstream/main
                 if (!cellHasCustomXml)
                 for (int k = 0; k < cellChildren.Count; k++)
                 {
@@ -580,6 +858,32 @@ public static partial class WordBatchEmitter
                     if (cc.Type == "paragraph" || cc.Type == "p")
                     {
                         cellParaIdx++;
+<<<<<<< HEAD
+=======
+                        if (cellSpanParas.Contains(cellParaIdx))
+                        {
+                            var rawSpanP = word.GetElementXml(cc.Path);
+                            if (!string.IsNullOrEmpty(rawSpanP) && !HasExternalRelRef(rawSpanP))
+                            {
+                                var rawSpanPart = containerPath == "/body" ? "/document" : containerPath;
+                                items.Add(new BatchItem
+                                {
+                                    Command = "raw-set",
+                                    Part = rawSpanPart,
+                                    // The first cell paragraph replaces the
+                                    // seeded empty paragraph AddTable created;
+                                    // later members append after it.
+                                    Xpath = firstParaSeen ? cellRawXPath! : $"{cellRawXPath}/w:p[1]",
+                                    Action = firstParaSeen ? "append" : "replace",
+                                    Xml = rawSpanP
+                                });
+                                firstParaSeen = true;
+                                continue;
+                            }
+                            // Unresolvable (external rel inside the span):
+                            // fall through to the typed emit and its warning.
+                        }
+>>>>>>> upstream/main
                         // BUG-R4 (DBF-R4-02): a display equation (<m:oMathPara>)
                         // inside a cell surfaces here as a plain paragraph child
                         // whose Get returns an empty paragraph — EmitParagraph
@@ -592,37 +896,93 @@ public static partial class WordBatchEmitter
                         var cellEq = word.TryGetDisplayEquationAtParagraph(cc.Path);
                         if (cellEq != null)
                         {
+<<<<<<< HEAD
                             bool eqIsTrailingAutoP = k == trailingAutoP;
                             // First cell paragraph (or the SDK auto-trailing one)
                             // reuses an auto-present seeded paragraph; otherwise
                             // create a fresh host paragraph for the equation.
                             if (firstParaSeen && !eqIsTrailingAutoP)
+=======
+                            // BUG-DUMP-CELLEQ-NESTEDTBL: match the plain-paragraph
+                            // trailing-auto-p test — an equation paragraph directly
+                            // after a nested table reuses the empty paragraph the
+                            // SDK seeds AFTER that table, exactly like a plain
+                            // paragraph does. The old test (k == trailingAutoP only)
+                            // missed the equation when it wasn't the cell's LAST
+                            // paragraph.
+                            bool eqIsTrailingAutoP = k == trailingAutoP
+                                || (k > 0 && cellChildren[k - 1].Type == "table");
+                            // First cell paragraph (or the SDK auto-trailing one)
+                            // reuses an auto-present seeded paragraph; otherwise
+                            // create a fresh host paragraph for the equation.
+                            if ((firstParaSeen || cellSdtConsumedSeed) && !eqIsTrailingAutoP)
+>>>>>>> upstream/main
                                 items.Add(new BatchItem
                                 {
                                     Command = "add",
                                     Parent = cellTargetPath,
                                     Type = "paragraph",
                                 });
+<<<<<<< HEAD
                             EmitCellDisplayEquation(cellEq,
                                 $"{cellTargetPath}/p[{cellParaIdx}]", items);
                             firstParaSeen = true;
                             continue;
                         }
                         bool isTrailingAutoP = k == trailingAutoP;
+=======
+                            // When reusing the post-table trailing paragraph, target
+                            // p[last()] — NOT p[cellParaIdx]. For a [nested-table,
+                            // equation] cell, p[cellParaIdx] resolves to the cell's
+                            // leading outer-seed paragraph, which the nested-lead
+                            // `remove p[1]` then deletes, silently dropping the
+                            // equation. p[last()] is the seeded trailing paragraph
+                            // that survives (mirrors how a plain paragraph after a
+                            // nested table reuses it via set p[last()]).
+                            var eqTargetPath = eqIsTrailingAutoP
+                                ? $"{cellTargetPath}/p[last()]"
+                                : $"{cellTargetPath}/p[{cellParaIdx}]";
+                            EmitCellDisplayEquation(word, cellEq, eqTargetPath, items);
+                            firstParaSeen = true;
+                            cellHasAnyContent = true;
+                            continue;
+                        }
+                        // The FIRST paragraph after ANY nested table is also
+                        // auto-present: at replay time `add table` momentarily
+                        // leaves the cell ending in a table, so AddTable seeds
+                        // an empty paragraph right after it. A plain `add p`
+                        // then stacked a second paragraph and every following
+                        // block shifted down (an extra blank line per nested
+                        // table, eventually reflowing pages).
+                        bool isTrailingAutoP = k == trailingAutoP
+                            || (k > 0 && cellChildren[k - 1].Type == "table");
+>>>>>>> upstream/main
                         // BUG-DUMP-R26-7: publish THIS cell's raw-set XPath so the
                         // paragraph's inline raw-set fallbacks target the right
                         // cell. Re-set per paragraph because a preceding nested
                         // table recursion overwrote the box with its own cell.
+<<<<<<< HEAD
                         if (ctx != null) ctx.CurrentCellXPathBox[0] = cellRawXPath;
                         EmitParagraph(word, cc.Path, cellTargetPath, cellParaIdx, items,
                                       autoPresent: !firstParaSeen || isTrailingAutoP, ctx);
                         firstParaSeen = true;
+=======
+                        if (ctx != null) { ctx.CurrentCellXPathBox[0] = cellRawXPath; ctx.CurrentCellPartBox[0] = cellRawPart; }
+                        EmitParagraph(word, cc.Path, cellTargetPath, cellParaIdx, items,
+                                      autoPresent: (!firstParaSeen && !cellSdtConsumedSeed) || isTrailingAutoP, ctx);
+                        firstParaSeen = true;
+                        cellHasAnyContent = true;
+>>>>>>> upstream/main
                     }
                     else if (cc.Type == "table")
                     {
                         nestedTblIdx++;
                         EmitTable(word, cc.Path, nestedTblIdx, items, ctx,
                                   parentTablePath: cellTargetPath, depth: depth + 1);
+<<<<<<< HEAD
+=======
+                        cellHasAnyContent = true;
+>>>>>>> upstream/main
                     }
                     else if (cc.Type == "sdt" && ctx != null)
                     {
@@ -636,11 +996,69 @@ public static partial class WordBatchEmitter
                         // document-order ordinal plus the current row/cell index.
                         var rawPart = containerPath == "/body" ? "/document" : containerPath;
                         var cellXPath = $"(//w:tbl)[{tableOrdinal}]/w:tr[{r + 1}]/w:tc[{c + 1}]";
+<<<<<<< HEAD
                         EmitCellSdt(word, cc.Path, cellTargetPath, cellXPath, rawPart,
                                     cellHasContent: firstParaSeen, items, ctx);
                     }
                 }
 
+=======
+                        // BUG-DUMP-H85: EmitCellSdt's `cellHasContent` chooses
+                        // insert-before-the-auto-seed-<w:p> (false) vs append-to-cell
+                        // (true). Feeding it `cellHasAnyContent` was wrong: a leading
+                        // rich SDT inserts BEFORE the seed and PRESERVES it (returns
+                        // sdtLeftSeed), yet it flipped cellHasAnyContent true, so a
+                        // SECOND SDT that still precedes the cell's trailing paragraph
+                        // appended (landing AFTER that paragraph) — silently reordering
+                        // [sdt, sdt, p] to [sdt, p, sdt]. The real question is whether
+                        // the seed <w:p> is still available as an insert-before anchor:
+                        // it is, until a real paragraph claims it (firstParaSeen), a
+                        // typed `add sdt` consumes it (cellSdtConsumedSeed), or a nested
+                        // table is emitted (nestedTblIdx > 0). While the seed survives,
+                        // successive `insertbefore w:p[1]` raw-sets stack in document
+                        // order ([sdt1, sdt2, seed]); the trailing paragraph then claims
+                        // the seed, yielding [sdt1, sdt2, p]. The BUG-DUMP-CELLSDT-2ND
+                        // case (a typed SDT consumed the seed) still appends, via
+                        // cellSdtConsumedSeed.
+                        bool seedUnavailable = firstParaSeen || cellSdtConsumedSeed || nestedTblIdx > 0;
+                        bool sdtLeftSeed = EmitCellSdt(word, cc.Path, cellTargetPath, cellXPath, rawPart,
+                                    cellHasContent: seedUnavailable, items, ctx);
+                        cellSdtLeftSeed |= sdtLeftSeed;
+                        // Typed `add sdt` (returns false here with no prior cell
+                        // content) consumed the auto-seed; the raw-set seed-left
+                        // path returns true and keeps it. Flag the consumed case so
+                        // a following sibling paragraph emits a fresh `add p`.
+                        if (!sdtLeftSeed && !cellHasAnyContent) cellSdtConsumedSeed = true;
+                        cellHasAnyContent = true;
+                    }
+                }
+
+                // BUG-DUMP-R36-CELLSDT: a cell whose SOLE content is a block SDT
+                // (e.g. a checkbox content control filling a rating-grid cell) has
+                // no direct <w:p>, so no paragraph consumed the auto-seed paragraph
+                // AddTable creates per cell. EmitCellSdt raw-set the SDT after the
+                // <w:tcPr> (ahead of that seed), leaving a spurious trailing empty
+                // paragraph the source never had — across a 39-cell grid that
+                // inflated row heights enough to reflow a 5-page form to 6 pages.
+                // When that insert-ahead-of-seed path fired (cellSdtLeftSeed) and
+                // no real paragraph took the seed, remove the cell's direct
+                // auto-seed <w:p>. The block SDT ends with a paragraph internally,
+                // so the cell stays schema-valid (matches the source shape:
+                // <w:tc><w:tcPr/><w:sdt/></w:tc>). Gated on cellSdtLeftSeed so the
+                // typed `add sdt` / append paths (which leave no bare seed) aren't
+                // hit with a remove that matches nothing.
+                if (!cellHasCustomXml && cellSdtLeftSeed && !firstParaSeen && cellRawXPath != null)
+                {
+                    items.Add(new BatchItem
+                    {
+                        Command = "raw-set",
+                        Part = cellRawPart,
+                        Xpath = $"{cellRawXPath}/w:p",
+                        Action = "remove",
+                    });
+                }
+
+>>>>>>> upstream/main
                 // BUG-DUMP-R27-6: document-ordered cell walk used ONLY when the
                 // cell carries a direct <w:customXml> child (the fast path above
                 // — cellNode.Children — omits customXml entirely). Drive emission
@@ -660,9 +1078,15 @@ public static partial class WordBatchEmitter
                             var ccNode = NthChildOfType(cellChildren, "p", "paragraph", planParaIdx);
                             if (ccNode == null) continue;
                             cellParaIdx++;
+<<<<<<< HEAD
                             if (ctx != null) ctx.CurrentCellXPathBox[0] = cellRawXPath;
                             EmitParagraph(word, ccNode.Path, cellTargetPath, cellParaIdx, items,
                                           autoPresent: !firstParaSeen, ctx);
+=======
+                            if (ctx != null) { ctx.CurrentCellXPathBox[0] = cellRawXPath; ctx.CurrentCellPartBox[0] = cellRawPart; }
+                            EmitParagraph(word, ccNode.Path, cellTargetPath, cellParaIdx, items,
+                                          autoPresent: !firstParaSeen && !cellSdtConsumedSeed, ctx);
+>>>>>>> upstream/main
                             firstParaSeen = true;
                         }
                         else if (kind == "tbl")
@@ -681,8 +1105,19 @@ public static partial class WordBatchEmitter
                             if (ccNode == null) continue;
                             var rawPart = containerPath == "/body" ? "/document" : containerPath;
                             var cellXPath = $"(//w:tbl)[{tableOrdinal}]/w:tr[{r + 1}]/w:tc[{c + 1}]";
+<<<<<<< HEAD
                             EmitCellSdt(word, ccNode.Path, cellTargetPath, cellXPath, rawPart,
                                         cellHasContent: firstParaSeen, items, ctx);
+=======
+                            // BUG-DUMP-H85: same seed-availability predicate as the fast
+                            // path — a leading rich SDT preserves the seed, so a second
+                            // SDT preceding the trailing paragraph must still insert
+                            // before it, not append.
+                            bool seedUnavailableCx = firstParaSeen || cellSdtConsumedSeed || planTblIdx > 0;
+                            if (!EmitCellSdt(word, ccNode.Path, cellTargetPath, cellXPath, rawPart,
+                                        cellHasContent: seedUnavailableCx, items, ctx) && !seedUnavailableCx)
+                                cellSdtConsumedSeed = true;
+>>>>>>> upstream/main
                         }
                         else if (kind == "customXml")
                         {
@@ -722,9 +1157,15 @@ public static partial class WordBatchEmitter
                                 catch { break; }
                                 if (innerNode == null) break;
                                 cellParaIdx++;
+<<<<<<< HEAD
                                 if (ctx != null) ctx.CurrentCellXPathBox[0] = cellRawXPath;
                                 EmitParagraph(word, innerPath, cellTargetPath, cellParaIdx, items,
                                               autoPresent: !firstParaSeen, ctx);
+=======
+                                if (ctx != null) { ctx.CurrentCellXPathBox[0] = cellRawXPath; ctx.CurrentCellPartBox[0] = cellRawPart; }
+                                EmitParagraph(word, innerPath, cellTargetPath, cellParaIdx, items,
+                                              autoPresent: !firstParaSeen && !cellSdtConsumedSeed, ctx);
+>>>>>>> upstream/main
                                 firstParaSeen = true;
                             }
                         }
@@ -747,6 +1188,47 @@ public static partial class WordBatchEmitter
                         Path = $"{cellTargetPath}/p[1]",
                     });
                 }
+<<<<<<< HEAD
+=======
+
+                // BUG-DUMP-H97: cell-level (direct <w:tc> child) bookmark / perm
+                // markers — between <w:tcPr> and the first paragraph (Google Docs cell
+                // nav anchors, often column-span colFirst/colLast), or between/after
+                // cell paragraphs — are skipped by the p/tbl/sdt cell walk above and
+                // were silently dropped. Replay each verbatim (preserving id/name/
+                // colFirst/colLast) at its paragraph-relative position via raw-set,
+                // mirroring the header/footer-root structural-bookmark path. Emitted
+                // AFTER the cell's paragraphs so the w:p[K] anchor resolves. Body
+                // tables only (cellRawXPath != null); header/footer cells warn.
+                var cellBms = word.GetCellStructuralBookmarks(cellSourcePath);
+                if (cellBms.Count > 0)
+                {
+                    if (cellRawXPath != null)
+                    {
+                        foreach (var (bmXml, relXpath, action) in cellBms)
+                        {
+                            items.Add(new BatchItem
+                            {
+                                Command = "raw-set",
+                                Part = cellRawPart,
+                                Xpath = relXpath == "." ? cellRawXPath : $"{cellRawXPath}/{relXpath}",
+                                Action = action == "before" ? "insertbefore"
+                                       : action == "after" ? "insertafter" : "append",
+                                Xml = bmXml,
+                            });
+                        }
+                    }
+                    else
+                    {
+                        ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                            Element: "bookmark",
+                            Path: cellSourcePath,
+                            Reason: "cell-level bookmark/perm marker (direct <w:tc> child) in a "
+                            + "header/footer-hosted table cell was dropped on rebuild "
+                            + "(cell raw-set targeting is limited to body tables)."));
+                    }
+                }
+>>>>>>> upstream/main
             }
             // Trim trailing cells when source row is underfilled (sum of
             // source spans < gridCols). AddTable seeds `cols` cells per row;
@@ -768,12 +1250,131 @@ public static partial class WordBatchEmitter
                 });
             }
         }
+<<<<<<< HEAD
+=======
+
+        // Cell-level content controls: a <w:sdt> direct child of <w:tr> whose
+        // sdtContent wraps the <w:tc> (Word's dropdown-bound cell). Navigation
+        // flattens those to plain cells, and the inline-SDT emit demotes the
+        // control to a run-level sdt INSIDE the cell — dropping the binding
+        // from the other wrapped cells entirely. Patch each wrapped cell back
+        // to its verbatim <w:sdt> block after all typed cell content has been
+        // applied. Per row, replace in DESCENDING cell order: replacing
+        // w:tc[3] with w:sdt removes it from the w:tc axis, which would shift
+        // the index of every later w:tc in that row.
+        if (containerPath == "/body")
+        {
+            for (int r = 0; r < rows.Count; r++)
+            {
+                var wrapped = word.GetSdtWrappedCellsOfRow(rowNodes[r].Path);
+                for (int wi = wrapped.Count - 1; wi >= 0; wi--)
+                {
+                    items.Add(new BatchItem
+                    {
+                        Command = "raw-set",
+                        Part = "/document",
+                        Xpath = $"(//w:tbl)[{tableOrdinal}]/w:tr[{r + 1}]/w:tc[{wrapped[wi].CellOrdinal}]",
+                        Action = "replace",
+                        Xml = wrapped[wi].SdtXml,
+                    });
+                }
+            }
+        }
+        // Row-level content controls: a <w:sdt> (SdtRow) direct child of
+        // <w:tbl> whose sdtContent wraps a whole <w:tr> — Word's locked-row
+        // shape, used by government forms to make an entire row read-only.
+        // Navigation flattens these to plain rows (GetTableRowsFlattened) so
+        // their cells/text round-trip via the typed emit above, but the SDT
+        // wrapper and its <w:lock> would be lost. Patch each wrapped row back
+        // to its verbatim <w:sdt> block after all typed row/cell content has
+        // been applied. Replace in DESCENDING row order: replacing w:tr[N]
+        // with <w:sdt> removes it from the w:tr axis, shifting the index of
+        // every later w:tr. Mirrors the cell-wrapped pass above.
+        // CONSISTENCY(sdt-wrapped-table).
+        if (containerPath == "/body")
+        {
+            var wrappedRows = word.GetSdtWrappedRowsOfTable(sourcePath);
+            for (int wi = wrappedRows.Count - 1; wi >= 0; wi--)
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "raw-set",
+                    Part = "/document",
+                    Xpath = $"(//w:tbl)[{tableOrdinal}]/w:tr[{wrappedRows[wi].RowOrdinal}]",
+                    Action = "replace",
+                    Xml = wrappedRows[wi].SdtXml,
+                });
+            }
+        }
+        // BUG-DUMP-TABLE-STRUCT-BOOKMARK: re-insert any <w:bookmarkStart>/<w:bookmarkEnd>
+        // that sat at table-structure level (a direct child of <w:tbl> between rows,
+        // or of <w:tr> between cells). The typed emit above only walks rows/cells, so
+        // these cross-reference targets were dropped, leaving dangling PAGEREF/REF
+        // ("Error! Bookmark not defined."). Replay each verbatim at its source
+        // position via raw-set. Restricted to body tables, where the (//w:tbl)[N]
+        // selector + /document part are reliable (same restriction as the tblGrid
+        // raw-set above); header/footer/nested-table structural bookmarks are rare
+        // and deferred.
+        if (containerPath == "/body")
+        {
+            // BUG-DUMP-FF-BOOKMARK-DUP: a row-level bookmark that WRAPS a legacy
+            // form field (FORMTEXT/FORMCHECKBOX) is emitted by TWO paths — the form
+            // field's own `add formfield` recreates its wrapping bookmark (consuming
+            // one unit of the per-name bookmark budget), and this structural
+            // re-injection would emit it a SECOND time, duplicating the bookmark
+            // name (Word de-dups/drops one, breaking the form field / REF). The cell
+            // emit runs before this pass, so a form-field bookmark's budget is
+            // already spent here: skip a lone named start whose budget is exhausted,
+            // and its matching lone end (by id). A genuinely structural-only bookmark
+            // (e.g. a _Toc heading anchor with no form field) still has budget and is
+            // emitted (and accounted). Coalesced zero-length bookmarks (start+end in
+            // one fragment) are structural-only and pass through.
+            var skippedBmIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var (bmXml, relXpath, action) in word.GetTableStructuralBookmarks(sourcePath))
+            {
+                var starts = System.Text.RegularExpressions.Regex.Matches(bmXml, "<w:bookmarkStart\\b");
+                var ends = System.Text.RegularExpressions.Regex.Matches(bmXml, "<w:bookmarkEnd\\b");
+                // Lone named start: claim a budget unit; if none remain it was already
+                // emitted by a form field — skip it and remember its id.
+                if (starts.Count == 1 && ends.Count == 0)
+                {
+                    var nameM = System.Text.RegularExpressions.Regex.Match(bmXml, "w:name=\"([^\"]*)\"");
+                    var idM = System.Text.RegularExpressions.Regex.Match(bmXml, "<w:bookmarkStart\\b[^>]*w:id=\"(\\d+)\"");
+                    if (nameM.Success && ctx != null && !ctx.ConsumeBookmarkBudget(word, nameM.Groups[1].Value))
+                    {
+                        if (idM.Success) skippedBmIds.Add(idM.Groups[1].Value);
+                        continue;
+                    }
+                }
+                // Lone end whose matching start was skipped: drop it too.
+                else if (ends.Count == 1 && starts.Count == 0)
+                {
+                    var idM = System.Text.RegularExpressions.Regex.Match(bmXml, "<w:bookmarkEnd\\b[^>]*w:id=\"(\\d+)\"");
+                    if (idM.Success && skippedBmIds.Contains(idM.Groups[1].Value))
+                        continue;
+                }
+                items.Add(new BatchItem
+                {
+                    Command = "raw-set",
+                    Part = "/document",
+                    Xpath = $"(//w:tbl)[{tableOrdinal}]/{relXpath}",
+                    Action = action,
+                    Xml = bmXml,
+                });
+            }
+        }
+
+>>>>>>> upstream/main
         // BUG-DUMP-R26-7: clear the cell-XPath context once this table is fully
         // emitted so body/header/footer content AFTER the table (or a parent
         // cell's content after a nested table) doesn't inherit a stale cell
         // address. A parent cell re-publishes its own XPath before its next
         // paragraph (see the per-paragraph set above), so null here is safe.
+<<<<<<< HEAD
         if (ctx != null) ctx.CurrentCellXPathBox[0] = null;
+=======
+        if (ctx != null) { ctx.CurrentCellXPathBox[0] = null; ctx.CurrentCellPartBox[0] = null; }
+>>>>>>> upstream/main
     }
 
     // BUG-R4 (DBF-R4-02): emit a typed `add equation` (display) targeting a cell
@@ -781,7 +1382,11 @@ public static partial class WordBatchEmitter
     // but for an arbitrary cell-paragraph parent (TryEmitDisplayEquation is hard-
     // coded to parent "/body"). `add equation` on an existing cell paragraph
     // appends the m:oMathPara into it, reproducing the source wrapper shape.
+<<<<<<< HEAD
     private static void EmitCellDisplayEquation(DocumentNode eqNode, string parentPath, List<BatchItem> items)
+=======
+    private static void EmitCellDisplayEquation(WordHandler word, DocumentNode eqNode, string parentPath, List<BatchItem> items)
+>>>>>>> upstream/main
     {
         var mode = eqNode.Format.TryGetValue("mode", out var m) ? m?.ToString() : "display";
         var eqProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -790,9 +1395,36 @@ public static partial class WordBatchEmitter
         };
         if (!string.IsNullOrEmpty(eqNode.Text))
             eqProps["formula"] = eqNode.Text!;
+<<<<<<< HEAD
         if (eqNode.Format.TryGetValue("align", out var eqAlign)
             && eqAlign != null && !string.IsNullOrEmpty(eqAlign.ToString()))
             eqProps["align"] = eqAlign.ToString()!;
+=======
+        // BUG-DUMP-CELLEQ-VERBATIM: forward the verbatim <m:oMath> so a cell
+        // display equation keeps its math-run rPr (Cambria Math, sizes) instead
+        // of being reparsed from the lossy LaTeX string. Without this the
+        // equation rendered in the body font at the wrong metrics, shifting the
+        // surrounding lines and drifting later content across page boundaries.
+        // Mirrors TryEmitDisplayEquation (WordBatchEmitter.Paragraph.cs); the
+        // body path was fixed in c0b0f015 but this cell path was missed.
+        if (eqNode.Format.TryGetValue("xml", out var eqXml)
+            && eqXml != null && eqXml.ToString() is { Length: > 0 } eqXmlS
+            && eqXmlS.Contains("oMath", StringComparison.Ordinal))
+            eqProps["xml"] = eqXmlS;
+        // Carry any OLE/preview-image parts referenced inside the verbatim math
+        // (MathType/Equation objects) so they don't dangle on replay.
+        AddMathInlinedPartProps(word, eqNode.Path, eqProps);
+        if (eqNode.Format.TryGetValue("align", out var eqAlign)
+            && eqAlign != null && !string.IsNullOrEmpty(eqAlign.ToString()))
+            eqProps["align"] = eqAlign.ToString()!;
+        // BUG-DUMP-CELLEQ-PPR: forward the wrapper paragraph's spacing/justification
+        // so the rebuilt cell equation keeps its line height and alignment. Mirrors
+        // TryEmitDisplayEquation.
+        foreach (var sk in new[] { "lineSpacing", "lineRule", "spaceBefore", "spaceAfter", "wrapperAlign", "wrapperPpr" })
+            if (eqNode.Format.TryGetValue(sk, out var sv)
+                && sv != null && sv.ToString() is { Length: > 0 } svs)
+                eqProps[sk] = svs;
+>>>>>>> upstream/main
         items.Add(new BatchItem
         {
             Command = "add",
@@ -851,6 +1483,28 @@ public static partial class WordBatchEmitter
         {
             filtered.Remove("fill");
         }
+<<<<<<< HEAD
+=======
+        // Negative cell margins (<w:tcMar w:w="-13">) are schema-valid and real
+        // Word produces them (tight tables whose text bleeds slightly into the
+        // border zone), but the Set/Add padding path deliberately rejects a
+        // negative w:tcMar (BUG-R1-07). A verbatim dump of a negative margin
+        // therefore emits a `set tc padding=-13` step the rebuild rejects —
+        // round-trip self-conflict (2 failed steps). Clamp to 0 on emit: a
+        // -13-twip (~0.02cm) margin is visually indistinguishable from 0, so the
+        // rebuild renders identically and stays clean. (Accepting negative tcMar
+        // project-wide is the alternative but would reverse the BUG-R1-07 cell
+        // padding contract — out of scope for a fidelity round-trip.)
+        foreach (var pk in filtered.Keys
+                     .Where(k => k.Equals("padding", StringComparison.OrdinalIgnoreCase)
+                              || k.StartsWith("padding.", StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+        {
+            if (filtered[pk]?.ToString() is { } pv
+                && int.TryParse(pv, out var pn) && pn < 0)
+                filtered[pk] = "0";
+        }
+>>>>>>> upstream/main
         return FilterEmittableProps(filtered);
     }
 
@@ -870,6 +1524,12 @@ public static partial class WordBatchEmitter
         // widths (ragged/indented table edge). Carried through `set tr` so
         // SetElementTableRow re-emits <w:gridBefore>/<w:wBefore>/<w:gridAfter>/<w:wAfter>.
         "gridBefore", "wBefore", "gridAfter", "wAfter",
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R62-ROWCELLSPACING: row-level <w:tblCellSpacing> (inter-cell
+        // gap for this row). SetElementTableRow re-emits it onto the row's trPr.
+        "cellSpacing",
+>>>>>>> upstream/main
     };
 
     /// <summary>Read a string-valued key from a DocumentNode.Format dict
@@ -968,4 +1628,57 @@ public static partial class WordBatchEmitter
         }
         return FilterEmittableProps(filtered);
     }
+<<<<<<< HEAD
+=======
+
+    // Cross-paragraph field spans inside a single table cell: returns the
+    // 1-based paragraph-child ordinals covered by any span whose fldChar
+    // begin/end pair straddles paragraph boundaries. Mirrors
+    // WordHandler.GetCrossParagraphFieldSpanRanges (body-level); a non-
+    // paragraph child interrupts an open span, and an unterminated span is
+    // abandoned so its paragraphs fall back to the typed emit.
+    private static HashSet<int> GetCellCrossParagraphFieldParaOrdinals(
+        WordHandler word, List<DocumentNode> cellChildren)
+    {
+        var members = new HashSet<int>();
+        var pending = new List<int>();
+        int paraOrdinal = 0, depth = 0;
+        bool open = false;
+        foreach (var cc in cellChildren)
+        {
+            if (cc.Type != "paragraph" && cc.Type != "p")
+            {
+                if (open) { open = false; depth = 0; pending.Clear(); }
+                continue;
+            }
+            paraOrdinal++;
+            var xml = word.GetElementXml(cc.Path) ?? "";
+            int begins = System.Text.RegularExpressions.Regex.Matches(
+                xml, "fldCharType=\"begin\"").Count;
+            int ends = System.Text.RegularExpressions.Regex.Matches(
+                xml, "fldCharType=\"end\"").Count;
+            if (!open)
+            {
+                if (begins > ends)
+                {
+                    open = true;
+                    depth = begins - ends;
+                    pending.Clear();
+                    pending.Add(paraOrdinal);
+                }
+            }
+            else
+            {
+                pending.Add(paraOrdinal);
+                depth += begins - ends;
+                if (depth <= 0)
+                {
+                    foreach (var o in pending) members.Add(o);
+                    open = false; depth = 0; pending.Clear();
+                }
+            }
+        }
+        return members;
+    }
+>>>>>>> upstream/main
 }

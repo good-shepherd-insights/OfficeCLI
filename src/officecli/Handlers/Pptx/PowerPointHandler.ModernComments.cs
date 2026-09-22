@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -151,7 +155,11 @@ public partial class PowerPointHandler
         if (!int.TryParse(m.Groups[2].Value, out var cmIdx)) return null;
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count) return null;
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var all = EnumerateSlideModernComments(slidePart);
         if (cmIdx < 1 || cmIdx > all.Count) return null;
         var (cp, cm) = all[cmIdx - 1];
@@ -242,7 +250,11 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
 
         var text = properties.GetValueOrDefault("text") ?? "";
         XmlTextValidator.ValidateOrThrow(text, "text");
@@ -286,7 +298,11 @@ public partial class PowerPointHandler
             replyLst.AppendChild(reply);
             part.CommentList!.Save();
 
+<<<<<<< HEAD
             var newRIdx = replyLst.Elements<CommentReply>().ToList().IndexOf(reply) + 1;
+=======
+            var newRIdx = PathIndex.FromArrayIndex(replyLst.Elements<CommentReply>().ToList().IndexOf(reply));
+>>>>>>> upstream/main
             return $"/slide[{slideIdx}]/modernComment[{resolvedParent.commentIdx}]/reply[{newRIdx}]";
         }
 
@@ -311,8 +327,13 @@ public partial class PowerPointHandler
         part.CommentList!.AppendChild(cm);
         part.CommentList.Save();
 
+<<<<<<< HEAD
         var addedIdx = EnumerateSlideModernComments(slidePart)
             .Select(t => t.cm).ToList().IndexOf(cm) + 1;
+=======
+        var addedIdx = PathIndex.FromArrayIndex(EnumerateSlideModernComments(slidePart)
+            .Select(t => t.cm).ToList().IndexOf(cm));
+>>>>>>> upstream/main
         return $"/slide[{slideIdx}]/modernComment[{addedIdx}]";
     }
 

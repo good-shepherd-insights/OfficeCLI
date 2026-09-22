@@ -14,7 +14,11 @@
   "paths": {
     "positional": ["/SheetName/col[X]"]
   },
+<<<<<<< HEAD
   "note": "X is a column letter (A,B,…) or 1-based index. Insert/move/clone at an occupied slot shifts every column at or past the slot right by one, and every range-bearing structure on the sheet (mergeCells, CF/DV sqref, autoFilter, hyperlink/table refs, named ranges, formula cell-refs) follows the displacement. 'add --from /SheetName/col[L]' with --before/--after clones cells + single-col mergeCells; relative formula refs are delta-shifted to the new anchor (Excel 'Insert Copied Cells' parity).",
+=======
+  "note": "X is a column letter (A,B,…) or 1-based index. Insert/move/clone at an occupied slot shifts every column at or past the slot right by one, and every range-bearing structure on the sheet (mergeCells, CF/DV sqref, autoFilter, hyperlink/table refs, named ranges, formula cell-refs) follows the displacement. 'add --from /SheetName/col[L]' with --before/--after clones cells + single-col mergeCells; relative formula refs are delta-shifted to the new anchor (Excel 'Insert Copied Cells' parity). Excel-style whole-column references (B:B; B:D spans on set) are accepted as input aliases for col[X]; readback paths stay canonical.",
+>>>>>>> upstream/main
   "properties": {
     "name": {
       "type": "string",
@@ -51,10 +55,26 @@
     },
     "collapsed": {
       "type": "bool",
+<<<<<<< HEAD
       "description": "collapse column group. Currently Set-only.",
       "add": false, "set": true, "get": false,
       "examples": ["--prop collapsed=true"],
       "readback": "not surfaced by Get",
+=======
+      "description": "collapsed column-group flag; omitted from Get when not collapsed.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop collapsed=true"],
+      "readback": "true when the column group is collapsed",
+      "enforcement": "report"
+    },
+    "numberformat": {
+      "type": "string",
+      "description": "Excel format code applied to the whole column via a style ref on col@s (number, date, percentage, currency, text @). Mirrors the cell-level numberformat; resolved back through the column's style index on Get.",
+      "aliases": ["numfmt", "format"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop numberformat=\"#,##0.00\"", "--prop numberformat=0.00%", "--prop numberformat=yyyy-mm-dd"],
+      "readback": "format string as stored (via col style index)",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "customWidth": {

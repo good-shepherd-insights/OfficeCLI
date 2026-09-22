@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -31,9 +35,26 @@ static partial class CommandBuilder
 
         setCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
+            // JSON mode: collect Core-layer advisory warnings (sites too deep
+            // to reach this command's local warning lists, e.g. the number-
+            // format check in ExcelStyleManager) so WrapEnvelope* folds them
+            // into warnings[]. CONSISTENCY(numfmt-warning): resident-routed
+            // commands get the same via ResidentServer.BuildWarnings.
+            if (json) OfficeCli.Core.WarningContext.Begin();
             var file = result.GetValue(setFileArg)!;
-            var path = result.GetValue(setPathArg)!;
+            var path = MsysPathHint.Restore(result.GetValue(setPathArg)!)!;
             var props = result.GetValue(propsOpt);
+<<<<<<< HEAD
+=======
+            // TreatUnmatchedTokensAsErrors=false lets a bare key=value be
+            // reported as a missing --prop; anything else that is unmatched is
+            // an unknown option and must not vanish with exit 0 (add already
+            // does both — set did neither).
+            var setUnmatchedKv = DetectUnmatchedKeyValues(result);
+            foreach (var kv in setUnmatchedKv)
+                Console.Error.WriteLine($"WARNING: Bare property '{kv}' ignored. Did you mean: --prop {kv}");
+            RejectUnknownOptionTokens(result, setUnmatchedKv);
+>>>>>>> upstream/main
             var findFlag = result.GetValue(findOpt);
             var replaceFlag = result.GetValue(replaceOpt);
             var force = result.GetValue(forceOption);
@@ -210,6 +231,7 @@ static partial class CommandBuilder
             var properties = ParsePropsArray(props);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+<<<<<<< HEAD
 
             var unsupported = handler.Set(path, properties);
 
@@ -228,10 +250,43 @@ static partial class CommandBuilder
             var autoCorrected = new List<(string Original, string Corrected, string Value)>();
             var stillUnsupported = new List<string>();
             foreach (var u in unsupported)
+=======
+
+            // Scope the unsupported-prop fuzzy-suggestion pool by handler type
+            // so e.g. Excel pivot errors don't suggest PPTX-only keys like
+            // 'rotation' for an unknown 'location' prop (R2-4). Kept local: the
+            // shared core computes its own copy, but the CLI warning / extra-path
+            // decoration below also needs it.
+            string? suggestionScope = handler switch
+>>>>>>> upstream/main
             {
-                var rawKey = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
-                if (properties.TryGetValue(rawKey, out var val))
+                OfficeCli.Handlers.ExcelHandler => "excel",
+                OfficeCli.Handlers.WordHandler => "word",
+                OfficeCli.Handlers.PowerPointHandler => "pptx",
+                _ => null,
+            };
+
+            // Shared core: apply + prop-autocorrect + categorise (one copy for
+            // CLI / batch / MCP / resident; see ApplySetWithCorrection). The rich
+            // CLI envelope below — find-count, position overlap, --json warnings,
+            // exit codes — stays here.
+            // CONSISTENCY(applied-echo): pre/post Format snapshots feed the
+            // " (applied: ...)" normalization echo; mirrored in
+            // ResidentServer.ExecuteSet.
+            var beforeSnap = TryGetFormatSnapshot(handler, path);
+            var (applied, stillUnsupported, autoCorrected) = ApplySetWithCorrection(handler, path, properties);
+
+            // Get find match count if applicable.
+            // CONSISTENCY(find-match-count): mirrored in ResidentServer.ExecuteSet.
+            // The resident path is hit whenever a resident process is open
+            // (which `create` does by default), so both sites must surface
+            // findMatchCount + zero_matches warning identically.
+            int? findMatchCount = null;
+            if (properties.ContainsKey("find"))
+            {
+                findMatchCount = handler switch
                 {
+<<<<<<< HEAD
                     var (suggestion, dist, isUnique) = SuggestPropertyWithDistance(rawKey, suggestionScope);
                     if (suggestion != null && dist == 1 && isUnique)
                     {
@@ -294,6 +349,35 @@ static partial class CommandBuilder
 
             var message = applied.Count > 0
                 ? $"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+=======
+                    OfficeCli.Handlers.WordHandler wh => wh.LastFindMatchCount,
+                    OfficeCli.Handlers.PowerPointHandler ph => ph.LastFindMatchCount,
+                    OfficeCli.Handlers.ExcelHandler eh => eh.LastFindMatchCount,
+                    _ => null
+                };
+            }
+
+            // CONSISTENCY(selector-set): echo how many elements a multi-match
+            // selector set touched so a Sheet1!row[工资>5000]-style change shows
+            // its scope. Single-target paths (count 1) stay quiet.
+            int? selectorCount = !isSelectorSet ? null : handler switch
+            {
+                OfficeCli.Handlers.WordHandler wh => wh.LastSelectorSetCount,
+                OfficeCli.Handlers.PowerPointHandler ph => ph.LastSelectorSetCount,
+                OfficeCli.Handlers.ExcelHandler eh => eh.LastSelectorSetCount,
+                _ => null
+            };
+
+            // R4-bt-1: an equation mode switch MOVES the element (oMathPara ⇄
+            // oMath), changing its canonical path. Report the NEW resolvable
+            // path so the "Updated …" line points at a path that still resolves.
+            var reportPath = (handler as OfficeCli.Handlers.WordHandler)?.LastSetNewPath ?? path;
+            var appliedSuffix = BuildAppliedSuffix(applied,
+                beforeSnap, TryGetFormatSnapshot(handler, reportPath));
+            var message = applied.Count > 0
+                ? $"Updated {reportPath}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+                  + appliedSuffix
+>>>>>>> upstream/main
                   + (findMatchCount.HasValue ? $" ({findMatchCount.Value} matched)" : "")
                   + (selectorCount > 1 ? $" ({selectorCount} elements matched)" : "")
                 : $"Error: No properties applied to {path}";
@@ -308,9 +392,35 @@ static partial class CommandBuilder
                 if (setSpatialLine != null) setOverlaps = CheckPositionOverlap(handler, path);
             }
 
+            // Unrecognized LaTeX commands/environments from an equation Set
+            // (formula=). Same UX as unsupported_property (warning + JSON
+            // envelope + exit 2); the equation is still written (lenient
+            // accept). CONSISTENCY: mirrors CommandBuilder.Add and
+            // ResidentServer.ExecuteSet.
+            var setUnrecognizedLatex = handler switch
+            {
+                OfficeCli.Handlers.WordHandler wlx => wlx.LastUnrecognizedLatex,
+                OfficeCli.Handlers.PowerPointHandler plx => plx.LastUnrecognizedLatex,
+                _ => null,
+            };
+            bool hasUnrecognizedLatex = setUnrecognizedLatex is { Count: > 0 };
+
             if (json)
             {
                 var allWarnings = new List<OfficeCli.Core.CliWarning>();
+<<<<<<< HEAD
+=======
+                if (hasUnrecognizedLatex)
+                {
+                    foreach (var tok in setUnrecognizedLatex!)
+                        allWarnings.Add(new OfficeCli.Core.CliWarning
+                        {
+                            Message = $"unrecognized_latex_command: {tok}",
+                            Code = "unrecognized_latex_command",
+                            Suggestion = "Check the command spelling; see https://katex.org/docs/supported.html for supported syntax.",
+                        });
+                }
+>>>>>>> upstream/main
                 if (findMatchCount is 0)
                 {
                     allWarnings.Add(new OfficeCli.Core.CliWarning
@@ -331,7 +441,15 @@ static partial class CommandBuilder
                 }
                 foreach (var p in stillUnsupported)
                 {
+<<<<<<< HEAD
                     var suggestion = SuggestPropertyScoped(p, suggestionScope);
+=======
+                    // An entry that already carries a handler-embedded hint
+                    // ("薪水 (no such column; available: …)") must not get a
+                    // generic did-you-mean stacked on top — the handler already
+                    // said what's valid. Mirrors CommandBuilder.FormatUnsupported.
+                    var suggestion = p.Contains('(') ? null : SuggestPropertyScoped(p, suggestionScope);
+>>>>>>> upstream/main
                     allWarnings.Add(new OfficeCli.Core.CliWarning
                     {
                         Message = suggestion != null ? $"Unsupported property: {p} (did you mean: {suggestion}?)" : $"Unsupported property: {p}",
@@ -364,7 +482,10 @@ static partial class CommandBuilder
                         allWarnings.Add(new OfficeCli.Core.CliWarning { Message = w, Code = "advisory" });
                 }
                 var outputMsg = setSpatialLine != null ? $"{message}\n  {setSpatialLine}" : message;
-                bool allFailed = applied.Count == 0 && (stillUnsupported.Count > 0 || unsupported.Count > 0);
+                // applied==0 implies no key auto-corrected (corrections land in
+                // applied), so stillUnsupported already equals the raw set, and
+                // the old `|| unsupported.Count>0` term was redundant.
+                bool allFailed = applied.Count == 0 && stillUnsupported.Count > 0;
                 Console.WriteLine(allFailed
                     ? OutputFormatter.WrapEnvelopeError(outputMsg, allWarnings.Count > 0 ? allWarnings : null)
                     : OutputFormatter.WrapEnvelopeText(outputMsg, allWarnings.Count > 0 ? allWarnings : null, findMatchCount));
@@ -389,6 +510,12 @@ static partial class CommandBuilder
                     foreach (var w in setWhWarnPlain.LastSetWarnings)
                         Console.Error.WriteLine($"  WARNING: {w}");
                 }
+<<<<<<< HEAD
+=======
+                if (hasUnrecognizedLatex)
+                    foreach (var tok in setUnrecognizedLatex!)
+                        Console.Error.WriteLine($"  WARNING: unrecognized_latex_command: {tok}");
+>>>>>>> upstream/main
             }
             NotifyWatch(handler, file.FullName, path);
 
@@ -417,6 +544,7 @@ static partial class CommandBuilder
             }
 
             if (stillUnsupported.Count > 0) return 2;
+            if (hasUnrecognizedLatex) return 2;
             return 0;
         }, json); });
 

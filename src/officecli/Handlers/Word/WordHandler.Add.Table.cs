@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -101,22 +105,45 @@ public partial class WordHandler
         string[][]? tableData = null;
         if (properties.TryGetValue("data", out var dataStr))
         {
+<<<<<<< HEAD
             if (OfficeCli.Core.FileSource.IsResolvable(dataStr))
                 tableData = OfficeCli.Core.FileSource.ResolveLines(dataStr)
                     .Where(l => !string.IsNullOrWhiteSpace(l))
                     .Select(l => l.Split(',').Select(c => c.Trim()).ToArray())
                     .ToArray();
+=======
+            // Both forms are quote-aware: a cell wrapped in double quotes may
+            // contain the separator, so `"Doe, John",30` is two cells. A plain
+            // Split(',') made it three and shifted the rest of the row.
+            // CONSISTENCY(table-data-parse): mirrored in the pptx add-table path.
+            if (OfficeCli.Core.FileSource.IsResolvable(dataStr))
+                tableData = OfficeCli.Core.DelimitedText.ParseGrid(
+                    OfficeCli.Core.FileSource.ResolveText(dataStr), ',', '\n');
+>>>>>>> upstream/main
             else
-                tableData = dataStr.Split(';')
-                    .Select(r => r.Split(',').Select(c => c.Trim()).ToArray())
-                    .ToArray();
+                tableData = OfficeCli.Core.DelimitedText.ParseGrid(dataStr, ',', ';');
         }
 
         int rows, cols;
         if (tableData != null)
         {
+            // Empty `data=` (or a source that parses to zero rows) leaves the
+            // grid empty; Max() over it threw InvalidOperationException instead
+            // of a clean error. Reject with a clear message.
+            if (tableData.Length == 0 || tableData.All(r => r.Length == 0))
+                throw new ArgumentException(
+                    "Table 'data' is empty — provide at least one cell (e.g. data=\"a,b;c,d\"), "
+                    + "or omit 'data' and pass rows=/cols= to create a blank table.");
             rows = tableData.Length;
             cols = tableData.Max(r => r.Length);
+            // ParseGrid drops all-empty rows (blank-line skip, right for CSV
+            // import). When the caller ALSO gave explicit rows=/cols=, honor them
+            // as a floor so `data="H1,H2;,," rows=2` still makes a 2-row table
+            // (the second row padded empty) rather than collapsing to one.
+            if (properties.TryGetValue("rows", out var rWantStr)
+                && int.TryParse(rWantStr, out var rWant) && rWant > rows) rows = rWant;
+            if (properties.TryGetValue("cols", out var cWantStr)
+                && int.TryParse(cWantStr, out var cWant) && cWant > cols) cols = cWant;
         }
         else
         {
@@ -141,6 +168,8 @@ public partial class WordHandler
                 cols = ParseHelpers.SafeParseInt(colsStr, "cols");
                 if (cols <= 0)
                     throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. Must be a positive integer (> 0).");
+                if (cols > 63)
+                    throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. OOXML limits table columns to 63 (w:tblGrid max). Got: {cols}.");
             }
         }
 
@@ -269,6 +298,14 @@ public partial class WordHandler
         // If not, fall back to the surrounding section's bidi state below
         // (CONSISTENCY(rtl-cascade) — same intent as the paragraph cascade).
         bool explicitDirection = false;
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R36-2: band sizes are collected during the prop loop and
+        // materialized once afterwards (see the mc:AlternateContent guard
+        // below) — CT_TblPr has no slot for them, so they cannot be inserted
+        // directly like the other tblPr children.
+        int? rowBandSize = null, colBandSize = null;
+>>>>>>> upstream/main
         // Set of keys the switch below consumes. Used to mark a key as
         // accessed via ContainsKey only when a case actually matched, so
         // genuine typos still fall through to the tracker's UnusedKeys.
@@ -276,9 +313,17 @@ public partial class WordHandler
         {
             "align", "alignment", "width", "indent", "cellspacing", "layout",
             "padding", "padding.top", "padding.bottom", "padding.left", "padding.right",
+<<<<<<< HEAD
             "style", "shd", "shading", "direction", "dir", "bidi",
             // CONSISTENCY(add-set-symmetry): mirror Set's tblPr-level cases.
             "overlap", "caption", "description",
+=======
+            "style", "shd", "shading", "cellShading", "direction", "dir", "bidi",
+            // CONSISTENCY(add-set-symmetry): mirror Set's tblPr-level cases.
+            // BUG-DUMP-H89: `tblOverlap.val` is the Get readback key (Navigation.cs);
+            // accept it as an alias for `overlap` so dump→batch round-trips.
+            "overlap", "tblOverlap.val", "tblOverlap", "caption", "description",
+>>>>>>> upstream/main
             // BUG-DUMP-R36-2: band stripe widths.
             "rowbandsize", "colbandsize", "columnbandsize",
             // BUG-DUMP-R40-5: tblLook bitmask + decomposed facets. Without these
@@ -318,7 +363,11 @@ public partial class WordHandler
             // `data` (inline cell content), like rows/cols/colwidths, is fully
             // consumed earlier (TryGetValue("data") above) — skip it here so the
             // tblPr switch default doesn't falsely flag it as unsupported_property.
+<<<<<<< HEAD
             if (tkl is "rows" or "cols" or "columns" or "colwidths" or "gridcols" or "skiptblw" or "data" || tkl.StartsWith("border")) continue;
+=======
+            if (tkl is "rows" or "cols" or "columns" or "colwidths" or "gridcols" or "skiptblw" or "skiptbllook" or "skipdefaultborders" or "data" || tkl.StartsWith("border")) continue;
+>>>>>>> upstream/main
             // ACCOUNTING(handler-as-truth): see AddStyle. ContainsKey only
             // when the switch will consume this key — otherwise typos would
             // leak past UnusedKeys detection.
@@ -342,12 +391,21 @@ public partial class WordHandler
                     // <w:tblW w:type="auto"/>. Without this, SafeParseUint("auto")
                     // throws and the prop is silently dropped/normalized.
                     if (string.Equals(tv, "auto", StringComparison.OrdinalIgnoreCase))
+<<<<<<< HEAD
+                    {
+                        tblProps.TableWidth = new TableWidth { Width = "0", Type = TableWidthUnitValues.Auto };
+                    }
+                    else if (tv.EndsWith('%'))
+=======
+>>>>>>> upstream/main
                     {
                         tblProps.TableWidth = new TableWidth { Width = "0", Type = TableWidthUnitValues.Auto };
                     }
                     else if (tv.EndsWith('%'))
                     {
-                        var pct = ParseHelpers.SafeParseInt(tv.TrimEnd('%'), "width") * 50;
+                        // Fractional percentages are exact in OOXML (pct unit =
+                        // 0.02%); mirror the cell-width branch's double parse.
+                        var pct = (int)Math.Round(ParseHelpers.SafeParseDouble(tv.TrimEnd('%'), "width") * 50);
                         tblProps.TableWidth = new TableWidth { Width = pct.ToString(), Type = TableWidthUnitValues.Pct };
                     }
                     else
@@ -361,15 +419,28 @@ public partial class WordHandler
                     }
                     break;
                 case "indent":
-                    tblProps.TableIndentation = new TableIndentation { Width = ParseHelpers.SafeParseInt(tv, "indent"), Type = TableWidthUnitValues.Dxa };
+                    // BUG-DUMP-R34-TBLIND: honour a pct-typed indent ("2%") so it
+                    // round-trips as <w:tblInd w:type="pct"> instead of collapsing
+                    // to dxa twips (which shifts the whole table).
+                    // CONSISTENCY(length-units): non-pct indent accepts pt/cm/in
+                    // (and bare = twips) via SpacingConverter, matching tc padding
+                    // and every other length slot. tblInd is signed (ST_SignedTwipsMeasure).
+                    tblProps.TableIndentation = tv.TrimEnd().EndsWith("%", StringComparison.Ordinal)
+                        ? new TableIndentation { Width = (int)Math.Round(ParseHelpers.SafeParseDouble(tv.TrimEnd().TrimEnd('%'), "indent") * 50), Type = TableWidthUnitValues.Pct }
+                        : new TableIndentation { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv), Type = TableWidthUnitValues.Dxa };
                     break;
                 case "cellspacing":
-                    tblProps.TableCellSpacing = new TableCellSpacing { Width = ParseHelpers.SafeParseUint(tv, "cellspacing").ToString(), Type = TableWidthUnitValues.Dxa };
+                    tblProps.TableCellSpacing = new TableCellSpacing { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacing(tv).ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 case "layout":
                     tblProps.TableLayout = new TableLayout
                     {
-                        Type = tv.ToLowerInvariant() == "fixed" ? TableLayoutValues.Fixed : TableLayoutValues.Autofit
+                        Type = tv.ToLowerInvariant() switch
+                        {
+                            "fixed"   => TableLayoutValues.Fixed,
+                            "autofit" or "auto" => TableLayoutValues.Autofit,
+                            _ => throw new ArgumentException($"Invalid 'layout' value: '{tv}'. Valid values: fixed, autofit."),
+                        }
                     };
                     break;
                 case "padding":
@@ -379,7 +450,11 @@ public partial class WordHandler
                     // schema-invalid OOXML when other props (style→tblLook at rank
                     // 14) appeared earlier in argv. Same fix for padding.{top,
                     // bottom,left,right} below and Set padding path.
+<<<<<<< HEAD
                     var paddingVal = ParseHelpers.SafeParseInt(tv, "padding");
+=======
+                    var paddingVal = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
+>>>>>>> upstream/main
                     if (paddingVal < 0)
                         throw new ArgumentException($"Invalid 'padding' value: '{tv}'. Table cell margins must be non-negative (OOXML w:tblCellMar).");
                     var dxa = paddingVal.ToString();
@@ -397,7 +472,11 @@ public partial class WordHandler
                 // tcMar handling in Set.Element.cs.
                 case "padding.top":
                     {
+<<<<<<< HEAD
                         var tv2 = ParseHelpers.SafeParseInt(tv, "padding.top");
+=======
+                        var tv2 = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
+>>>>>>> upstream/main
                         if (tv2 < 0)
                             throw new ArgumentException($"Invalid 'padding.top' value: '{tv}'. Table cell margins must be non-negative.");
                         var cmt = EnsureTableCellMarginDefault(tblProps);
@@ -406,7 +485,11 @@ public partial class WordHandler
                     break;
                 case "padding.bottom":
                     {
+<<<<<<< HEAD
                         var bv2 = ParseHelpers.SafeParseInt(tv, "padding.bottom");
+=======
+                        var bv2 = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
+>>>>>>> upstream/main
                         if (bv2 < 0)
                             throw new ArgumentException($"Invalid 'padding.bottom' value: '{tv}'. Table cell margins must be non-negative.");
                         var cmb = EnsureTableCellMarginDefault(tblProps);
@@ -415,7 +498,11 @@ public partial class WordHandler
                     break;
                 case "padding.left":
                     {
+<<<<<<< HEAD
                         var lv = ParseHelpers.SafeParseInt(tv, "padding.left");
+=======
+                        var lv = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
+>>>>>>> upstream/main
                         if (lv < 0)
                             throw new ArgumentException($"Invalid 'padding.left' value: '{tv}'. Table cell margins must be non-negative.");
                         var cml = EnsureTableCellMarginDefault(tblProps);
@@ -424,7 +511,11 @@ public partial class WordHandler
                     break;
                 case "padding.right":
                     {
+<<<<<<< HEAD
                         var rv = ParseHelpers.SafeParseInt(tv, "padding.right");
+=======
+                        var rv = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
+>>>>>>> upstream/main
                         if (rv < 0)
                             throw new ArgumentException($"Invalid 'padding.right' value: '{tv}'. Table cell margins must be non-negative.");
                         var cmr = EnsureTableCellMarginDefault(tblProps);
@@ -454,12 +545,24 @@ public partial class WordHandler
                     // (it runs after this case regardless of prop order, so the
                     // seed it builds would be the authoritative hex anyway — but
                     // suppressing the default keeps a no-tblLook source clean).
+<<<<<<< HEAD
                     if (!TableHasExplicitTblLook(properties))
+=======
+                    // BUG-DUMP-TBLLOOK-INJECT: skipTblLook=true (dump-replay of a
+                    // source whose <w:tblPr> had no <w:tblLook>) also suppresses
+                    // the default seed — otherwise 04A0 leaks the style's
+                    // first-row/first-column conditional formatting onto every
+                    // styled table. Mirrors skipTblW.
+                    if (!TableHasExplicitTblLook(properties)
+                        && !((properties.TryGetValue("skiptbllook", out var stl)
+                              || properties.TryGetValue("skipTblLook", out stl)) && IsTruthy(stl)))
+>>>>>>> upstream/main
                     {
                         tblProps.RemoveAllChildren<TableLook>();
                         InsertTblPrChildInOrder(tblProps, new TableLook { Val = "04A0" });
                     }
                     break;
+<<<<<<< HEAD
                 case "shd" or "shading":
                     {
                         // BUG-DUMP21-01: w:tblPr/w:shd table-level shading
@@ -492,6 +595,26 @@ public partial class WordHandler
                     }
                     break;
                 case "overlap":
+=======
+                case "shd" or "shading" or "cellshading":
+                    {
+                        // BUG-DUMP21-01: w:tblPr/w:shd table-level shading
+                        // round-trip. Route through the shared ParseShadingValue
+                        // so the full form is honored — FILL, VAL;FILL,
+                        // VAL;FILL;COLOR, plus the themeFill=/themeFillTint=/
+                        // themeFillShade= theme-linkage tail the dump emits. The
+                        // old hand-rolled split dropped the theme tail, losing the
+                        // theme reference on round-trip.
+                        tblProps.Shading = ParseShadingValue(tv);
+                    }
+                    break;
+                // BUG-DUMP-H89: `tbloverlap.val` is the Get readback key; accept it
+                // (and bare `tbloverlap`) as aliases for `overlap` so the dump's
+                // emitted key round-trips through batch instead of being ignored.
+                case "overlap":
+                case "tbloverlap.val":
+                case "tbloverlap":
+>>>>>>> upstream/main
                 {
                     // CONSISTENCY(add-set-symmetry): mirror Set's overlap case
                     // (Set.Element.cs:1752). CT_TblPr schema:
@@ -547,6 +670,7 @@ public partial class WordHandler
                 // Mirrors the Navigation readback; without these the emitter's
                 // `add table` carried rowBandSize/colBandSize but AddTable dropped
                 // them, flattening the visible striping. CONSISTENCY(add-set-symmetry).
+<<<<<<< HEAD
                 case "rowbandsize":
                     tblProps.RemoveAllChildren<TableStyleRowBandSize>();
                     if (int.TryParse(tv, out var rbs))
@@ -556,6 +680,14 @@ public partial class WordHandler
                     tblProps.RemoveAllChildren<TableStyleColumnBandSize>();
                     if (int.TryParse(tv, out var cbs))
                         InsertTblPrChildInOrder(tblProps, new TableStyleColumnBandSize { Val = cbs });
+=======
+                // Collected here, written after the loop (mc guard below).
+                case "rowbandsize":
+                    if (int.TryParse(tv, out var rbs)) rowBandSize = rbs;
+                    break;
+                case "colbandsize" or "columnbandsize":
+                    if (int.TryParse(tv, out var cbs)) colBandSize = cbs;
+>>>>>>> upstream/main
                     break;
                 // BUG-R4-02/08: tblLook props at Add time. Mirrors the Set.Element.cs
                 // tblLook switch — accepts lowercase + camelCase aliases as input.
@@ -617,6 +749,7 @@ public partial class WordHandler
             }
         }
 
+<<<<<<< HEAD
         // BUG-DUMP-R36-2: tblStyleRowBandSize / tblStyleColBandSize precede tblW
         // in CT_TblPr (rank 4/5 < 6). When `width=` is processed AFTER the band
         // keys in the (unordered) prop dict, the SDK's typed `.TableWidth` setter
@@ -630,6 +763,46 @@ public partial class WordHandler
         {
             bandEl.Remove();
             InsertTblPrChildInOrder(tblProps, bandEl);
+=======
+        // BUG-DUMP-R36-2: materialize tblStyleRowBandSize / tblStyleColBandSize.
+        // The document-level CT_TblPr particle (SDK ground truth — see the
+        // generated TableProperties class) does NOT admit these elements in ANY
+        // position; they are only schema-valid inside a table STYLE's tblPr
+        // (CT_TblPrStyle). Inserting them bare therefore always validates as
+        // "invalid child element 'tblStyleRowBandSize'", no matter the order.
+        // wml-aware consumers (Word and other editors — whose DOCX export writes
+        // them document-side at the CT_TblPrBase rank-4/5 slot) DO honor the
+        // elements, so we keep them document-side but wrap them in an
+        // mc:AlternateContent guard with Requires="w": every wordprocessingml
+        // consumer selects the Choice (the band sizes resolve in place, in
+        // their canonical pre-tblW slot), while strict schema validators skip
+        // MC content and stay green. Navigation's table readback unwraps the
+        // guard, so Get/dump still surface rowBandSize/colBandSize and the
+        // dump→batch round-trip regenerates this exact shape.
+        if (rowBandSize.HasValue || colBandSize.HasValue)
+        {
+            var bandChoice = new AlternateContentChoice { Requires = "w" };
+            if (rowBandSize is int rbv)
+                bandChoice.Append(new TableStyleRowBandSize { Val = rbv });
+            if (colBandSize is int cbv)
+                bandChoice.Append(new TableStyleColumnBandSize { Val = cbv });
+            var bandGuard = new AlternateContent(bandChoice, new AlternateContentFallback());
+            // Place the guard where the band sizes themselves belong
+            // (CT_TblPrBase rank 4/5: after tblStyle/tblpPr/tblOverlap/
+            // bidiVisual, before tblW) so the MC-resolved document keeps
+            // canonical order for order-sensitive consumers.
+            OpenXmlElement? bandSuccessor = null;
+            foreach (var child in tblProps.ChildElements)
+            {
+                if (child is TableStyle or TablePositionProperties or TableOverlap or BiDiVisual) continue;
+                bandSuccessor = child;
+                break;
+            }
+            if (bandSuccessor != null)
+                bandSuccessor.InsertBeforeSelf(bandGuard);
+            else
+                tblProps.AppendChild(bandGuard);
+>>>>>>> upstream/main
         }
 
         // Auto-RTL: when the user didn't pin direction explicitly and the
@@ -695,6 +868,71 @@ public partial class WordHandler
             // them here so they aren't double-tagged as UNSUPPORTED by the
             // generic TypedAttributeFallback. Mirrors border.* skip.
             if (key.StartsWith("padding.", StringComparison.OrdinalIgnoreCase)) continue;
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(add-set-symmetry): tblp.horzAnchor / tblp.vertAnchor
+            // are enum-valued (ST_HAnchor / ST_VAnchor). The Set side curated
+            // them at Set.Element.cs:2659 and throws on invalid input; the
+            // generic TypedAttributeFallback below would write raw strings
+            // like "column" verbatim. Validate here so Add matches Set.
+            var kLowAdd = key.ToLowerInvariant();
+            if (kLowAdd is "tblp.horzanchor" or "tblp.horizontalanchor"
+                or "tblppr.horzanchor" or "tblppr.horizontalanchor")
+            {
+                // CONSISTENCY(tblpr-schema-order): tblpPr is rank 1 in CT_TblPr.
+                // Appending it (as the old code did) lands it last, after
+                // tblLook → schema-invalid floating table. Reuse the Set-side
+                // helper so Add inserts it in order, same as set tblp.*.
+                var tpp = EnsureTablePositionProperties(tblProps);
+                tpp.HorizontalAnchor = value.ToLowerInvariant() switch
+                {
+                    "margin" => HorizontalAnchorValues.Margin,
+                    "page" => HorizontalAnchorValues.Page,
+                    "text" => HorizontalAnchorValues.Text,
+                    _ => throw new ArgumentException($"Invalid 'tblp.horzAnchor' value: '{value}'. Valid: margin, page, text."),
+                };
+                continue;
+            }
+            if (kLowAdd is "tblp.vertanchor" or "tblp.verticalanchor"
+                or "tblppr.vertanchor" or "tblppr.verticalanchor")
+            {
+                // CONSISTENCY(tblpr-schema-order): tblpPr is rank 1 in CT_TblPr.
+                // Appending it (as the old code did) lands it last, after
+                // tblLook → schema-invalid floating table. Reuse the Set-side
+                // helper so Add inserts it in order, same as set tblp.*.
+                var tpp = EnsureTablePositionProperties(tblProps);
+                tpp.VerticalAnchor = value.ToLowerInvariant() switch
+                {
+                    "margin" => VerticalAnchorValues.Margin,
+                    "page" => VerticalAnchorValues.Page,
+                    "text" => VerticalAnchorValues.Text,
+                    _ => throw new ArgumentException($"Invalid 'tblp.vertAnchor' value: '{value}'. Valid: margin, page, text."),
+                };
+                continue;
+            }
+            // tblpPr.*FromText / position.*FromText — ST_TwipsMeasure with the
+            // short-range SDK property. TypedAttributeFallback would write the
+            // overflowed value verbatim (32768 cast → -32768); validate up-front.
+            if (kLowAdd is "tblppr.leftfromtext" or "tblppr.rightfromtext"
+                or "tblppr.topfromtext" or "tblppr.bottomfromtext"
+                or "position.leftfromtext" or "position.rightfromtext"
+                or "position.topfromtext" or "position.bottomfromtext")
+            {
+                var ftTwips = ParseTwips(value);
+                if (ftTwips > 32767)
+                    throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must be 0..32767 twips (OOXML ST_TwipsMeasure short range).");
+                // CONSISTENCY(tblpr-schema-order): tblpPr is rank 1 in CT_TblPr.
+                // Appending it (as the old code did) lands it last, after
+                // tblLook → schema-invalid floating table. Reuse the Set-side
+                // helper so Add inserts it in order, same as set tblp.*.
+                var tpp = EnsureTablePositionProperties(tblProps);
+                if (kLowAdd.EndsWith("leftfromtext")) tpp.LeftFromText = (short)ftTwips;
+                else if (kLowAdd.EndsWith("rightfromtext")) tpp.RightFromText = (short)ftTwips;
+                else if (kLowAdd.EndsWith("topfromtext")) tpp.TopFromText = (short)ftTwips;
+                else tpp.BottomFromText = (short)ftTwips;
+                continue;
+            }
+>>>>>>> upstream/main
             if (Core.TypedAttributeFallback.TrySet(tblProps, key, value)) continue;
             LastAddUnsupportedProps.Add(key);
         }
@@ -709,6 +947,10 @@ public partial class WordHandler
         // required trailing empty paragraph here so Word can open the doc.
         if (parent is TableCell && parent.LastChild is Table)
             parent.AppendChild(new Paragraph());
+<<<<<<< HEAD
+=======
+        _lastAddedTable = table;
+>>>>>>> upstream/main
         var tbls = parent.Elements<Table>().ToList();
         var idx = tbls.FindIndex(t => ReferenceEquals(t, table));
         return $"{parentPath}/tbl[{(idx >= 0 ? idx + 1 : tbls.Count)}]";
@@ -971,7 +1213,7 @@ public partial class WordHandler
             targetTable.AppendChild(newRow);
         }
 
-        var rowIdx = targetTable.Elements<TableRow>().ToList().IndexOf(newRow) + 1;
+        var rowIdx = PathIndex.FromArrayIndex(targetTable.Elements<TableRow>().ToList().IndexOf(newRow));
         return $"{parentPath}/tr[{rowIdx}]";
     }
 
@@ -995,6 +1237,7 @@ public partial class WordHandler
             ? index.Value
             : existingGridCols.Count; // append by default
 
+<<<<<<< HEAD
         // Reject if any row at insertIdx straddles the boundary via merge.
         foreach (var row in targetTable.Elements<TableRow>())
         {
@@ -1008,6 +1251,18 @@ public partial class WordHandler
                     $"a row contains a merged cell straddling that boundary (gridSpan/vMerge). " +
                     "Unmerge first or pick a different position.");
         }
+=======
+        // Reject if any row's merge makes the insertion slot un-addressable by
+        // position. BUG-COLOP-GRIDIDX: the old check inspected cells[insertIdx]
+        // by ORDINAL, but a preceding gridSpan shifts the ordinal off the grid
+        // slot — so a straddling merge before insertIdx was missed AND the
+        // insertion at cells[insertIdx] below would push the wrong cell right.
+        // The slot-aware guard rejects a merged target slot OR a preceding
+        // horizontal span (ordinal ≠ slot). Appending (insertIdx == count) has
+        // no occupied slot to check and is always safe.
+        if (insertIdx < existingGridCols.Count)
+            GuardColumnSlotAddressable(targetTable, insertIdx, "insert column at index " + insertIdx + " of " + parentPath + ";");
+>>>>>>> upstream/main
 
         // Width: explicit, or average of existing cols, or default 2400 twips
         long defaultWidthTwips = 2400;
@@ -1074,6 +1329,7 @@ public partial class WordHandler
             LastAddUnsupportedProps.RemoveAll(k =>
                 k.StartsWith("revision.", StringComparison.OrdinalIgnoreCase));
 
+<<<<<<< HEAD
         var newColIdx = grid.Elements<GridColumn>().ToList().IndexOf(newGridCol) + 1;
         return $"{parentPath}/col[{newColIdx}]";
     }
@@ -1091,6 +1347,12 @@ public partial class WordHandler
         if (tcPr.GetFirstChild<VerticalMerge>() != null) return true;
         return false;
     }
+=======
+        var newColIdx = PathIndex.FromArrayIndex(grid.Elements<GridColumn>().ToList().IndexOf(newGridCol));
+        return $"{parentPath}/col[{newColIdx}]";
+    }
+
+>>>>>>> upstream/main
 
     private string AddCell(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
@@ -1175,6 +1437,7 @@ public partial class WordHandler
         foreach (var (key, value) in properties)
         {
             var keyLower = key.ToLowerInvariant();
+<<<<<<< HEAD
             if (keyLower is "fill" or "shd" or "shading")
             {
                 var tcPrFill = newCell.GetFirstChild<TableCellProperties>()
@@ -1206,6 +1469,51 @@ public partial class WordHandler
             }
         }
 
+=======
+            if (keyLower is "fill" or "shd" or "shading" or "cellshading")
+            {
+                // foreach uses the base Dictionary enumerator (bypasses the
+                // TrackingPropertyDictionary override) — register the key so the
+                // consumed shading prop isn't a false unsupported_property.
+                properties.ContainsKey(key);
+                var tcPrFill = newCell.GetFirstChild<TableCellProperties>()
+                    ?? newCell.PrependChild(new TableCellProperties());
+                // Route through the shared ParseShadingValue so a cell's
+                // themeFill=/themeFillTint=/themeFillShade= theme-linkage tail
+                // round-trips; the old hand-rolled split dropped it.
+                tcPrFill.Shading = ParseShadingValue(value);
+            }
+        }
+
+        // BUG-WB-ADD-CELL-RUN: bare run-level props (bold/italic/color/size/
+        // font/underline/strike/highlight) on AddCell were silently dropped and
+        // falsely warned, while Set on a cell applies them (SetElementTableCell
+        // run-prop branch). CONSISTENCY(add-set-symmetry): fan out across the
+        // cell's runs, or — when the cell has no text run — hoist onto the
+        // paragraph-mark rPr so a future run inherits, mirroring AddParagraph's
+        // no-text hoist and Set's !hasRuns branch.
+        foreach (var (rkey, rvalue) in properties)
+        {
+            var rkl = rkey.ToLowerInvariant();
+            if (rkl is not ("font" or "size" or "fontsize" or "bold" or "italic"
+                or "color" or "highlight" or "underline" or "underline.color"
+                or "underlinecolor" or "strike"))
+                continue;
+            // Register the key with the tracking comparer (foreach bypasses it).
+            properties.ContainsKey(rkey);
+            bool cellHasRuns = false;
+            foreach (var existingRun in cellParagraph.Elements<Run>())
+            {
+                cellHasRuns = true;
+                ApplyRunFormatting(EnsureRunProperties(existingRun), rkey, rvalue);
+            }
+            var rPProps = cellParagraph.ParagraphProperties ?? cellParagraph.PrependChild(new ParagraphProperties());
+            var rMarkRPr = rPProps.ParagraphMarkRunProperties ?? rPProps.AppendChild(new ParagraphMarkRunProperties());
+            ApplyRunFormatting(rMarkRPr, rkey, rvalue);
+            if (!cellHasRuns && rMarkRPr.ChildElements.Count == 0) rMarkRPr.Remove();
+        }
+
+>>>>>>> upstream/main
         // CONSISTENCY(add-set-symmetry): mirror Set's noWrap / hideMark cases
         // (Set.Element.cs:1342 + TryCreateTypedChild path).
         if (properties.TryGetValue("noWrap", out var noWrapVal)
@@ -1330,6 +1638,64 @@ public partial class WordHandler
             }
         }
 
+<<<<<<< HEAD
+=======
+        // CONSISTENCY(add-set-symmetry): valign, align, textdirection, cnfstyle
+        // were Set-only in SetElementTableCell; mirror them here so AddCell
+        // accepts the same vocabulary without false UNSUPPORTED warnings.
+        if (properties.TryGetValue("valign", out var valignAddVal))
+        {
+            var tcPr = newCell.GetFirstChild<TableCellProperties>()
+                ?? newCell.PrependChild(new TableCellProperties());
+            tcPr.TableCellVerticalAlignment = new TableCellVerticalAlignment
+            {
+                Val = valignAddVal.ToLowerInvariant() switch
+                {
+                    "top"    => TableVerticalAlignmentValues.Top,
+                    "center" => TableVerticalAlignmentValues.Center,
+                    "bottom" => TableVerticalAlignmentValues.Bottom,
+                    _ => throw new ArgumentException($"Invalid valign value: '{valignAddVal}'. Valid values: top, center, bottom.")
+                }
+            };
+        }
+        if (properties.TryGetValue("align", out var cellAlignAddVal)
+            || properties.TryGetValue("alignment", out cellAlignAddVal)
+            || properties.TryGetValue("halign", out cellAlignAddVal))
+        {
+            var alignVal = ParseJustification(cellAlignAddVal);
+            foreach (var cellAlignPara in newCell.Elements<Paragraph>())
+            {
+                var cpProps = cellAlignPara.ParagraphProperties ?? cellAlignPara.PrependChild(new ParagraphProperties());
+                cpProps.Justification = new Justification { Val = alignVal };
+            }
+        }
+        if (properties.TryGetValue("textdirection", out var textDirAddVal)
+            || properties.TryGetValue("textdir", out textDirAddVal))
+        {
+            var tcPr = newCell.GetFirstChild<TableCellProperties>()
+                ?? newCell.PrependChild(new TableCellProperties());
+            // Reuse the shared section parser so the cell path also accepts the
+            // canonical OOXML InnerText forms the dump emits (tbLrV / tbRlV /
+            // lrTbV — rotated vertical variants). CONSISTENCY(add-set-symmetry)
+            // with the cell Set textDirection path.
+            tcPr.TextDirection = new TextDirection { Val = ParseSectionTextDirection(textDirAddVal) };
+        }
+        if (properties.TryGetValue("cnfstyle", out var cnfAddVal))
+        {
+            if (!string.IsNullOrEmpty(cnfAddVal))
+            {
+                var cnfVal = ValidateCnfStyleBitmask(cnfAddVal);
+                var tcPr = newCell.GetFirstChild<TableCellProperties>()
+                    ?? newCell.PrependChild(new TableCellProperties());
+                var cnf = tcPr.GetFirstChild<ConditionalFormatStyle>();
+                if (cnf == null)
+                    tcPr.PrependChild(new ConditionalFormatStyle { Val = cnfVal });
+                else
+                    cnf.Val = cnfVal;
+            }
+        }
+
+>>>>>>> upstream/main
         // Dotted-key fallback for tcPr-level attrs (shd.fill, etc.) not
         // modeled by hand-rolled blocks. Lazy-create tcPr if any dotted
         // attr binds. CONSISTENCY(add-set-symmetry).
@@ -1352,7 +1718,15 @@ public partial class WordHandler
             if (key.StartsWith("border.", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("border", StringComparison.OrdinalIgnoreCase))
             {
+<<<<<<< HEAD
                 ApplyCellBorders(lazyTcPr, key, value);
+=======
+                if (!ApplyCellBorders(lazyTcPr, key, value))
+                {
+                    LastAddUnsupportedProps.Add(key);
+                    continue;
+                }
+>>>>>>> upstream/main
                 if (tcPr == null) newCell.PrependChild(lazyTcPr);
                 continue;
             }
@@ -1434,7 +1808,11 @@ public partial class WordHandler
             }
         }
 
+<<<<<<< HEAD
         var cellIdx = targetRow.Elements<TableCell>().ToList().IndexOf(newCell) + 1;
+=======
+        var cellIdx = PathIndex.FromArrayIndex(targetRow.Elements<TableCell>().ToList().IndexOf(newCell));
+>>>>>>> upstream/main
         return $"{parentPath}/tc[{cellIdx}]";
     }
 }

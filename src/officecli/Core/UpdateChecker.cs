@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
@@ -48,6 +52,7 @@ internal static class UpdateChecker
         // Best-effort: SaveConfig falls back to $TMPDIR inside containers when
         // home is read-only, so a CreateDirectory failure here is not fatal.
         try { Directory.CreateDirectory(ConfigDir); } catch { /* continue */ }
+<<<<<<< HEAD
 
         // Apply pending update from previous background check (.update file).
         // After this returns, the current process image is still the OLD binary;
@@ -56,6 +61,26 @@ internal static class UpdateChecker
 
         var config = LoadConfig();
 
+=======
+
+        var config = LoadConfig();
+
+        // Apply pending update from previous background check (.update file).
+        // After this returns, the current process image is still the OLD binary;
+        // the NEW binary is on disk and will run on the *next* invocation.
+        //
+        // GATED ON autoUpdate: the pending file sits NEXT TO THE BINARY
+        // (shared across users) while the opt-out lives in per-HOME
+        // config.json — so a refresh spawned under some other HOME (default
+        // = enabled) could stage a .update that a later invocation applied
+        // even though THIS user had autoUpdate off, silently swapping a
+        // version-pinned binary. When the setting is off, the staged file is
+        // left in place, just never applied by THIS user — deleting it would
+        // only make an enabled sibling process re-download it next cycle.
+        if (config.AutoUpdate)
+            ApplyPendingUpdate();
+
+>>>>>>> upstream/main
         // Skill auto-refresh: if the running binary's version differs from the
         // last version that performed a refresh, push embedded skills from THIS
         // binary's resources into already-installed agent dirs. Runs once per
@@ -95,6 +120,13 @@ internal static class UpdateChecker
         try
         {
             var config = LoadConfig();
+
+            // Piggyback the diagram render's mermaid.js cache refresh on this daily
+            // background pass (we're already once-per-24h and already reaching the
+            // mirror). Only revalidates an existing cache; independent of the binary
+            // update below, so it runs even for package-managed (Homebrew) installs.
+            try { Diagram.MermaidImageRenderer.RefreshCacheIfPresent(); } catch { /* best effort */ }
+
             var currentVersion = GetCurrentVersion();
             if (currentVersion == null) return;
 
@@ -403,6 +435,12 @@ internal static class UpdateChecker
                 // doesn't touch the console stream at all.
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+<<<<<<< HEAD
+=======
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
+>>>>>>> upstream/main
                 RedirectStandardInput = true
             };
 
@@ -720,6 +758,12 @@ internal static class UpdateChecker
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+<<<<<<< HEAD
+=======
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
+>>>>>>> upstream/main
                 CreateNoWindow = true,
                 Environment = { ["OFFICECLI_SKIP_UPDATE"] = "1" }
             });
@@ -768,8 +812,23 @@ internal static class UpdateChecker
         => IsPackageManagedPath(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName);
 
     internal static bool IsPackageManagedPath(string? exePath)
+<<<<<<< HEAD
     {
         if (string.IsNullOrEmpty(exePath)) return false;
+=======
+        => PackageManagerName(exePath) != null;
+
+    /// <summary>
+    /// Name of the package manager that owns <paramref name="exePath"/>
+    /// ("Homebrew" / "Scoop"), or null when the binary is self-managed. Single
+    /// source of truth: both the self-updater (never replace a managed binary)
+    /// and the self-installer (never drop a second copy next to a managed one)
+    /// key on this — CONSISTENCY(package-managed).
+    /// </summary>
+    internal static string? PackageManagerName(string? exePath)
+    {
+        if (string.IsNullOrEmpty(exePath)) return null;
+>>>>>>> upstream/main
         var candidates = new List<string> { exePath };
         try
         {
@@ -777,9 +836,41 @@ internal static class UpdateChecker
             if (!string.IsNullOrEmpty(resolved)) candidates.Add(resolved);
         }
         catch { /* not a link or inaccessible — fall back to the raw path */ }
+<<<<<<< HEAD
         return candidates.Any(p =>
             p.Contains("/Cellar/", StringComparison.Ordinal) ||
             p.Contains("/Caskroom/", StringComparison.Ordinal));
+=======
+        if (candidates.Any(p =>
+                p.Contains("/Cellar/", StringComparison.Ordinal) ||
+                p.Contains("/Caskroom/", StringComparison.Ordinal)))
+            return "Homebrew";
+        if (candidates.Any(IsScoopPath)) return "Scoop";
+        return null;
+    }
+
+    /// <summary>
+    /// True when the path lives inside a Scoop apps directory. Covers the
+    /// default root (<c>%USERPROFILE%\scoop</c>), a relocated one
+    /// (<c>SCOOP</c>) and a global install (<c>SCOOP_GLOBAL</c>). Scoop
+    /// installs the executable under <c>&lt;root&gt;\apps\officecli\current\</c>
+    /// and exposes it through a shim in <c>&lt;root&gt;\shims\</c>, so the
+    /// running path is never itself on PATH.
+    /// </summary>
+    private static bool IsScoopPath(string path)
+    {
+        var normalized = path.Replace('/', '\\');
+        if (normalized.Contains(@"\scoop\apps\", StringComparison.OrdinalIgnoreCase))
+            return true;
+        foreach (var envVar in new[] { "SCOOP", "SCOOP_GLOBAL" })
+        {
+            var root = Environment.GetEnvironmentVariable(envVar);
+            if (string.IsNullOrWhiteSpace(root)) continue;
+            var apps = Path.Combine(root.Replace('/', '\\').TrimEnd('\\'), "apps") + "\\";
+            if (normalized.StartsWith(apps, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+>>>>>>> upstream/main
     }
 
     internal static string? GetCurrentVersionPublic() => GetCurrentVersion();

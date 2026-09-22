@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -71,8 +75,33 @@ public partial class ExcelHandler
                 case "lineweight":
                     if (double.TryParse(value, out var lw)) spkGroup.LineWeight = lw;
                     break;
+<<<<<<< HEAD
                 case "datarange" or "range":
                 {
+=======
+                case "displayemptycellsas":
+                    spkGroup.DisplayEmptyCellsAs = value.Trim().ToLowerInvariant() switch
+                    {
+                        "span" => X14.DisplayBlanksAsValues.Span,
+                        "zero" => X14.DisplayBlanksAsValues.Zero,
+                        _ => X14.DisplayBlanksAsValues.Gap,
+                    };
+                    break;
+                case "displayxaxis":
+                    spkGroup.DisplayXAxis = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                    break;
+                case "righttoleft":
+                    spkGroup.RightToLeft = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                    break;
+                case "dateaxis":
+                    spkGroup.DateAxis = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                    break;
+                case "datarange" or "range":
+                {
+                    // Same shape guard as Add: garbage landed verbatim in
+                    // <xne:f> and real Excel refused the file.
+                    ValidateSparklineRange(value);
+>>>>>>> upstream/main
                     var newRangeRef = value.Contains('!') ? value : $"{spkSheet}!{value}";
                     foreach (var spk in spkGroup.Descendants<X14.Sparkline>())
                     {
@@ -188,7 +217,11 @@ public partial class ExcelHandler
                 {
                     // CONSISTENCY(ole-width-units): mirror Add-side warn — width/height
                     // dropped silently when anchor= present.
+<<<<<<< HEAD
                     if (properties.ContainsKey("width") || properties.ContainsKey("height"))
+=======
+                    if (properties.ContainsKey("width") | properties.ContainsKey("height"))
+>>>>>>> upstream/main
                         Console.Error.WriteLine(
                             "Warning: 'width'/'height' are ignored when 'anchor' is provided (anchor defines the full rectangle).");
                     var anchorM = Regex.Match(value ?? "", @"^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$", RegexOptions.IgnoreCase);
@@ -200,11 +233,20 @@ public partial class ExcelHandler
                     if (fromMAnc == null || toMAnc == null) { oleUnsupportedSet.Add(key); break; }
                     int newFromCol = ColumnNameToIndex(anchorM.Groups[1].Value) - 1;
                     int newFromRow = int.Parse(anchorM.Groups[2].Value) - 1;
+<<<<<<< HEAD
+=======
+                    ValidateAnchorCell(newFromCol, newFromRow, (value ?? "").Split(':')[0]);
+>>>>>>> upstream/main
                     int newToCol, newToRow;
                     if (anchorM.Groups[3].Success)
                     {
                         newToCol = ColumnNameToIndex(anchorM.Groups[3].Value) - 1;
                         newToRow = int.Parse(anchorM.Groups[4].Value) - 1;
+<<<<<<< HEAD
+=======
+                        ValidateAnchorCell(newToCol, newToRow, (value ?? "").Split(':')[1]);
+                        NormalizeAnchorRect(ref newFromCol, ref newFromRow, ref newToCol, ref newToRow);
+>>>>>>> upstream/main
                     }
                     else
                     {
@@ -234,10 +276,64 @@ public partial class ExcelHandler
                     break;
             }
         }
+<<<<<<< HEAD
+=======
+        // Keep the legacy VML shape geometry in lockstep with the OLE
+        // objectPr anchor whenever the rectangle moved. The two parts
+        // desynchronize otherwise (data part updated, presentation part
+        // stale) and older Excel renders the object at the old cell.
+        if (properties.ContainsKey("anchor") || properties.ContainsKey("width") || properties.ContainsKey("height"))
+        {
+            var objectPrVml = oleObjSet.GetFirstChild<EmbeddedObjectProperties>();
+            var objAnchorVml = objectPrVml?.GetFirstChild<ObjectAnchor>();
+            var fromMVml = objAnchorVml?.GetFirstChild<FromMarker>();
+            var toMVml = objAnchorVml?.GetFirstChild<ToMarker>();
+            if (fromMVml != null && toMVml != null && oleObjSet.ShapeId?.Value is uint oleSid)
+            {
+                int.TryParse(fromMVml.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out var vfc);
+                int.TryParse(fromMVml.GetFirstChild<XDR.RowId>()?.Text ?? "0", out var vfr);
+                int.TryParse(toMVml.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out var vtc);
+                int.TryParse(toMVml.GetFirstChild<XDR.RowId>()?.Text ?? "0", out var vtr);
+                UpdateOleVmlShapeAnchor(worksheet, oleSid, vfc, vfr, vtc, vtr);
+            }
+        }
+>>>>>>> upstream/main
         SaveWorksheet(worksheet);
         return oleUnsupportedSet;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Re-anchor the legacy VML OLE shape (id <c>_x0000_s{shapeId}</c>) when the
+    /// companion objectPr anchor moves. Rewrites the shape's 8-coordinate
+    /// x:Anchor to match, mirroring EnsureExcelVmlShapeForOle on Add. Prefix-
+    /// agnostic (matches externally-authored VML with ns-prefixed elements).
+    /// </summary>
+    private void UpdateOleVmlShapeAnchor(WorksheetPart worksheet, uint shapeId,
+        int fromCol, int fromRow, int toCol, int toRow)
+    {
+        var vmlPart = worksheet.VmlDrawingParts.FirstOrDefault();
+        if (vmlPart == null) return;
+        System.Xml.Linq.XDocument doc;
+        try
+        {
+            using var reader = vmlPart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read);
+            doc = System.Xml.Linq.XDocument.Load(reader);
+        }
+        catch { return; }
+        var vNs = (System.Xml.Linq.XNamespace)"urn:schemas-microsoft-com:vml";
+        var xNs = (System.Xml.Linq.XNamespace)"urn:schemas-microsoft-com:office:excel";
+        var shape = doc.Descendants(vNs + "shape")
+            .FirstOrDefault(s => (string?)s.Attribute("id") == $"_x0000_s{shapeId}");
+        var anchor = shape?.Element(xNs + "ClientData")?.Element(xNs + "Anchor");
+        if (anchor == null) return;
+        anchor.Value = $"{fromCol}, 0, {fromRow}, 0, {toCol}, 0, {toRow}, 0";
+        using var writeStream = vmlPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write);
+        doc.Save(writeStream);
+    }
+
+>>>>>>> upstream/main
     private List<string> SetPictureByPath(Match m, WorksheetPart worksheet, Dictionary<string, string> properties)
     {
         var picIdx = int.Parse(m.Groups[1].Value);
@@ -246,8 +342,12 @@ public partial class ExcelHandler
         var wsDrawing = drawingsPart.WorksheetDrawing
             ?? throw new ArgumentException("Sheet has no drawings/pictures");
 
+<<<<<<< HEAD
         var picAnchors = wsDrawing.Elements<XDR.TwoCellAnchor>()
             .Where(a => a.Descendants<XDR.Picture>().Any()).ToList();
+=======
+        var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
+>>>>>>> upstream/main
         if (picIdx < 1 || picIdx > picAnchors.Count)
             throw new ArgumentException($"Picture index {picIdx} out of range (1..{picAnchors.Count})");
 
@@ -263,7 +363,13 @@ public partial class ExcelHandler
         var cropKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "crop.l", "crop.r", "crop.t", "crop.b",
+<<<<<<< HEAD
             "srcRect", "cropLeft", "cropRight", "cropTop", "cropBottom"
+=======
+            "srcRect", "cropLeft", "cropRight", "cropTop", "cropBottom",
+            // Bare composite `crop=l,t,r,b` (the Get emit form) — mirrors Add.
+            "crop"
+>>>>>>> upstream/main
         };
 
         foreach (var (key, value) in properties)
@@ -279,7 +385,13 @@ public partial class ExcelHandler
 
             switch (lk)
             {
+<<<<<<< HEAD
                 case "alt":
+=======
+                // CONSISTENCY(picture-alt): full alias set — Add already
+                // accepted alttext; Set rejecting it was an Add/Set asymmetry.
+                case "alt" or "alttext" or "description":
+>>>>>>> upstream/main
                     var nvProps = anchor.Descendants<XDR.NonVisualDrawingProperties>().FirstOrDefault();
                     if (nvProps != null) nvProps.Description = value;
                     break;
@@ -523,6 +635,7 @@ public partial class ExcelHandler
                 }
                 case "line" or "border":
                 {
+<<<<<<< HEAD
                     // CONSISTENCY(shape-line): mirror Add — accept "none" or "color[:width[:style]]".
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) break;
@@ -555,6 +668,15 @@ public partial class ExcelHandler
                             outline.AppendChild(new Drawing.PresetDash { Val = dash });
                     }
                     spPr.AppendChild(outline);
+=======
+                    // CONSISTENCY(shape-line): "none" or "color[:width[:style]]"
+                    // via the shared BuildShapeOutline helper (same grammar as
+                    // Add and pptx shape line).
+                    var spPr = shape.ShapeProperties;
+                    if (spPr == null) break;
+                    spPr.RemoveAllChildren<Drawing.Outline>();
+                    spPr.AppendChild(BuildShapeOutline(value));
+>>>>>>> upstream/main
                     break;
                 }
                 case "alt" or "alttext" or "descr" or "description":

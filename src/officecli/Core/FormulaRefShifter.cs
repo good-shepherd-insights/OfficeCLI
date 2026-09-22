@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -293,9 +297,31 @@ public static class FormulaRefShifter
             DeltaShiftRefsInChunk(chunk, currentSheet, modifiedSheet, deltaCol, deltaRow));
     }
 
+<<<<<<< HEAD
     private static string DeltaShiftRefsInChunk(
         string chunk, string currentSheet, string modifiedSheet,
         int deltaCol, int deltaRow)
+=======
+    /// <summary>
+    /// <see cref="ApplyCopyDelta"/> without the sheet-scope gate: every relative
+    /// reference is displaced, sheet-qualified or not, and the qualifier is kept
+    /// as written. This is Excel's fill/copy rule for the formula text itself
+    /// (<c>=Sheet2!A1*2</c> filled down one row is <c>=Sheet2!A2*2</c>), and what
+    /// a shared-formula child needs — the gate in <see cref="ApplyCopyDelta"/>
+    /// exists for row/column clones, where references INTO other sheets must
+    /// stay put because those sheets did not move.
+    /// </summary>
+    public static string ApplyCopyDeltaAllSheets(string formula, int deltaCol, int deltaRow)
+    {
+        if (string.IsNullOrEmpty(formula) || (deltaCol == 0 && deltaRow == 0)) return formula;
+        return WalkFormulaTokens(formula, chunk =>
+            DeltaShiftRefsInChunk(chunk, "", "", deltaCol, deltaRow, anySheet: true));
+    }
+
+    private static string DeltaShiftRefsInChunk(
+        string chunk, string currentSheet, string modifiedSheet,
+        int deltaCol, int deltaRow, bool anySheet = false)
+>>>>>>> upstream/main
     {
         return CellRefPattern.Replace(chunk, m =>
         {
@@ -305,7 +331,11 @@ public static class FormulaRefShifter
                 : (sheetGroup.StartsWith('\'') && sheetGroup.EndsWith('\'')
                     ? sheetGroup[1..^1].Replace("''", "'")
                     : sheetGroup);
+<<<<<<< HEAD
             if (!targetSheet.Equals(modifiedSheet, StringComparison.OrdinalIgnoreCase))
+=======
+            if (!anySheet && !targetSheet.Equals(modifiedSheet, StringComparison.OrdinalIgnoreCase))
+>>>>>>> upstream/main
                 return m.Value;
 
             string c1 = m.Groups["c1"].Value;

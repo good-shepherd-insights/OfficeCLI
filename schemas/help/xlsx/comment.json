@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "xlsx",
   "element": "comment",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["note"],
+>>>>>>> upstream/main
   "parent": "sheet|cell",
   "operations": {
     "add": true,

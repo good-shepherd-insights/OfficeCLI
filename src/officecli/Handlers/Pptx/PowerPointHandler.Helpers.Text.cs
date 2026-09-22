@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -38,6 +42,50 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Pre-process a verbatim &lt;a:txBody&gt;/run-XML string so the SDK parser
+    /// keeps whitespace-only and edge-whitespace &lt;a:t&gt; content. When raw
+    /// drawingml XML is reparsed via <c>new Drawing.TextBody(xml)</c>, the SDK
+    /// reader treats a text node with no <c>xml:space="preserve"</c> as
+    /// collapsible whitespace and drops it — a source run that displayed
+    /// spaces (visual spacers, indentation) comes back as an empty
+    /// self-closing &lt;a:t/&gt;, silently deleting the text. PowerPoint authors
+    /// such whitespace runs WITHOUT the attribute, so the captured OuterXml
+    /// lacks it; inject it on the parse boundary for every &lt;a:t&gt; whose
+    /// content begins or ends with whitespace. Mirrors MakePreservingText's
+    /// per-run rule applied across a raw body string. Non-whitespace runs and
+    /// &lt;a:t&gt; that already carry xml:space are left untouched.
+    /// </summary>
+    internal static string PreserveWhitespaceInRawText(string xml)
+    {
+        if (string.IsNullOrEmpty(xml) || xml.IndexOf("<a:t", StringComparison.Ordinal) < 0)
+            return xml;
+        // Match an <a:t ...>content</a:t> element (any attribute prefix; the
+        // package writer never realiases the `a` prefix on drawingml runs).
+        // The (?<!/) before the closing '>' excludes a self-closing empty run
+        // <a:t/> / <a:t />: without it, attrs greedily captures the " /" and the
+        // '/>' close is misread as an open tag, so .*? swallows the following
+        // siblings up to the next </a:t> and xml:space is injected mid-tag,
+        // corrupting the body (e.g. "<a:t / xml:space=\"preserve\">…").
+        return Regex.Replace(xml,
+            @"<a:t(?<attrs>(?:\s[^>]*?)?)(?<!/)>(?<content>.*?)</a:t>",
+            m =>
+            {
+                var attrs = m.Groups["attrs"].Value;
+                var content = m.Groups["content"].Value;
+                // Already preserved, or no edge whitespace to protect — leave verbatim.
+                if (content.Length == 0
+                    || attrs.Contains("xml:space", StringComparison.Ordinal)
+                    || (!char.IsWhiteSpace(content[0]) && !char.IsWhiteSpace(content[^1])))
+                    return m.Value;
+                return $"<a:t{attrs} xml:space=\"preserve\">{content}</a:t>";
+            },
+            RegexOptions.Singleline);
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Read a table cell's text content, joining multi-paragraph text with "\n".
     /// CONSISTENCY(cell-text-readback): cell.TextBody?.InnerText concatenates
     /// paragraphs without separators, which silently loses line-break structure
@@ -49,7 +97,24 @@ public partial class PowerPointHandler
         if (tb == null) return "";
         var paragraphs = tb.Elements<Drawing.Paragraph>().ToList();
         if (paragraphs.Count == 0) return tb.InnerText ?? "";
+<<<<<<< HEAD
         return string.Join("\n", paragraphs.Select(p => p.InnerText ?? ""));
+=======
+        // NEWLINE-SEMANTICS-V2: render <a:br/> as '\v' inside each
+        // paragraph (InnerText drops it silently).
+        return string.Join("\n", paragraphs.Select(ParagraphTextWithBreaks));
+    }
+
+    private static string ParagraphTextWithBreaks(Drawing.Paragraph p)
+    {
+        var sb = new StringBuilder();
+        foreach (var child in p.ChildElements)
+        {
+            if (child is Drawing.Run r) sb.Append(r.Text?.Text ?? "");
+            else if (child is Drawing.Break) sb.Append('\v');
+        }
+        return sb.Length == 0 ? (p.InnerText ?? "") : sb.ToString();
+>>>>>>> upstream/main
     }
 
     private static string GetShapeText(Shape shape)
@@ -67,6 +132,14 @@ public partial class PowerPointHandler
             {
                 if (child is Drawing.Run run)
                     sb.Append(run.Text?.Text ?? "");
+<<<<<<< HEAD
+=======
+                else if (child is Drawing.Break)
+                    // NEWLINE-SEMANTICS-V2: <a:br/> reads back as '\v' (soft
+                    // line break), matching docx <w:br/> readback; '\n' is
+                    // reserved for the paragraph join below.
+                    sb.Append('\v');
+>>>>>>> upstream/main
                 else if (child is OpenXmlUnknownElement unk
                          && unk.LocalName == "tab"
                          && unk.NamespaceUri == "http://schemas.openxmlformats.org/drawingml/2006/main")

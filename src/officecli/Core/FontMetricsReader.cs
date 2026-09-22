@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Concurrent;
@@ -17,8 +21,14 @@ internal static class FontMetricsReader
 {
     /// <summary>
     /// Line-height ratio for a font file. Returns 1.0 on any read failure.
+<<<<<<< HEAD
+=======
+    /// <paramref name="cjkPadding"/>: Word pads CJK line pitch by 2 × v7
+    /// (≈ +30%); PowerPoint uses the bare ascent+descent pitch, so its
+    /// callers pass false (e.g. Microsoft YaHei: 1.32 bare vs 1.72 padded).
+>>>>>>> upstream/main
     /// </summary>
-    public static double GetLineHeightRatio(string fontFilePath, int fontIndex = 0)
+    public static double GetLineHeightRatio(string fontFilePath, int fontIndex = 0, bool cjkPadding = true)
     {
         try
         {
@@ -38,6 +48,10 @@ internal static class FontMetricsReader
             {
                 int asc = os2.UseTypo ? os2.TypoAscent : os2.WinAscent;
                 int dsc = os2.UseTypo ? -os2.TypoDescent : os2.WinDescent;
+<<<<<<< HEAD
+=======
+                if (!cjkPadding) return (double)(asc + dsc) / upm;
+>>>>>>> upstream/main
                 int v7 = (15 * (asc + dsc) + 50) / 100;
                 return (double)(asc + dsc + 2 * v7) / upm;
             }
@@ -386,6 +400,7 @@ internal static class FontMetricsReader
         });
     }
 
+<<<<<<< HEAD
     // ==================== Ascent/Descent override ====================
 
     /// <summary>
@@ -397,6 +412,37 @@ internal static class FontMetricsReader
     /// </summary>
     public static (double ascentPctEm, double descentPctEm) GetSplitAscDscOverride(string fontFamily)
     {
+=======
+    // PowerPoint single-spacing pitch: bare ascent+descent, no Word CJK padding.
+    private static readonly ConcurrentDictionary<string, double> s_pitchRatioCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Single-spacing line pitch for PowerPoint rendering: the font's bare
+    /// ascent+descent(+lineGap) ratio, WITHOUT Word's 2 × v7 CJK padding
+    /// (PowerPoint does not apply it — issue #236). Returns 1.0 when the
+    /// font can't be located or read.
+    /// </summary>
+    public static double GetPitchRatio(string fontFamily)
+    {
+        return s_pitchRatioCache.GetOrAdd(fontFamily, static family =>
+        {
+            var hit = FindFont(family);
+            return hit.HasValue ? GetLineHeightRatio(hit.Value.path, hit.Value.idx, cjkPadding: false) : 1.0;
+        });
+    }
+
+    // ==================== Ascent/Descent override ====================
+
+    /// <summary>
+    /// Return ascent/descent split (as percentage of em). CJK fonts get
+    /// a +round(0.15 × (asc+dsc)) padding on each side. Latin fonts take
+    /// the larger of the two ascent/descent pairs available in the font;
+    /// the line-gap field, when present, folds into the ascent side.
+    /// Returns (0, 0) when the font isn't locatable.
+    /// </summary>
+    public static (double ascentPctEm, double descentPctEm) GetSplitAscDscOverride(string fontFamily)
+    {
+>>>>>>> upstream/main
         var hit = FindFont(fontFamily);
         if (!hit.HasValue) return (0, 0);
 

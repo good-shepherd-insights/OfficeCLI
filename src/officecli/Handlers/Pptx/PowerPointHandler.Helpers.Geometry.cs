@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -83,6 +87,27 @@ public partial class PowerPointHandler
                     TrackMax(ref maxX, ref maxY, x2, y2);
                     break;
                 }
+<<<<<<< HEAD
+=======
+                case "A":
+                {
+                    // arcTo. NodeBuilder.ReconstructCustomGeometryPath emits only
+                    // "A{wR},{hR}" (the width/height radii), so the token carries a
+                    // single "wR,hR" coordinate pair. stAng/swAng are not round-tripped
+                    // by the emitter, so default them to 0 (a degenerate-but-valid arc
+                    // that preserves the ArcTo element across Get→Add). Radii are
+                    // scaled ×1000 like every other coordinate token.
+                    var (wr, hr) = ParsePointToken(tokens[i++]);
+                    path.AppendChild(new Drawing.ArcTo
+                    {
+                        WidthRadius = wr.ToString(),
+                        HeightRadius = hr.ToString(),
+                        StartAngle = "0",
+                        SwingAngle = "0",
+                    });
+                    break;
+                }
+>>>>>>> upstream/main
                 case "Z":
                     path.AppendChild(new Drawing.CloseShapePath());
                     break;
@@ -266,10 +291,30 @@ public partial class PowerPointHandler
     /// expression for @fmla ("val N", "*/ adj1 width …", named references
     /// resolved by the preset's own definition).
     /// </summary>
+<<<<<<< HEAD
     internal static void ApplyAdjustHandles(Drawing.AdjustValueList avLst, string spec)
     {
         avLst.RemoveAllChildren<Drawing.ShapeGuide>();
         if (string.IsNullOrWhiteSpace(spec)) return;
+=======
+    internal static void ApplyAdjustHandles(Drawing.AdjustValueList avLst, string spec,
+        Drawing.ShapeTypeValues? preset = null)
+    {
+        avLst.RemoveAllChildren<Drawing.ShapeGuide>();
+        if (string.IsNullOrWhiteSpace(spec)) return;
+        // R19b BUG: a preset whose definition declares MORE THAN ONE adjust
+        // guide (e.g. hexagon = adj + vf, star6 = adj + hf) corrupts the file
+        // in real PowerPoint (0x80070570) if the authored avLst contains only
+        // a subset of those guides — even though the OpenXML SDK validates it.
+        // PowerPoint requires either an empty avLst (uses built-in defaults) or
+        // the COMPLETE declared guide set. So we collect the user-supplied
+        // guides keyed by canonical name, then emit the preset's full guide set
+        // in declaration order, using the user formula where given and the
+        // preset's default formula for the rest.
+        var supplied = new Dictionary<string, string>(StringComparer.Ordinal);
+        var orderSupplied = new List<string>();
+        int idx = 0;
+>>>>>>> upstream/main
         foreach (var raw in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var entry = raw.Trim();
@@ -283,7 +328,131 @@ public partial class PowerPointHandler
             if (name.Length == 0 || fmla.Length == 0)
                 throw new ArgumentException(
                     $"Invalid adj spec '{entry}'. Both name and formula must be non-empty.");
+<<<<<<< HEAD
             avLst.AppendChild(new Drawing.ShapeGuide { Name = name, Formula = fmla });
         }
+=======
+            // Bare numeric convenience: "adj:25000" means "adj:val 25000".
+            if (long.TryParse(fmla, out _)) fmla = $"val {fmla}";
+            // Validate the guide-formula grammar. fmla is xs:string in the
+            // schema, so our validator stays green on garbage — but real
+            // PowerPoint refuses the file (0x80070570) when fmla isn't a
+            // well-formed ECMA-376 guide formula.
+            ValidateGuideFormula(entry, fmla);
+            // R18 BUG A: PowerPoint validates each <a:gd name="…"> against the
+            // names the preset's own definition declares; an unknown name (e.g.
+            // "adj1" on a single-handle preset whose guide is literally "adj")
+            // makes real PowerPoint refuse the file (0x80070570) even though the
+            // OpenXML SDK considers it schema-valid. Remap the supplied name to
+            // the canonical handle name expected at this position for the preset.
+            name = CanonicalAdjName(preset, idx, name);
+            if (supplied.TryAdd(name, fmla)) orderSupplied.Add(name);
+            else supplied[name] = fmla;
+            idx++;
+        }
+
+        // If this preset has a known multi-guide definition, always emit the
+        // full guide set so PowerPoint accepts the authored avLst.
+        if (preset != null && MultiGuidePresetDefaults.TryGetValue(preset.Value, out var defaults))
+        {
+            foreach (var (name, defFmla) in defaults)
+            {
+                var fmla = supplied.TryGetValue(name, out var userFmla) ? userFmla : defFmla;
+                avLst.AppendChild(new Drawing.ShapeGuide { Name = name, Formula = fmla });
+            }
+            return;
+        }
+
+        // Unknown / single-guide preset: keep prior behavior — emit exactly what
+        // the user supplied, in their order.
+        foreach (var name in orderSupplied)
+            avLst.AppendChild(new Drawing.ShapeGuide { Name = name, Formula = supplied[name] });
+    }
+
+    // ECMA-376 §20.1.9.11 guide formula: an operator followed by numeric or
+    // guide-name arguments (e.g. "val 25000", "*/ w 1 2", "+- adj 0 100000").
+    private static readonly HashSet<string> GuideFormulaOps = new(StringComparer.Ordinal)
+    {
+        "val", "*/", "+-", "+/", "?:", "abs", "at2", "cat2", "cos",
+        "max", "min", "mod", "pin", "sat2", "sin", "sqrt", "tan",
+    };
+
+    private static void ValidateGuideFormula(string entry, string fmla)
+    {
+        var tokens = fmla.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var ok = tokens.Length >= 2 && GuideFormulaOps.Contains(tokens[0])
+            && tokens.Skip(1).All(t =>
+                long.TryParse(t, out _)
+                || System.Text.RegularExpressions.Regex.IsMatch(t, "^[A-Za-z_][A-Za-z0-9_]*$"));
+        if (!ok)
+            throw new ArgumentException(
+                $"Invalid adj formula in '{entry}'. Expected an ECMA-376 guide formula " +
+                "such as 'val 25000' (or a bare number), got '" + fmla + "'.");
+    }
+
+    /// <summary>
+    /// Authoritative full adjust-guide set for presets whose ECMA-376
+    /// presetShapeDefinition declares MORE THAN ONE adjust guide. Maps the
+    /// preset to its ordered (guide name → default formula) list. Real
+    /// PowerPoint rejects (0x80070570) an avLst that contains a subset of a
+    /// multi-guide preset's guides, so when the user authors an `adj=...` on
+    /// any of these we must emit the complete set, filling unspecified guides
+    /// with these defaults. Formulas use the ECMA-376 default values; the
+    /// star adjust handles are the literal `<a:gd … fmla="val N"/>` defaults
+    /// from the spec's presetShapeDefinitions. Single-guide presets are
+    /// deliberately ABSENT — they round-trip fine as a lone `adj`.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<Drawing.ShapeTypeValues, (string Name, string Fmla)[]>
+        MultiGuidePresetDefaults = new Dictionary<Drawing.ShapeTypeValues, (string, string)[]>
+        {
+            [Drawing.ShapeTypeValues.Hexagon] = new[]
+            {
+                ("adj", "val 25000"),
+                ("vf", "val 115470"),
+            },
+            [Drawing.ShapeTypeValues.Star5] = new[]
+            {
+                ("adj", "val 19098"),
+                ("hf", "val 105146"),
+                ("vf", "val 110557"),
+            },
+            [Drawing.ShapeTypeValues.Star6] = new[]
+            {
+                ("adj", "val 28868"),
+                ("hf", "val 115470"),
+            },
+            [Drawing.ShapeTypeValues.Star7] = new[]
+            {
+                ("adj", "val 34601"),
+                ("hf", "val 102572"),
+                ("vf", "val 105210"),
+            },
+            [Drawing.ShapeTypeValues.Star10] = new[]
+            {
+                ("adj", "val 42533"),
+                ("hf", "val 105146"),
+            },
+        };
+
+    /// <summary>
+    /// Map the adjust-handle name at <paramref name="index"/> to the name the
+    /// given <paramref name="preset"/> actually declares. Presets that define a
+    /// single adjust handle name it <c>adj</c> (donut, noSmoking, …); writing the
+    /// generic <c>adj1</c> there yields a file real PowerPoint rejects. Presets
+    /// with multiple handles use <c>adj1</c>/<c>adj2</c>/… and pass through.
+    /// Unknown presets keep the caller-supplied name verbatim.
+    /// </summary>
+    private static string CanonicalAdjName(Drawing.ShapeTypeValues? preset, int index, string supplied)
+    {
+        if (preset == null) return supplied;
+        // Single-handle presets: the one and only guide is named "adj".
+        if (index == 0 &&
+            (preset == Drawing.ShapeTypeValues.Donut
+             || preset == Drawing.ShapeTypeValues.NoSmoking))
+        {
+            return "adj";
+        }
+        return supplied;
+>>>>>>> upstream/main
     }
 }

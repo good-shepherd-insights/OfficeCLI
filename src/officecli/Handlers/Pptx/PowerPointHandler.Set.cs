@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -13,6 +17,7 @@ namespace OfficeCli.Handlers;
 public partial class PowerPointHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
+<<<<<<< HEAD
     {
         Modified = true;
         path = NormalizePptxPathSegmentCasing(path);
@@ -20,6 +25,18 @@ public partial class PowerPointHandler
         path = ResolveIdPath(path);
         path = ResolveLastPredicates(path);
 
+=======
+        => MarkModified(() => SetCore(path, properties));
+
+    private List<string> SetCore(string path, Dictionary<string, string> properties)
+    {
+        LastUnrecognizedLatex = new List<string>();
+        path = NormalizePptxPathSegmentCasing(path);
+        path = NormalizeCellPath(path);
+        path = ResolveIdPath(path);
+        path = ResolveLastPredicates(path);
+
+>>>>>>> upstream/main
         // Batch Set: route to the shared filter engine when the path is a bare
         // selector (no `/`) OR a `/`-scoped path that carries a content filter
         // (e.g. `/slide[1]/shape[width>5cm or text~=AA]`). The latter would
@@ -54,6 +71,41 @@ public partial class PowerPointHandler
         if (path.Equals("/theme", StringComparison.OrdinalIgnoreCase))
             return SetThemeProperties(properties);
 
+<<<<<<< HEAD
+=======
+        // find / range are two mutually exclusive addressing modes (text match vs
+        // explicit character offsets). Reject the contradiction rather than pick a
+        // silent winner — mirrors the revision-namespace mutual-exclusion rule.
+        if (properties.ContainsKey("find") && properties.ContainsKey("range"))
+            throw new ArgumentException(
+                "'find' and 'range' are mutually exclusive addressing modes — provide one, not both.");
+
+        // Explicit character-range addressing: same split-run + format engine as
+        // find, but the [start,end) offsets are supplied directly instead of being
+        // derived from a text match. This gives the caller (e.g. an editor with a
+        // live text selection) unambiguous run-level formatting even when the
+        // selected text repeats. Coordinates are 0-based, half-open, relative to
+        // the concatenated run text of the resolved scope — path to a shape spans
+        // all its paragraphs; path to /paragraph[P] is that paragraph only.
+        if (properties.TryGetValue("range", out var rangeSpec))
+        {
+            if (properties.ContainsKey("replace") || properties.ContainsKey("text"))
+                throw new ArgumentException(
+                    "range currently supports formatting only (bold, color, size, …); " +
+                    "text insertion/replacement via range is not yet supported.");
+            var rangeFormatProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            rangeFormatProps.Remove("range");
+            rangeFormatProps.Remove("scope");
+            rangeFormatProps.Remove("regex");
+            if (rangeFormatProps.Count == 0)
+                throw new ArgumentException(
+                    "'range' requires format properties (e.g. bold, color, size).");
+            var ranges = ParseHelpers.ParseCharRanges(rangeSpec);
+            LastFindMatchCount = ProcessPptRange(path, ranges, rangeFormatProps);
+            return [];
+        }
+
+>>>>>>> upstream/main
         // Unified find: if 'find' key is present, route to ProcessPptFind
         if (properties.TryGetValue("find", out var findText))
         {
@@ -213,7 +265,11 @@ public partial class PowerPointHandler
         // Handles background and name props. Falls through for shape-nested paths.
         {
             // CONSISTENCY(master-layout-path-aliases): accept the short forms
+<<<<<<< HEAD
             // `/master[N]` and `/layout[N]` documented in Handlers/Pptx/CLAUDE.md
+=======
+            // `/master[N]` and `/layout[N]` documented in the PPTX handler conventions
+>>>>>>> upstream/main
             // alongside the long forms `/slidemaster[N]` and `/slidelayout[N]`.
             // Long form is what Get/Add emit; short form is accepted-only on input.
             var masterBgMatch = Regex.Match(path, @"^/(?:slidemaster|master)\[(\d+)\](?:/(?:slidelayout|layout)\[(\d+)\])?$", RegexOptions.IgnoreCase);
@@ -351,6 +407,7 @@ public partial class PowerPointHandler
         var cxnMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(?:connector|connection)\[(\d+)\]$");
         if (cxnMatch.Success) return SetConnectorByPath(cxnMatch, properties);
 
+<<<<<<< HEAD
         // Try group inner paragraph/run path: /slide[N]/group[M]/shape[K]/paragraph[P]/run[R]
         // CONSISTENCY(group-inner-shape): Get supports the nested paragraph/run
         // path on shapes inside a group; Set used to fall through to the
@@ -380,6 +437,105 @@ public partial class PowerPointHandler
         // CONSISTENCY(group-inner-shape): Get supports this; Set must too.
         var grpInnerShapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]$");
         if (grpInnerShapeMatch.Success) return SetGroupInnerShapeByPath(grpInnerShapeMatch, properties);
+=======
+        // Try group-inner connector path (any group depth, index or @id):
+        //   /slide[N]/group[K](/group[L])*/connector[M|@id=…]
+        // dump emits arrowhead/style sets on connectors nested in groups, often
+        // addressed by @id; without this route they hit the generic XML fallback
+        // (LocalName "group"/"connector" don't match p:grpSp/p:cxnSp) and errored.
+        var grpCxnMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]((?:/group\[[^\]]+\])+)/(?:connector|connection)\[([^\]]+)\]$");
+        if (grpCxnMatch.Success)
+        {
+            var (sp, cxn) = ResolveGroupInnerConnector(
+                int.Parse(grpCxnMatch.Groups[1].Value),
+                grpCxnMatch.Groups[2].Value,
+                grpCxnMatch.Groups[3].Value);
+            return ApplyConnectorProps(sp, cxn, properties);
+        }
+>>>>>>> upstream/main
+
+        // Try nested-depth group inner paragraph/run path:
+        //   /slide[N]/group[M](/group[L])+/shape[K]/paragraph[P][/run[R]]
+        // CONSISTENCY(group-inner-shape): the depth-1 routes below handle a single
+        // group; deeper nesting (group/group/group/shape/paragraph) fell through to
+        // the XML fallback and errored "Element not found". Walk arbitrary depth via
+        // ResolveGroupInnerShapeBySegments, then reuse the shape paragraph/run helpers.
+        var nestedGrpParaRunMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/group\[(\d+)\]((?:/group\[\d+\])+)/shape\[(\d+)\]/(?:paragraph|p)\[(\d+)\]/(?:run|r)\[(\d+)\]$");
+        if (nestedGrpParaRunMatch.Success)
+        {
+            var slideIdx = int.Parse(nestedGrpParaRunMatch.Groups[1].Value);
+            var segs = "/group[" + nestedGrpParaRunMatch.Groups[2].Value + "]" + nestedGrpParaRunMatch.Groups[3].Value;
+            var shapeIdx = int.Parse(nestedGrpParaRunMatch.Groups[4].Value);
+            var paraIdx = int.Parse(nestedGrpParaRunMatch.Groups[5].Value);
+            var runIdx = int.Parse(nestedGrpParaRunMatch.Groups[6].Value);
+            var (sp, shp) = ResolveGroupInnerShapeBySegments(slideIdx, segs, shapeIdx);
+            return SetParagraphRunOnShape(sp, shp, paraIdx, runIdx, properties);
+        }
+        var nestedGrpParaMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/group\[(\d+)\]((?:/group\[\d+\])+)/shape\[(\d+)\]/(?:paragraph|p)\[(\d+)\]$");
+        if (nestedGrpParaMatch.Success)
+        {
+            var slideIdx = int.Parse(nestedGrpParaMatch.Groups[1].Value);
+            var segs = "/group[" + nestedGrpParaMatch.Groups[2].Value + "]" + nestedGrpParaMatch.Groups[3].Value;
+            var shapeIdx = int.Parse(nestedGrpParaMatch.Groups[4].Value);
+            var paraIdx = int.Parse(nestedGrpParaMatch.Groups[5].Value);
+            var (sp, shp) = ResolveGroupInnerShapeBySegments(slideIdx, segs, shapeIdx);
+            return SetParagraphOnShape(sp, shp, paraIdx, properties);
+        }
+
+        // Try group inner paragraph/run path: /slide[N]/group[M]/shape[K]/paragraph[P]/run[R]
+        // CONSISTENCY(group-inner-shape): Get supports the nested paragraph/run
+        // path on shapes inside a group; Set used to fall through to the
+        // generic XML fallback which navigates by LocalName and cannot find
+        // "group" (real element is p:grpSp). Route explicitly to the same
+        // helpers used by /slide[N]/shape[K]/paragraph[P][/run[R]].
+        var grpParaRunMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]/(?:paragraph|p)\[(\d+)\]/(?:run|r)\[(\d+)\]$");
+        if (grpParaRunMatch.Success) return SetGroupParagraphRunByPath(grpParaRunMatch, properties);
+
+        // Try group inner paragraph path: /slide[N]/group[M]/shape[K]/paragraph[P]
+        var grpParaMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]/(?:paragraph|p)\[(\d+)\]$");
+        if (grpParaMatch.Success) return SetGroupParagraphByPath(grpParaMatch, properties);
+
+        // Try arbitrary-depth group descent for shape leaves:
+        //   /slide[N]/group[M](/group[L])+/shape[K]
+        // CONSISTENCY(group-inner-shape): Query.cs already walks arbitrary-depth
+        // group chains (see Query.cs:836 nestedGroupMatch). Set must too —
+        // without this branch, /slide[1]/group[1]/group[1]/shape[1] falls
+        // through to the XML-fallback and errors with "Element not found".
+        // Match nested-only (≥2 group segments); the depth-1 case below stays.
+        var nestedGrpInnerShapeMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/group\[(\d+)\]((?:/group\[\d+\])+)/shape\[(\d+)\]$");
+        if (nestedGrpInnerShapeMatch.Success)
+            return SetNestedGroupInnerShapeByPath(nestedGrpInnerShapeMatch, properties);
+
+        // Try group inner shape path: /slide[N]/group[M]/shape[K]
+        // CONSISTENCY(group-inner-shape): Get supports this; Set must too.
+        var grpInnerShapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]$");
+        if (grpInnerShapeMatch.Success) return SetGroupInnerShapeByPath(grpInnerShapeMatch, properties);
+
+        // Try group inner picture path: /slide[N]/group[M]/picture[K] (or pic[K]).
+        // CONSISTENCY(group-inner-shape): Get/Add support a picture nested in a
+        // group; Set fell through to the XML fallback (LocalName "group" ≠
+        // p:grpSp) and errored "Element not found". EmitPicture defers picture
+        // effects (shadow/glow/brightness/contrast — schema add:false set:true)
+        // as `set /slide[N]/group[K]/picture[M]`, so a grouped picture with any
+        // such effect failed on replay. Route to the same picture-prop core.
+        // Match any group depth — group 2 captures the full /group[..] chain so a
+        // picture in a nested group (group[3]/group[1]/picture[1]) also routes.
+        var grpInnerPicMatch = Regex.Match(path, @"^/slide\[(\d+)\]((?:/group\[\d+\])+)/(?:picture|pic)\[(\d+)\]$");
+        if (grpInnerPicMatch.Success) return SetGroupInnerPictureByPath(grpInnerPicMatch, properties);
+
+        // Try grouped table/chart path: /slide[N]/group[M](/group[L])*/table[K] or /chart[K].
+        // CONSISTENCY(group-inner-leaf): Query.cs nestedGroupMatch already resolves
+        // these for Get; Set had no branch and fell through to the XML fallback
+        // (LocalName "group" ≠ p:grpSp) → "Element not found" (R14-5). Walk the
+        // group chain, resolve the leaf GraphicFrame, and reuse the same prop cores.
+        var grpLeafFrameMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/group\[(\d+)\]((?:/group\[\d+\])*)/(table|chart)\[(\d+)\]$");
+        if (grpLeafFrameMatch.Success)
+            return SetGroupInnerFrameByPath(grpLeafFrameMatch, properties);
 
         // Try group path: /slide[N]/group[M]
         var grpMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]$");

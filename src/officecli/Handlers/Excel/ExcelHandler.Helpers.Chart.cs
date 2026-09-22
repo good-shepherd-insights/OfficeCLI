@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -74,6 +78,41 @@ public partial class ExcelHandler
             .ToList();
         if (chartIdx < 1 || chartIdx > chartFrames.Count) return;
         var gf = chartFrames[chartIdx - 1];
+<<<<<<< HEAD
+=======
+        // Externally-authored charts (e.g. openpyxl) hang off oneCellAnchor /
+        // absoluteAnchor. Bailing out here dropped x/y/width/height from Get,
+        // so dump emitted no position and replay parked the chart at the
+        // default origin — covering the sheet data. Read the from+ext (or
+        // pos+ext) rectangle instead; replay normalizes to a twoCell anchor
+        // at the same rectangle, which preserves the rendered layout.
+        if (gf.Parent is XDR.OneCellAnchor oneAnchor)
+        {
+            var oFrom = oneAnchor.FromMarker;
+            var oExt = oneAnchor.GetFirstChild<XDR.Extent>();
+            if (oFrom == null || oExt?.Cx?.HasValue != true || oExt.Cy?.HasValue != true) return;
+            int.TryParse(oFrom.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out var oCol);
+            int.TryParse(oFrom.GetFirstChild<XDR.RowId>()?.Text ?? "0", out var oRow);
+            long.TryParse(oFrom.GetFirstChild<XDR.ColumnOffset>()?.Text ?? "0", out var oColOff);
+            long.TryParse(oFrom.GetFirstChild<XDR.RowOffset>()?.Text ?? "0", out var oRowOff);
+            chartNode.Format["x"] = OfficeCli.Core.EmuConverter.FormatEmu((long)oCol * EmuPerColApprox + oColOff);
+            chartNode.Format["y"] = OfficeCli.Core.EmuConverter.FormatEmu((long)oRow * EmuPerRowApprox + oRowOff);
+            chartNode.Format["width"] = OfficeCli.Core.EmuConverter.FormatEmu(oExt.Cx.Value);
+            chartNode.Format["height"] = OfficeCli.Core.EmuConverter.FormatEmu(oExt.Cy.Value);
+            return;
+        }
+        if (gf.Parent is XDR.AbsoluteAnchor absAnchor)
+        {
+            var aPos = absAnchor.GetFirstChild<XDR.Position>();
+            var aExt = absAnchor.GetFirstChild<XDR.Extent>();
+            if (aExt?.Cx?.HasValue != true || aExt.Cy?.HasValue != true) return;
+            chartNode.Format["x"] = OfficeCli.Core.EmuConverter.FormatEmu(aPos?.X?.Value ?? 0);
+            chartNode.Format["y"] = OfficeCli.Core.EmuConverter.FormatEmu(aPos?.Y?.Value ?? 0);
+            chartNode.Format["width"] = OfficeCli.Core.EmuConverter.FormatEmu(aExt.Cx.Value);
+            chartNode.Format["height"] = OfficeCli.Core.EmuConverter.FormatEmu(aExt.Cy.Value);
+            return;
+        }
+>>>>>>> upstream/main
         if (gf.Parent is not XDR.TwoCellAnchor anchor) return;
         var fromM = anchor.FromMarker;
         var toM = anchor.ToMarker;
@@ -127,6 +166,33 @@ public partial class ExcelHandler
         var fromM = anchor.FromMarker;
         var toM = anchor.ToMarker;
 
+<<<<<<< HEAD
+=======
+        // ---- Full rectangle (anchor=D2:K20) → set both markers ----
+        // Lets a chart be moved AND resized in one prop after create, mirroring
+        // chart Add's `anchor=<range>`. Takes precedence over x/y/width/height
+        // (anchor defines the whole rectangle), so those are dropped if combined.
+        static void SetMarkerCell(XDR.MarkerType marker, int col, int row)
+        {
+            if (marker.GetFirstChild<XDR.ColumnId>() is { } ci) ci.Text = col.ToString();
+            if (marker.GetFirstChild<XDR.RowId>() is { } ri) ri.Text = row.ToString();
+            if (marker.GetFirstChild<XDR.ColumnOffset>() is { } co) co.Text = "0";
+            if (marker.GetFirstChild<XDR.RowOffset>() is { } ro) ro.Text = "0";
+        }
+        if (properties.TryGetValue("anchor", out var anchorStr) && !string.IsNullOrWhiteSpace(anchorStr))
+        {
+            if (TryParseCellRangeAnchor(anchorStr, out var aFromCol, out var aFromRow, out var aToCol, out var aToRow))
+            {
+                SetMarkerCell(fromM, aFromCol, aFromRow);
+                SetMarkerCell(toM, aToCol, aToRow);
+                // anchor defines the whole rectangle — skip x/y/width/height
+                // (mirrors chart Add, which ignores them when anchor is given).
+                return unsupported;
+            }
+            unsupported.Add("anchor");
+        }
+
+>>>>>>> upstream/main
         // ---- Position (x, y) → FromMarker cell indices ----
         // `x` = column index (0-based), `y` = row index (0-based). Integer
         // only — sub-cell offset is not supported here (matches chart Add).
@@ -326,7 +392,29 @@ public partial class ExcelHandler
     /// Returns series data and populates properties with cell references for chart building.
     /// First row = category labels + series names, remaining rows = data.
     /// </summary>
+<<<<<<< HEAD
     private (List<(string name, double[] values)> seriesData, string[]? categories) ParseDataRangeForChart(
+=======
+    /// <summary>
+    /// Host-range geometry of a parsed dataRange, for consumers that must emit
+    /// their own cell formulas against the HOST workbook (the chartEx path —
+    /// issue #176: ChartExBuilder hardcodes the embedded-xlsx Sheet1!$A$2 layout,
+    /// which is correct for PPT/Word but must be remapped to these coordinates
+    /// on an xlsx host). Column/row values are 1-based.
+    /// </summary>
+    internal sealed record ChartRangeGeometry(
+        string SheetName,
+        int CatColIdx,
+        int FirstSeriesColIdx,
+        int HeaderRow,
+        int DataStartRow,
+        int EndRow,
+        bool HasHeaderRow,
+        bool HasExplicitCategories,
+        string? ExplicitCategoriesRef);
+
+    private (List<(string name, double[] values)> seriesData, string[]? categories, ChartRangeGeometry geometry) ParseDataRangeForChart(
+>>>>>>> upstream/main
         string dataRange, string defaultSheetName, Dictionary<string, string> properties)
     {
         // CONSISTENCY(defined-name-range): if dataRange has no '!' and no ':' and
@@ -531,7 +619,14 @@ public partial class ExcelHandler
             seriesIdx++;
         }
 
+<<<<<<< HEAD
         return (seriesData, categories.ToArray());
+=======
+        var geometry = new ChartRangeGeometry(
+            rangeSheetName, startColIdx, firstSeriesCol, startRow, dataStartRow,
+            endRow, hasHeaderRow, hasExplicitCategories, explicitCategoriesRef);
+        return (seriesData, categories.ToArray(), geometry);
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -610,4 +705,123 @@ public partial class ExcelHandler
             $"{catSheetName}!${IndexToColumnName(startColIdx)}${startRow}:${IndexToColumnName(endColIdx)}${endRow}";
         return (labels.ToArray(), categoriesRef);
     }
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// CONSISTENCY(chart-series-rangeref-cache): backfill literal series values
+    /// and category labels from cell-RANGE references (series{N}=B1:B4,
+    /// series{N}.values=Sheet1!B1:B4, categories=A1:A4) so the chart builder
+    /// seeds a numCache/strCache — exactly like the dataRange= path. The range
+    /// is still emitted as a numRef/strRef formula by ApplySeriesReferences;
+    /// this only fills the cached snapshot the HTML preview (and real Excel,
+    /// pre-recalc) renders from. Cells that are empty/non-numeric resolve to 0
+    /// for values and "" for labels, matching ParseDataRangeForChart.
+    /// </summary>
+    private void BackfillSeriesRangeValues(
+        ref List<(string name, double[] values)> seriesData,
+        ref string[]? categories,
+        string defaultSheetName,
+        Dictionary<string, string> properties)
+    {
+        for (int i = 1; i <= seriesData.Count; i++)
+        {
+            // Already has literal values (e.g. series1=10,20,30) — nothing to do.
+            if (seriesData[i - 1].values.Length > 0) continue;
+
+            string? rangeRef = null;
+            if (properties.TryGetValue($"series{i}.values", out var dotVal)
+                && ChartHelper.IsRangeReference(dotVal))
+                rangeRef = dotVal;
+            else if (properties.TryGetValue($"series{i}", out var legacyVal)
+                && ChartHelper.IsRangeReference(legacyVal))
+                rangeRef = legacyVal;
+            if (rangeRef == null) continue;
+
+            var cells = ResolveRangeToCellValues(rangeRef, defaultSheetName);
+            if (cells == null) continue;
+            var values = cells.Select(v =>
+                double.TryParse(v, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0)
+                .ToArray();
+            seriesData[i - 1] = (seriesData[i - 1].name, values);
+        }
+
+        // categories=<range>: ParseCategories returns null for a range, so the
+        // builder seeds no strLit (=> empty strCache). Resolve the labels here.
+        // Also probe categoriesRef= and the per-series dotted form
+        // (series1.categories=) — the batch emitter replays charts through
+        // those keys, and without this the strCache degraded to ordinal
+        // placeholders ("1","2") on every dump→replay: axis labels silently
+        // lost their cell text.
+        if (categories == null || categories.Length == 0)
+        {
+            string? catRange = null;
+            if (properties.TryGetValue("categories", out var catStr)
+                && ChartHelper.IsRangeReference(catStr))
+                catRange = catStr;
+            else if (properties.TryGetValue("categoriesRef", out var catRefStr)
+                && ChartHelper.IsRangeReference(catRefStr))
+                catRange = catRefStr;
+            else if (properties.TryGetValue("series1.categories", out var s1Cat)
+                && ChartHelper.IsRangeReference(s1Cat))
+                catRange = s1Cat;
+            if (catRange != null)
+            {
+                var labels = ResolveRangeToCellValues(catRange, defaultSheetName);
+                if (labels != null && labels.Count > 0)
+                    categories = labels.ToArray();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads a single-column (or row) cell range reference into an ordered list
+    /// of display-value strings. Returns null if the reference can't be parsed
+    /// or the sheet is missing/empty. Missing cells in the range yield "".
+    /// </summary>
+    private List<string>? ResolveRangeToCellValues(string rangeRef, string defaultSheetName)
+    {
+        string sheetName = defaultSheetName;
+        string rangePart = rangeRef.Trim();
+        var bangIdx = rangePart.IndexOf('!');
+        if (bangIdx >= 0)
+        {
+            sheetName = rangePart[..bangIdx].Trim('\'');
+            rangePart = rangePart[(bangIdx + 1)..];
+        }
+
+        var cleanRange = rangePart.Replace("$", "");
+        var rangeParts = cleanRange.Split(':');
+        if (rangeParts.Length != 2) return null;
+
+        var (startCol, startRow) = ParseCellReference(rangeParts[0]);
+        var (endCol, endRow) = ParseCellReference(rangeParts[1]);
+        var startColIdx = ColumnNameToIndex(startCol);
+        var endColIdx = ColumnNameToIndex(endCol);
+
+        var ws = FindWorksheet(sheetName);
+        if (ws == null) return null;
+        var sheetData = GetSheet(ws).GetFirstChild<SheetData>();
+        if (sheetData == null) return null;
+
+        var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in sheetData.Elements<Row>())
+        {
+            var rowIdx = (int)(row.RowIndex?.Value ?? 0);
+            if (rowIdx < startRow || rowIdx > endRow) continue;
+            foreach (var cell in row.Elements<Cell>())
+                if (cell.CellReference?.Value != null)
+                    lookup[cell.CellReference.Value] = GetCellDisplayValue(cell);
+        }
+
+        var result = new List<string>();
+        for (int r = startRow; r <= endRow; r++)
+            for (int c = startColIdx; c <= endColIdx; c++)
+            {
+                lookup.TryGetValue($"{IndexToColumnName(c)}{r}", out var v);
+                result.Add(v ?? "");
+            }
+        return result;
+    }
+>>>>>>> upstream/main
 }

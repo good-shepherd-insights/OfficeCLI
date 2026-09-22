@@ -60,7 +60,11 @@
     },
     "geometry": {
       "type": "string",
+<<<<<<< HEAD
       "description": "Preset shape geometry (default: rect).",
+=======
+      "description": "Preset shape geometry (default: rect). The values list below is illustrative, not exhaustive — many more OOXML presets are accepted (handler-as-truth): pie, arc, chord, the directional arrows (leftArrow, upArrow, downArrow), star4/star6/star8/star10, hexagon/heptagon/octagon/decagon/dodecagon, cloud, plus the callout* family, etc. Any preset the handler recognizes round-trips.",
+>>>>>>> upstream/main
       "aliases": [
         "preset",
         "shape"
@@ -85,6 +89,66 @@
       "readback": "preset name (e.g. \"ellipse\", \"roundRect\")",
       "enforcement": "strict"
     },
+<<<<<<< HEAD
+=======
+    "adj": {
+      "type": "string",
+      "description": "Preset adjust handles (a:prstGeom/a:avLst/a:gd). Controls the parametric proportions of a preset (arrow tail/head size, roundRect corner radius, star inner ratio, etc.). Format is \"name:formula\" where formula is an OOXML guide formula such as \"val 6000\". Multiple handles are comma-separated.",
+      "aliases": [],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop geometry=leftArrow --prop adj=adj1:val 80000",
+        "--prop geometry=roundRect --prop adj=adj:val 16667",
+        "--prop adj=\"adj1:val 6000,adj2:val 12000\""
+      ],
+      "readback": "comma-separated name:formula handles (e.g. \"adj1:val 80000\")",
+      "enforcement": "lenient"
+    },
+    "textFill": {
+      "type": "string",
+      "description": "Fill applied to the text glyphs (a:rPr fill). Accepts a color (solid glyph fill) or round-trips a gradient. The legacy alias 'textGradient' canonicalizes to 'textFill' on readback.",
+      "aliases": [
+        "textGradient"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop textFill=FF0000"
+      ],
+      "readback": "canonical textFill value",
+      "enforcement": "lenient"
+    },
+    "textWarp": {
+      "type": "string",
+      "description": "WordArt text warp preset applied to the shape's text body (a:bodyPr/a:prstTxWarp @prst). Use 'none' to remove. The HTML preview surfaces the active warp as a data-textwarp attribute + a 'text-warp' marker class on the shape; real PowerPoint renders the per-glyph warp path.",
+      "values": [
+        "none",
+        "textNoShape",
+        "textPlain",
+        "textArchUp",
+        "textArchDown",
+        "textCircle",
+        "textWave1",
+        "textWave2",
+        "textInflate",
+        "textDeflate",
+        "textCanUp",
+        "textCanDown"
+      ],
+      "add": false,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop textWarp=textArchUp",
+        "--prop textWarp=textWave1"
+      ],
+      "readback": "warp preset name (e.g. \"textArchUp\")",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "font.latin": {
       "type": "string",
       "description": "Latin-script font slot only (a:latin). Use to target ASCII/European text without overwriting CJK / complex-script slots.",
@@ -146,7 +210,41 @@
       "examples": [
         "--prop direction=rtl"
       ],
+<<<<<<< HEAD
       "readback": "rtl (ltr is the default and is suppressed; clearing direction removes the attribute)",
+=======
+      "readback": "rtl, or ltr. Set direction=ltr pins ltr explicitly by writing rtl=\"0\" so the paragraph overrides any inherited master/layout RTL; Add omits rtl when ltr (relies on the default). Clearing direction removes the attribute.",
+      "enforcement": "report"
+    },
+    "margin": {
+      "type": "length",
+      "description": "uniform internal padding (text inset) for shape body (a:bodyPr lIns/tIns/rIns/bIns). Also accepts a 4-value 'l,t,r,b' form on Set.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop margin=4",
+        "--prop margin=0.1in"
+      ],
+      "readback": "unit-qualified length (e.g. '14.4pt' / '0.36cm') when all four insets are equal; otherwise 'l,t,r,b' with '-' for unset sides",
+      "enforcement": "report"
+    },
+    "textDirection": {
+      "type": "string",
+      "description": "shape text rotation (a:bodyPr @vert) — works on shapes/textboxes, not just table cells. horizontal|vertical90|vertical270|eaVert|stacked. Round-trips through the same canonical vocabulary as table-cell textDirection. Note: the Get readback key is lowercase 'textdirection'.",
+      "aliases": [
+        "textdir",
+        "vert"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop textDirection=vertical270",
+        "--prop textDirection=stacked"
+      ],
+      "readback": "horizontal|vertical90|vertical270|stacked",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "strike": {
@@ -173,6 +271,23 @@
       "readback": "single | double | none. Boolean `true` on add/set is accepted as an alias for `single`.",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "highlight": {
+      "type": "color",
+      "description": "text highlight color behind the glyphs (a:highlight). Unlike Word's fixed named-color list, accepts any color (hex, named, rgb(), scheme names like accent1). 'none'/'false' removes the highlight.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop highlight=FFFF00",
+        "--prop highlight=accent1",
+        "--prop highlight=none"
+      ],
+      "readback": "#RRGGBB hex (or scheme color name) read from the first run's a:highlight",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "cap": {
       "type": "enum",
       "description": "letter-case rendering mode for shape text (rPr/cap).",
@@ -215,7 +330,11 @@
     },
     "spacing": {
       "type": "number",
+<<<<<<< HEAD
       "description": "character spacing in 1/100 pt (drawingML rPr/@spc).",
+=======
+      "description": "character spacing in points. Stored as 1/100 pt in OOXML (a:rPr/@spc); readback is the point value. Negative values tighten.",
+>>>>>>> upstream/main
       "aliases": [
         "spc",
         "charspacing",
@@ -225,9 +344,17 @@
       "set": true,
       "get": true,
       "examples": [
+<<<<<<< HEAD
         "--prop spacing=200"
       ],
       "readback": "integer",
+=======
+        "--prop spacing=2",
+        "--prop charspacing=-1",
+        "--prop spacing=0.5"
+      ],
+      "readback": "point value as decimal string (e.g. '2', '-1', '0.5')",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "kern": {
@@ -246,6 +373,10 @@
       "type": "enum",
       "values": [
         "normal",
+<<<<<<< HEAD
+=======
+        "shrink",
+>>>>>>> upstream/main
         "shape",
         "none"
       ],
@@ -255,15 +386,61 @@
       "add": true,
       "set": true,
       "get": true,
+<<<<<<< HEAD
       "description": "text body auto-fit mode. 'normal' shrinks text to fit; 'shape' resizes the shape to fit text; 'none' overflows. Aliases on Set: true/shrink → normal, resize → shape, false → none.",
       "examples": [
         "--prop autoFit=normal",
+=======
+      "description": "text body auto-fit mode. 'normal'/'shrink' shrinks text to fit (normAutofit); 'shape' resizes the shape to fit text; 'none' overflows. Aliases (Add+Set): true/shrink → normal, resize → shape, false → none.",
+      "examples": [
+        "--prop autoFit=normal",
+        "--prop autoFit=shrink",
+>>>>>>> upstream/main
         "--prop autoFit=shape",
         "--prop autoFit=none"
       ],
       "readback": "normal | shape | none",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "fontScale": {
+      "type": "string",
+      "aliases": [
+        "fontscale"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "normAutofit font-scale (shrink-to-fit text ratio). Input as a percent: bare integer 0-100 (75 → 75%) or N% form ('75%'). Stored as OOXML thousandths-of-percent (75000); readback emits the raw OOXML integer.",
+      "examples": [
+        "--prop fontScale=75",
+        "--prop fontScale=75%"
+      ],
+      "readback": "OOXML thousandths-of-percent (e.g. 75000)",
+      "enforcement": "report"
+    },
+    "lnSpcReduction": {
+      "type": "string",
+      "aliases": [
+        "lnspcreduction",
+        "lineSpaceReduction",
+        "linespacereduction",
+        "lineSpacingReduction",
+        "linespacingreduction"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "normAutofit line-space reduction (shrink-to-fit spacing ratio). Input as a percent: bare integer 0-100 (20 → 20%) or N% form ('20%'). Stored as OOXML thousandths-of-percent (20000); readback emits the raw OOXML integer.",
+      "examples": [
+        "--prop lnSpcReduction=20",
+        "--prop lineSpaceReduction=20%"
+      ],
+      "readback": "OOXML thousandths-of-percent (e.g. 20000)",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "lineSpacing": {
       "type": "string",
       "description": "line spacing for shape paragraphs (multiplier or pt).",
@@ -349,6 +526,39 @@
       "readback": "\"true\" when shape has an image (blipFill) fill",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "fillRect": {
+      "type": "string",
+      "description": "image-fill stretch insets as \"l,t,r,b\" in thousandths of a percent (perMille). Positive insets letterbox the image inside the shape; negative insets oversize it (cover-style framing). Applies to an image (blipFill) shape; consumed alongside image=.",
+      "aliases": [
+        "fillrect"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop image=/path/photo.png --prop fillRect=0,-36364,0,-85860"
+      ],
+      "readback": "\"l,t,r,b\" perMille when the shape's blipFill stretch carries non-zero insets",
+      "enforcement": "report"
+    },
+    "srcRect": {
+      "type": "string",
+      "description": "image-fill source crop as \"l,t,r,b\" in thousandths of a percent (perMille) — the fraction trimmed from each edge of the source image before it fills the shape. Applies to an image (blipFill) shape; consumed alongside image=.",
+      "aliases": [
+        "srcrect"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop image=/path/photo.png --prop srcRect=10000,0,10000,0"
+      ],
+      "readback": "\"l,t,r,b\" perMille when the shape's blipFill carries a srcRect crop",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "lineWidth": {
       "type": "length",
       "description": "outline width.",
@@ -398,6 +608,26 @@
       "readback": "canonical OOXML prstDash token (solid | dot | dash | dashDot | lgDash | lgDashDot | lgDashDotDot | sysDot | sysDash | sysDashDot | sysDashDotDot). 'longdash'/'longdashdot' are accepted on input as aliases for lgDash/lgDashDot. 'dashDotDot' has no native enum member; it is accepted as an alias for sysDashDotDot (Get readback returns sysDashDotDot).",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "lineGradient": {
+      "type": "string",
+      "description": "gradient outline (drawingML <a:ln>/<a:gradFill>). Accepts a stop list 'color@pos,color@pos,...' (pos in percent) with an optional 'angle=Ndeg' segment, mirroring the fill gradient form. Set/Add replace any solid outline color. Get readback is emitted under the canonical key 'line.gradient'.",
+      "aliases": [
+        "linegradient",
+        "line.gradient"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineGradient=\"FF0000@0,0000FF@100\"",
+        "--prop lineGradient=\"FF0000@0,00FF00@50,0000FF@100,angle=90deg\""
+      ],
+      "readback": "gradient stop string (canonical key line.gradient)",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "lineCap": {
       "type": "enum",
       "description": "line end cap style (drawingML <a:ln @cap>). Affects how the stroke terminates at endpoints (and dash gaps for dashed strokes).",
@@ -570,14 +800,26 @@
     },
     "link": {
       "type": "string",
+<<<<<<< HEAD
       "description": "hyperlink URL or anchor for shape click action.",
+=======
+      "description": "click-action target for the shape. Accepts an absolute URI (https://, mailto:, tel:, …), slide[N] for an in-deck jump (1-based; the target slide must already exist), or a named navigation action (firstslide, lastslide, nextslide, previousslide, endshow). Pass 'none' or empty to clear.",
+>>>>>>> upstream/main
       "add": true,
       "set": true,
       "get": true,
       "examples": [
+<<<<<<< HEAD
         "--prop link=https://example.com"
       ],
       "readback": "hyperlink URL / anchor",
+=======
+        "--prop link=https://example.com",
+        "--prop link=slide[3]",
+        "--prop link=nextslide"
+      ],
+      "readback": "URL / slide[N] / named action",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "tooltip": {
@@ -794,7 +1036,27 @@
         "--prop shadow=000000",
         "--prop shadow=true"
       ],
+<<<<<<< HEAD
       "readback": "compound '#RRGGBBAA-blurPt-angleDeg-distPt-opacityPct' (e.g. '#00000066-4-45-3-40'). Color is CSS-form 8-digit hex with leading # (alpha last); blur, distance in pt; angle in degrees; opacity in percent (0-100).",
+=======
+      "readback": "compound '#RRGGBB-blurPt-angleDeg-distPt-opacityPct' (e.g. '#000000-4-45-3-40'). Color is a '#'-prefixed 6-digit hex (the alpha is carried solely by the trailing opacity field, never double-encoded as an alpha byte); blur, distance in pt; angle in degrees; opacity in percent (0-100).",
+      "enforcement": "report"
+    },
+    "innerShadow": {
+      "type": "string",
+      "description": "inner shadow (a:innerShdw) as `color-blur-angle-dist-opacity` (mirrors `shadow`). Input color is hex (with or without `#`, 6- or 8-digit `RRGGBBAA`) or a scheme name (with optional +lumMod/+shade transforms); blur/dist in points; angle in degrees; opacity 0-100. Rendered as a CSS inset box-shadow in the HTML preview.",
+      "aliases": [
+        "innershadow"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop innerShadow=000000",
+        "--prop innerShadow=FF0000-4-45-3-60"
+      ],
+      "readback": "compound '#RRGGBB-blurPt-angleDeg-distPt-opacityPct' (e.g. '#FF0000-4-45-3-60'). Color is a '#'-prefixed 6-digit hex (alpha carried solely by the trailing opacity field); blur, distance in pt; angle in degrees; opacity in percent (0-100).",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "glow": {

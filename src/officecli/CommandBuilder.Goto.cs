@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -34,7 +38,11 @@ static partial class CommandBuilder
         cmd.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(fileArg)!;
+<<<<<<< HEAD
             var path = result.GetValue(pathArg)!;
+=======
+            var path = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(pathArg)!)!;
+>>>>>>> upstream/main
 
             var selector = WatchMessage.ExtractWordScrollTarget(path);
             if (selector == null)

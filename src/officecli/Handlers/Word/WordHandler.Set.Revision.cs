@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCli (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 //
 // All Set-side revision logic for Word. Two sections, distinct call shapes:
@@ -122,6 +126,7 @@ public partial class WordHandler
                 + "table-row / table-cell / section elements; other element kinds are not yet implemented.");
 
         // ---- guard 2: RTL cascade props would smear the snapshot ----
+<<<<<<< HEAD
         foreach (var k in properties.Keys)
         {
             var lk = k.ToLowerInvariant();
@@ -132,6 +137,31 @@ public partial class WordHandler
                 throw new InvalidOperationException(
                     "RTL cascade properties are not supported with trackChange yet");
         }
+=======
+        // The guard exists because applying complex-script (.cs) props mutates
+        // the element BEFORE the *PrChange snapshot is auto-derived from current
+        // state, smearing the recorded "before". But when the caller supplies an
+        // explicit prior-state snapshot via revision.beforeXml (the dump→batch
+        // replay path for a pPrChange/rPrChange that legitimately changed a .cs
+        // property), the snapshot is the verbatim beforeXml — NOT the post-mutation
+        // current state — so there is nothing to smear and the .cs props apply
+        // safely. Only enforce the guard when no explicit snapshot is provided.
+        bool hasBeforeXmlSnapshot = false;
+        foreach (var k in properties.Keys)
+            if (k.Equals("revision.beforeXml", StringComparison.OrdinalIgnoreCase))
+            { hasBeforeXmlSnapshot = true; break; }
+        if (!hasBeforeXmlSnapshot)
+            foreach (var k in properties.Keys)
+            {
+                var lk = k.ToLowerInvariant();
+                if (lk is "font.cs" or "font.complexscript" or "font.complex"
+                      or "bold.cs" or "italic.cs" or "size.cs"
+                      or "font.bold.cs" or "font.italic.cs" or "font.size.cs"
+                      or "boldcs" or "italiccs" or "sizecs")
+                    throw new InvalidOperationException(
+                        "RTL cascade properties are not supported with trackChange yet");
+            }
+>>>>>>> upstream/main
 
         // ---- extract revision.* sub-keys (case-insensitive) ----
         string? tcAuthor = null, tcDate = null, tcId = null, tcType = null, tcBeforeXml = null;
@@ -182,7 +212,11 @@ public partial class WordHandler
         {
             var lk = k.ToLowerInvariant();
             if (lk is "revision.type" or "revision.author" or "revision.date" or "revision.id"
+<<<<<<< HEAD
                   or "revision.beforexml")
+=======
+                  or "revision.beforexml" or "revision.skiprowcascade")
+>>>>>>> upstream/main
                 continue;
             stripped[k] = v;
         }
@@ -373,6 +407,16 @@ public partial class WordHandler
                 foreach (var child in existingPPr.ChildElements)
                 {
                     if (child is ParagraphPropertiesChange) continue;
+<<<<<<< HEAD
+=======
+                    // The pPrChange snapshot is CT_PPrBase (ParagraphPropertiesExtended),
+                    // which does NOT allow the paragraph-mark <w:rPr> or <w:sectPr> —
+                    // those two live only in the full CT_PPr. Cloning them in makes the
+                    // snapshot schema-invalid ("invalid child element 'rPr'"). Paragraph-
+                    // mark run-property changes are tracked separately via
+                    // <w:pPr><w:rPr><w:rPrChange>, not inside pPrChange.
+                    if (child is ParagraphMarkRunProperties or SectionProperties) continue;
+>>>>>>> upstream/main
                     previous.AppendChild(child.CloneNode(true));
                 }
             }
@@ -401,6 +445,16 @@ public partial class WordHandler
                 throw new InvalidOperationException(
                     "element already has a pending tblPrChange; accept/reject existing first");
 
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R71-TBLPREX-CASCADE: dump→batch sets this so the per-row
+            // tblPrEx cascade below is skipped — the source's real per-row
+            // exceptions already replay verbatim, and the cascade would
+            // otherwise inject spurious tblPrEx into every row.
+            bool skipRowCascade = properties.TryGetValue("revision.skipRowCascade", out var srcVal)
+                && IsTruthy(srcVal);
+
+>>>>>>> upstream/main
             // For sect/tbl/tc/tr the SDK does NOT have an *Extended quirk —
             // only Previous*Properties classes exist. Use them directly.
             var previous = new PreviousTableProperties();
@@ -480,6 +534,21 @@ public partial class WordHandler
                 // carries after the wrap, same lie shape Word's own UI
                 // produces. Without the cascade Mac Word silently drops
                 // the table revision from the pane (verified 2026-05-25).
+<<<<<<< HEAD
+=======
+                //
+                // BUG-DUMP-R71-TBLPREX-CASCADE: the cascade is an interactive
+                // convenience, not a round-trip operation. On dump→batch the
+                // source's authoritative per-row tblPrEx already round-trip
+                // verbatim via per-row `set tr --prop tblPrEx`, so re-running
+                // the cascade here re-stamps tblPrEx onto EVERY row (including
+                // the many that never had one), inflating a table with a
+                // table-level tblPrChange but no per-row exceptions from 0 to
+                // (rows × 2) tblPrEx and tripping schema validation. The batch
+                // emitter sets revision.skipRowCascade so the replay reproduces
+                // the source exactly instead of synthesizing the Mac-only hack.
+                if (!skipRowCascade)
+>>>>>>> upstream/main
                 foreach (var (rowEl, prevEx) in rowSnapshots)
                 {
                     var liveEx = rowEl.GetFirstChild<TablePropertyExceptions>();

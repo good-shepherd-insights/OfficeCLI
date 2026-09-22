@@ -1,9 +1,20 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+// SPDX-License-Identifier: Apache-2.0
+
+using System.CommandLine;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+>>>>>>> upstream/main
 using OfficeCli.Core;
 using OfficeCli.Handlers;
 
@@ -21,6 +32,37 @@ public static class McpServer
         using var reader = new StreamReader(Console.OpenStandardInput());
         using var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
 
+<<<<<<< HEAD
+=======
+        // Default this stdio process to NOT auto-spawn a resident. This opts
+        // out of spawning only — it does NOT bypass an existing one: TryResident
+        // still routes through a resident another officecli already holds for the
+        // file (probe-then-TrySend in CommandBuilder.TryResident), so two writers
+        // never fight over the file and no update is lost. The effect of the
+        // opt-out:
+        //   - no resident holds the file -> the command opens, applies, and
+        //     eager-saves directly, so the mutation is on disk by the time the
+        //     response returns;
+        //   - a resident already holds the file -> the command routes through it
+        //     and follows that resident's deferred flush (on disk at its
+        //     save/close/idle), same as any other client of that resident.
+        // Defaulting the opt-out on keeps a lone MCP session from leaving a
+        // spawned resident (and its deferred-flush surprise) behind it. An
+        // explicit user value (e.g. to opt INTO spawning residents) is respected.
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT")))
+            Environment.SetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT", "1");
+
+        // The MCP process always has stdin redirected (it IS the JSON-RPC
+        // channel), so `batch --commands/--input` would emit the "stdin is also
+        // redirected; stdin will be ignored" warning on EVERY call — noise that
+        // also lands in the result text and breaks naive JSON parsing of the
+        // batch envelope. Under MCP that warning describes the transport, not a
+        // user mistake, so default its existing opt-out on (respect any explicit
+        // value).
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT")))
+            Environment.SetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT", "1");
+
+>>>>>>> upstream/main
         // MCP server is a long-lived stdio process. The normal
         // per-invocation auto-upgrade path (Program.cs:112) is
         // short-circuited for `officecli mcp` because CheckInBackground
@@ -179,6 +221,7 @@ public static class McpServer
         var args = p.TryGetProperty("arguments", out var a) ? a : default;
         if (string.IsNullOrEmpty(name))
             return ErrorJson(id, -32602, "Missing tool name");
+<<<<<<< HEAD
 
         try
         {
@@ -186,6 +229,19 @@ public static class McpServer
             var toolName = name == "officecli" && args.ValueKind == JsonValueKind.Object && args.TryGetProperty("command", out var cmd)
                 ? cmd.GetString() ?? name : name;
             var contents = ExecuteToolMulti(toolName, args);
+=======
+        // This server advertises exactly one tool. A misrouted call must not
+        // silently execute (it would mutate files under a bogus tool name);
+        // reject anything else the way an unknown tool should fail.
+        if (name != "officecli")
+            return ErrorJson(id, -32602, $"Unknown tool: {name}. This server exposes a single tool: officecli.");
+
+        try
+        {
+            // Thin shell: the officecli tool takes a CLI command line in
+            // `command` and runs it through the shared System.CommandLine root.
+            var (contents, isError) = ExecuteCommandLine(args);
+>>>>>>> upstream/main
             return WriteJson(w =>
             {
                 w.WriteStartObject();
@@ -202,7 +258,11 @@ public static class McpServer
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
+<<<<<<< HEAD
                 w.WriteBoolean("isError", false);
+=======
+                w.WriteBoolean("isError", isError);
+>>>>>>> upstream/main
                 w.WriteEndObject();
                 w.WriteEndObject();
             });
@@ -215,7 +275,17 @@ public static class McpServer
                 Rpc(w, id);
                 w.WriteStartObject("result");
                 w.WriteStartArray("content");
+<<<<<<< HEAD
                 w.WriteStartObject(); w.WriteString("type", "text"); w.WriteString("text", $"Error: {ex.Message}"); w.WriteEndObject();
+=======
+                // Only PRE-handler failures reach here now — argv extraction and
+                // CLI parse/validation errors (the shared-grammar "free win"
+                // messages). A handler that ran and exited non-zero (batch /
+                // validate business verdicts) returns its stdout verbatim with
+                // isError=true from ExecuteCommandLine, not via this path.
+                var errText = $"Error: {ex.Message}";
+                w.WriteStartObject(); w.WriteString("type", "text"); w.WriteString("text", errText); w.WriteEndObject();
+>>>>>>> upstream/main
                 w.WriteEndArray();
                 w.WriteBoolean("isError", true);
                 w.WriteEndObject();
@@ -233,6 +303,7 @@ public static class McpServer
     /// </summary>
     private sealed record McpContent(string Type, string? Text = null, string? Data = null, string? MimeType = null);
 
+<<<<<<< HEAD
     /// <summary>
     /// Multi-modal wrapper around <see cref="ExecuteTool"/>. Special-cases
     /// view+screenshot (returns text caption + base64 PNG); everything else
@@ -332,6 +403,148 @@ public static class McpServer
         if (handler is Handlers.PowerPointHandler pptp)
             pagesNote = $" Slides: {pptp.GetSlideCount()}.";
         var caption = $"Screenshot saved to {pngPath} ({bytes.Length} bytes, backend: {backendName}).{pagesNote}";
+=======
+    // ==================== Thin command-line exec ====================
+    // The MCP tool is a thin shell over the CLI: the caller passes the officecli
+    // command line (a string, or a pre-split argv array) and it runs through the
+    // SAME System.CommandLine root the CLI uses. No per-command marshalling here
+    // means no argument can be silently dropped (every CLI flag works for free),
+    // and the model writes exactly what the skills' CLI examples show.
+
+    private static (IReadOnlyList<McpContent> Contents, bool IsError) ExecuteCommandLine(JsonElement args)
+    {
+        var argv = ExtractArgv(args);
+        if (argv.Length == 0)
+            throw new ArgumentException("Provide the officecli command line as `command`, e.g. "
+                + "command=\"help\" or command=\"add deck.pptx /slide[1] --type shape --prop text=Hi\".");
+        // load_skill / skills live in Program.cs early-dispatch, not in the
+        // System.CommandLine root, so RunCliRaw can't reach them. Serve them
+        // here from the same SkillInstaller the CLI uses.
+        if (argv[0] is "load_skill" or "skill" or "skills")
+            return (new[] { new McpContent("text", Text: HandleSkillCommand(argv)) }, false);
+        if (IsScreenshot(argv))
+            return (RunScreenshotArgv(argv), false);
+        return SurfaceCliResult(RunCliRaw(argv));
+    }
+
+    private static string[] ExtractArgv(JsonElement args)
+    {
+        if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("command", out var c))
+            return Array.Empty<string>();
+        string[] argv;
+        if (c.ValueKind == JsonValueKind.Array)
+            // Preserve empty-string elements: the array form is exactly how a
+            // caller delivers an intentionally-empty argument value (e.g.
+            // `--prop text=` to clear text), so dropping "" would silently
+            // diverge from the equivalent quoted "" in the string form. A
+            // non-string element (a bare number/bool) is rendered to its JSON
+            // text rather than throwing.
+            argv = c.EnumerateArray()
+                    .Select(e => e.ValueKind == JsonValueKind.String ? (e.GetString() ?? "") : e.GetRawText())
+                    .ToArray();
+        else if (c.ValueKind == JsonValueKind.String)
+            argv = Tokenize(c.GetString() ?? "");
+        else
+            // A non-string, non-array `command` (number, bool, object, null) is a
+            // client mistake — fall through to the empty-argv friendly guidance
+            // rather than letting JsonElement.GetString() throw a raw .NET message.
+            return Array.Empty<string>();
+        // A model copying a skill example may include the leading binary name.
+        if (argv.Length > 0 && (argv[0] == "officecli" || argv[0] == "officecli.exe"
+            || argv[0].EndsWith("/officecli", StringComparison.Ordinal)))
+            argv = argv[1..];
+        return argv;
+    }
+
+    // Quote-aware tokenizer: splits on whitespace, honours single/double quotes
+    // and backslash escapes inside double quotes. Never invokes a shell, so there
+    // is no command-injection surface — tokens go straight to the in-process
+    // System.CommandLine parser.
+    private static string[] Tokenize(string s)
+    {
+        var tokens = new List<string>();
+        var sb = new StringBuilder();
+        bool inTok = false; char quote = '\0';
+        for (int i = 0; i < s.Length; i++)
+        {
+            char ch = s[i];
+            if (quote != '\0')
+            {
+                if (ch == quote) quote = '\0';
+                // Inside double quotes a backslash only escapes the two chars
+                // that would otherwise affect quoting itself (" and \), matching
+                // bash double-quote semantics. ANY other backslash sequence is
+                // preserved verbatim — crucially `\n` / `\t` stay two characters
+                // so the downstream prop parser can turn them into a newline/tab.
+                // (The old "escape the next char" rule swallowed the backslash,
+                // turning text="A\nB" into the literal "AnB".)
+                else if (ch == '\\' && quote == '"' && i + 1 < s.Length && (s[i + 1] == '"' || s[i + 1] == '\\'))
+                    sb.Append(s[++i]);
+                else sb.Append(ch);
+                inTok = true;
+            }
+            else if (ch == '"' || ch == '\'') { quote = ch; inTok = true; }
+            else if (char.IsWhiteSpace(ch)) { if (inTok) { tokens.Add(sb.ToString()); sb.Clear(); inTok = false; } }
+            else { sb.Append(ch); inTok = true; }
+        }
+        if (inTok) tokens.Add(sb.ToString());
+        return tokens.ToArray();
+    }
+
+    private static bool IsScreenshot(string[] argv)
+        => argv.Length >= 2 && argv[0] == "view" && Array.IndexOf(argv, "screenshot") >= 0;
+
+    // Mirror the CLI's load_skill early-dispatch (Program.cs): no name → catalog;
+    // a name → that skill's SKILL.md; name + --path <rel> → one reference file.
+    private static string HandleSkillCommand(string[] argv)
+    {
+        string? name = null, relPath = null;
+        for (int i = 1; i < argv.Length; i++)
+        {
+            var a = argv[i];
+            if (a == "--path" && i + 1 < argv.Length) { relPath = argv[++i]; continue; }
+            if (a == "list") continue;   // `skills list`
+            name ??= a;
+        }
+        if (string.IsNullOrEmpty(name))
+            return OfficeCli.Core.SkillInstaller.BuildSkillCatalog();
+        return string.IsNullOrEmpty(relPath)
+            ? OfficeCli.Core.SkillInstaller.LoadSkillContent(name)
+            : OfficeCli.Core.SkillInstaller.LoadSkillFile(name, relPath);
+    }
+
+    // screenshot delegates to the CLI (view <file> screenshot ... -o <tmp>) and
+    // returns the rendered PNG inline as an image content block. Injects an -o
+    // path when the caller didn't give one so we know which file to read back.
+    private static IReadOnlyList<McpContent> RunScreenshotArgv(string[] argv)
+    {
+        var list = argv.ToList();
+        int oi = list.FindIndex(a => a == "-o" || a == "--out");
+        string outPath;
+        string? autoTemp = null;
+        if (oi >= 0 && oi + 1 < list.Count) outPath = list[oi + 1];
+        else { outPath = Path.Combine(Path.GetTempPath(), $"officecli_mcp_shot_{Guid.NewGuid():N}.png"); autoTemp = outPath; list.Add("-o"); list.Add(outPath); }
+        var r = RunCliRaw(list.ToArray());
+        if (r.Exit != 0)
+            throw new ArgumentException(StripErrPrefix(FirstNonEmpty(r.Stderr.Trim(), r.Stdout.Trim())));
+        if (!File.Exists(outPath))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(r.Stdout, @"(\S+\.png)");
+            if (m.Success && File.Exists(m.Groups[1].Value)) outPath = m.Groups[1].Value;
+        }
+        if (!File.Exists(outPath))
+            return new[] { new McpContent("text", Text: r.Stdout.Trim().Length > 0 ? r.Stdout.Trim() : "Screenshot produced no image file.") };
+        var b64 = Convert.ToBase64String(File.ReadAllBytes(outPath));
+        // The PNG is returned inline as base64; an auto-injected temp file has no
+        // further use, so don't leave it accumulating in the system temp dir. A
+        // caller-supplied -o is theirs to keep.
+        var caption = $"Screenshot saved to {outPath}";
+        if (autoTemp != null && outPath == autoTemp)
+        {
+            try { File.Delete(autoTemp); } catch { /* best effort — inline data already captured */ }
+            caption = "Screenshot rendered (returned inline).";
+        }
+>>>>>>> upstream/main
         return new[]
         {
             new McpContent("text", Text: caption),
@@ -339,6 +552,7 @@ public static class McpServer
         };
     }
 
+<<<<<<< HEAD
     private static string StatsWithOptionalPageCount(IDocumentHandler handler, JsonElement args, string file)
     {
         var stats = handler.ViewAsStats();
@@ -656,6 +870,115 @@ public static class McpServer
         return props;
     }
 
+=======
+    // ====================================================================
+    // Shared-grammar dispatch (Phase 1 of routing MCP through the CLI's one
+    // System.CommandLine root). Translating the MCP JSON into the CLI token
+    // vector and parsing it with the SAME root the CLI uses means argument
+    // validation, business logic, and the {success,data} envelope are shared
+    // by construction — not re-marshalled (and re-bugged) by hand here.
+    // ====================================================================
+    private static RootCommand? _rootCommand;
+    private static RootCommand RootCommand => _rootCommand ??= CommandBuilder.BuildRootCommand();
+
+    private readonly record struct CliResult(int Exit, string Stdout, string Stderr);
+
+    /// <summary>
+    /// Parse+invoke argv through the shared CLI root, capturing stdout AND
+    /// stderr and the exit code. argv is the CLI token vector, e.g.
+    /// ["get", file, "/body", "--depth", "1", "--json"].
+    ///
+    /// Parse/validation failures are NOT short-circuited here. Letting Invoke
+    /// run renders the SAME error + usage block a terminal user sees
+    /// (System.CommandLine writes it to the captured stream and returns a
+    /// non-zero exit WITHOUT running the handler), so the agent receives the
+    /// full message — including the option list that points it at the right
+    /// flag (e.g. batch's --commands/--input) — instead of a terse, usage-
+    /// stripped one-liner. Surfacing only `pr.Errors` here used to drop that
+    /// usage block, making MCP less informative than the bare CLI.
+    /// </summary>
+    private static CliResult RunCliRaw(string[] argv)
+    {
+        var pr = RootCommand.Parse(argv);
+        var prevOut = Console.Out;
+        var prevErr = Console.Error;
+        var so = new System.IO.StringWriter();
+        var se = new System.IO.StringWriter();
+        int exit;
+        try { Console.SetOut(so); Console.SetError(se); exit = pr.Invoke(); }
+        finally { Console.SetOut(prevOut); Console.SetError(prevErr); }
+        return new CliResult(exit, so.ToString(), se.ToString());
+    }
+
+    // Translate a CLI invocation's (exit, stdout, stderr) into MCP content.
+    //
+    // Always surface stdout AND stderr together when both are present, so the
+    // caller never loses context — neither the "Added/Updated …" success line nor
+    // an advisory caveat. A dangling-style add/set exits 0 with the warning on
+    // stderr; both now report success WITH the warning visible (the warning was
+    // previously dropped on the exit-0 path).
+    //
+    // Only a genuine failure raises: exit 1 (e.g. path not found, nothing applied),
+    // or exit 2 with no stdout (goto/mark emit a usage error to stderr and write
+    // no success line). An exit-2 add/set with a populated stdout is the CLI's
+    // "applied with caveats" path — the element was added (envelope success:true)
+    // and only an unsupported property was dropped; surfacing that as a hard error
+    // makes agents re-issue an op that already landed. Scripts still see exit 2
+    // from the CLI itself — fail-fast is preserved there, not on the MCP surface.
+    private static (IReadOnlyList<McpContent> Contents, bool IsError) SurfaceCliResult(CliResult r)
+    {
+        var stdout = r.Stdout.TrimEnd('\n', '\r');
+        var stderr = r.Stderr.Trim();
+        var combined = stdout.Length > 0 && stderr.Length > 0 ? $"{stdout}\n{stderr}"
+                     : stdout.Length > 0 ? stdout : stderr;
+        // exit 2 with stdout = "applied with caveats" (element added, only an
+        // unsupported property dropped) — the op landed, so it is NOT an error.
+        // Exit 2 covers two verdicts: "applied with caveats" (envelope
+        // success:true, e.g. one unsupported prop dropped) AND "nothing
+        // applied" (success:false, every prop refused). Reading the exit code
+        // alone reported the second as not-an-error, so an agent whose edit
+        // never landed was told it had. The envelope is the business verdict —
+        // when stdout carries one, it decides; text mode falls back to the
+        // "Error:" prefix the CLI puts on a refused command.
+        bool appliedWithCaveats = r.Exit == 2 && stdout.Length > 0
+            && (EnvelopeSuccess(stdout) ?? !stdout.TrimStart().StartsWith("Error", StringComparison.OrdinalIgnoreCase));
+        bool isError = r.Exit != 0 && !appliedWithCaveats;
+        // Surface the CLI output VERBATIM — exit mirrors envelope.success, so a
+        // non-zero *business* verdict (batch with a failed step, validate
+        // failure) still wrote its {success:false} envelope to stdout; prefixing
+        // or munging it would break JSON parsing. A genuine process error has no
+        // stdout and its handler-written stderr already carries its own "Error: "
+        // prefix, so it too is surfaced as-is (no doubled prefix). The pass/fail
+        // bit rides on isError, not on the text — exactly like a terminal user
+        // reading stdout plus the exit code.
+        var text = combined.Length == 0 ? (isError ? "Command failed." : "(ok)") : combined;
+        return (new[] { new McpContent("text", Text: text) }, isError);
+    }
+
+    /// <summary>The envelope's top-level `success`, or null when stdout is not a JSON object.</summary>
+    private static bool? EnvelopeSuccess(string stdout)
+    {
+        var t = stdout.TrimStart();
+        if (!t.StartsWith('{')) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(t);
+            return doc.RootElement.TryGetProperty("success", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.False ? false
+                 : doc.RootElement.TryGetProperty("success", out v) && v.ValueKind == System.Text.Json.JsonValueKind.True ? true
+                 : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    private static string FirstNonEmpty(params string[] xs) =>
+        xs.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "Command failed.";
+
+    // The MCP catch block prepends "Error: "; the text-mode handlers already
+    // wrote "Error: ..." to stderr. Strip one leading prefix to avoid doubling.
+    private static string StripErrPrefix(string s) =>
+        s.StartsWith("Error: ", StringComparison.Ordinal) ? s["Error: ".Length..] : s;
+
+>>>>>>> upstream/main
     // ==================== Tool Definitions ====================
 
     // MCP-specific guidance prepended to every help response. Cannot be derived
@@ -663,7 +986,12 @@ public static class McpServer
     // *document model* exposes.
     private const string McpHelpStrategy = @"## Strategy
 Use view (outline/stats/issues/annotated) to understand the document first, then get/query to inspect details, then set/add/remove to modify.
+<<<<<<< HEAD
 View modes: text, annotated, outline, stats, issues, html, svg (pptx only), forms (docx only).
+=======
+View modes: text, annotated, outline, stats, issues, html, svg (pptx only), screenshot, forms (docx only).
+Before delivering, pass the delivery gate (see the tool description): validate clean, view issues clean, then a visual audit via view mode=screenshot when layout matters (slide decks most of all). Whether the visual audit is mandatory is format-specific — run `load_skill <pptx|word|excel>` for the authoritative per-format gate.
+>>>>>>> upstream/main
 For 3+ mutations on the same file, use batch (one open/save cycle) instead of separate calls.
 Get output keys can be used directly as Set input keys (round-trip safe).
 Colors: FF0000, red, rgb(255,0,0), accent1. Sizes: 24pt. Positions: 2cm, 1in, 72pt, or raw EMU.
@@ -671,16 +999,31 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1.
 
 ";
 
+<<<<<<< HEAD
     private const string ToolDescription = @"Create, read, and modify Office documents (.docx, .xlsx, .pptx).
 
 Commands: create (file), view (file, mode: text|annotated|outline|stats|issues|html|svg|screenshot|forms), get (file, path, depth), query (file, selector), set (file, path, props[]), add (file, parent, type, props[], index/after/before), remove (file, path), move (file, path, to, index/after/before), swap (file, path, path2), validate (file), batch (file, commands), raw (file, part), help (format: docx|xlsx|pptx, optional type=<element> for full schema), load_skill (name: pptx|word|excel|morph-ppt|morph-ppt-3d|pitch-deck|academic-paper|data-dashboard|financial-model — returns the skill's SKILL.md guidance).
 
 Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=value strings. Call help with format= to list elements, then help with format= and type= to drill into a specific element's schema (properties, aliases, examples).";
+=======
+    private const string ToolDescription = @"Create, read, and modify Office documents (.docx, .xlsx, .pptx) by running officecli command lines.
+
+Pass an officecli command line in `command` (string or pre-split argv array); it runs through the same CLI you'd use in a terminal. Verbs: create, view (modes: text|annotated|outline|stats|issues|html|svg|screenshot|forms), get, query, set, add, remove, move, swap, validate, batch, raw, help, load_skill. Add --json to get/query/validate/view-issues for structured output. Examples (CLI syntax): create deck.pptx · add deck.pptx /slide[1] --type shape --prop ""text=Hi"" · set report.docx /body/p[1] --prop bold=true · view deck.pptx screenshot --page 2 · query book.xlsx ""cell[bold=true]"". Discover verbs/flags with `help`, and an element's schema with `help <format> <element>` (e.g. help pptx shape).
+
+Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=value strings.
+
+Delivery gate (before reporting a document finished — any failure = fix and re-check, do NOT deliver; validate passing is NOT delivery, 'looks like a real document' is):
+1. Schema: `validate <file>` -> clean, no errors.
+2. Content: `view <file> issues` -> no overflow/format/structure issues; and scan `view <file> text` for leftover placeholders (xxxx, lorem/ipsum, <TODO>, {{...}}, $VAR$, empty ()/[]).
+3. Visual audit: `view <file> screenshot --page N` renders the page/slide and returns it as an image shown to you (or --grid auto for a whole-doc contact sheet). Judge it adversarially (assume problems exist) for overlap, text overflow, off-slide shapes, dark-on-dark, misalignment; fix positions/sizes (`set <file> <path> --prop x=.. --prop y=..`) and re-screenshot until right; if the screenshot can't render, say 'not visually verified'. Whether this audit is mandatory is format-specific (slide decks need it most — absolute-positioned shapes overlap invisibly to text modes), so run `load_skill pptx` (or word / excel) for the authoritative gate. The per-format SKILL.md, not this blurb, is the source of truth for what 'done' requires.
+4. Flush to disk: end with `save <file>` — this guarantees your edits are written to disk before you hand the file off. Required final step, not optional (always safe — never errors or loses work; `close` also flushes if you want to end the session too).";
+>>>>>>> upstream/main
 
     private static void WriteToolDefinitions(Utf8JsonWriter w)
     {
         w.WriteStartObject();
         w.WriteString("name", "officecli");
+<<<<<<< HEAD
         w.WriteString("description", ToolDescription);
         w.WriteStartObject("inputSchema");
         w.WriteString("type", "object");
@@ -739,6 +1082,39 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=val
         w.WriteStartObject("format"); w.WriteString("type", "string"); w.WriteString("description", "Document format for help: xlsx, pptx, docx"); w.WriteEndObject();
         // name (for load_skill)
         w.WriteStartObject("name"); w.WriteString("type", "string"); w.WriteString("description", "Skill name for load_skill: pptx, word, excel, morph-ppt, morph-ppt-3d, pitch-deck, academic-paper, data-dashboard, financial-model"); w.WriteEndObject();
+=======
+        // Append a compact always-on skill-trigger summary so the agent is
+        // prompted to load the right skill without the full ~1.2k of routing
+        // descriptions resident in context. Detail stays lazy behind load_skill.
+        w.WriteString("description", ToolDescription + "\n\n" + McpHelpStrategy + "\n"
+            + OfficeCli.Core.SkillInstaller.BuildSkillTriggerSummary());
+        w.WriteStartObject("inputSchema");
+        w.WriteString("type", "object");
+        w.WriteStartObject("properties");
+        // Single param: the officecli command line, as a string or a pre-split
+        // argv array. Everything else (verbs, flags, schemas) is discovered via
+        // `help` and the loaded skills — no per-command schema to drift.
+        w.WriteStartObject("command");
+        // A union `type: ["string","array"]` with a sibling `items` is valid
+        // JSON Schema, but the Gemini function-calling schema takes a single
+        // type and rejects `items` unless that type is ARRAY — every request
+        // through a Gemini-backed client failed with HTTP 400 before the model
+        // saw a prompt. `anyOf` with one branch per shape is accepted by every
+        // client that took the union, and by Gemini.
+        w.WriteStartArray("anyOf");
+        w.WriteStartObject(); w.WriteString("type", "string"); w.WriteEndObject();
+        w.WriteStartObject(); w.WriteString("type", "array");
+        w.WriteStartObject("items"); w.WriteString("type", "string"); w.WriteEndObject();
+        w.WriteEndObject();
+        w.WriteEndArray();
+        w.WriteString("description",
+            "The officecli command line — either a single string (e.g. \"add deck.pptx /slide[1] --type shape --prop text=Hi\") "
+            + "or a pre-split argv array of strings (use the array form when an argument contains spaces or quotes). A leading "
+            + "'officecli' is optional. Examples: \"help\" lists commands; \"help pptx shape\" shows an element's schema; "
+            + "\"view deck.pptx text\" reads it; \"view deck.pptx screenshot --page 2\" returns a rendered image; add --json to "
+            + "get/query/validate for structured output. Run help first to learn the verbs and flags.");
+        w.WriteEndObject();
+>>>>>>> upstream/main
         w.WriteEndObject(); // end properties
         w.WriteStartArray("required"); w.WriteStringValue("command"); w.WriteEndArray();
         w.WriteEndObject(); // end inputSchema

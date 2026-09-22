@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -17,8 +21,14 @@ namespace OfficeCli.Handlers;
 public partial class ExcelHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
+        => MarkModified(() => SetCore(path, properties));
+
+    private List<string> SetCore(string path, Dictionary<string, string> properties)
     {
+<<<<<<< HEAD
         Modified = true;
+=======
+>>>>>>> upstream/main
         // Batch Set: route to the shared filter engine when the path is a bare
         // selector (no `/`) OR a `/`-scoped path that carries a content filter
         // (e.g. `/Sheet1/cell[value>5000 or value<300]`). The latter would
@@ -40,7 +50,14 @@ public partial class ExcelHandler
             // maps cell short keys (bold -> font.bold, ...); a no-op on other keys.
             var (targets, _) = AttributeFilter.FilterSelector(path, Query, ResolveCellAttributeAlias);
             if (targets.Count == 0)
+<<<<<<< HEAD
                 throw new ArgumentException($"No elements matched selector: {path}");
+=======
+                // A selector that resolves to zero rows is an ordinary empty
+                // WHERE result, not a tool failure — surface not_found so the
+                // JSON envelope reads clean instead of internal_error.
+                throw new Core.CliException($"No elements matched selector: {path}") { Code = "not_found" };
+>>>>>>> upstream/main
             LastSelectorSetCount = targets.Count;
             foreach (var target in targets)
             {
@@ -203,6 +220,27 @@ public partial class ExcelHandler
             return SetPageBreak(worksheet,
                 brkSetMatch.Groups[1].Value.Equals("rowbreak", StringComparison.OrdinalIgnoreCase),
                 int.Parse(brkSetMatch.Groups[2].Value), properties);
+<<<<<<< HEAD
+=======
+
+        // CONSISTENCY(axis-ref-compat): accept Excel-style whole-column/row
+        // references (B:B, B:D, 1:1, 2:5) as input aliases — expand to the
+        // canonical col[X]/row[N] segments and apply per column/row, the way
+        // range set (A1:D1) applies per cell.
+        if (TryExpandAxisRef(cellRef) is { } axisSegments)
+        {
+            var axisUnsupported = new List<string>();
+            foreach (var seg in axisSegments)
+            {
+                var segResult = Set($"/{sheetName}/{seg}", properties);
+                // Intersect: a prop is unsupported only if no column/row took it.
+                axisUnsupported = axisSegments[0] == seg
+                    ? segResult
+                    : axisUnsupported.Intersect(segResult, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            return axisUnsupported;
+        }
+>>>>>>> upstream/main
 
         // Handle /SheetName/col[X] where X is a column letter (A) or numeric index (1)
         var colMatch = Regex.Match(cellRef, @"^col\[([A-Za-z0-9]+)\]$", RegexOptions.IgnoreCase);
@@ -276,6 +314,14 @@ public partial class ExcelHandler
             GetSheet(worksheet).Append(sheetData);
         }
 
+        // Did the cell exist before this Set? If not, FindOrCreateCell
+        // materializes it, and a mid-Set validation throw must remove it
+        // entirely — restoring an empty clone (below) would leave a ghost
+        // <c> stub behind on a failed create (exit 1 must mean no change).
+        var cellPreExisted = sheetData.Elements<Row>()
+            .SelectMany(r => r.Elements<Cell>())
+            .Any(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
+
         var cell = FindOrCreateCell(sheetData, cellRef);
 
         // Clone cell for rollback on failure (atomic: no partial modifications)
@@ -287,11 +333,17 @@ public partial class ExcelHandler
         }
         catch
         {
-            // Rollback: restore cell to pre-modification state
-            cell.Parent?.ReplaceChild(cellBackup, cell);
+            if (cellPreExisted)
+                // Rollback: restore cell to pre-modification state.
+                cell.Parent?.ReplaceChild(cellBackup, cell);
+            else
+                // Newly created by this Set — remove it so a failed create
+                // leaves no ghost cell.
+                cell.Remove();
             throw;
         }
     }
+<<<<<<< HEAD
 
     private List<string> SetCellProperties(Cell cell, string cellRef, WorksheetPart worksheet, Dictionary<string, string> properties)
     {
@@ -2883,4 +2935,6 @@ public partial class ExcelHandler
         SaveWorksheet(worksheet);
         return unsupported;
     }
+=======
+>>>>>>> upstream/main
 }

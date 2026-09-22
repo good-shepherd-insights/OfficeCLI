@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -36,8 +40,10 @@ public partial class PowerPointHandler
                 var eqShapeId = AcquireShapeId(eqShapeTree, properties);
                 var eqShapeName = properties.GetValueOrDefault("name", $"Equation {eqShapeTree.Elements<Shape>().Count() + 1}");
 
-                // Parse formula to OMML
-                var mathContent = FormulaParser.Parse(eqFormula);
+                // Parse formula to OMML. R3-fuzz-1: lenient — a too-deep/
+                // unparseable formula records a warning (exit 2) and writes a
+                // placeholder instead of throwing (exit 1 / whole-batch failure).
+                var mathContent = FormulaParser.ParseLenient(eqFormula, LastUnrecognizedLatex);
                 M.OfficeMath oMath;
                 if (mathContent is M.OfficeMath directMath)
                     oMath = directMath;
@@ -131,7 +137,11 @@ public partial class PowerPointHandler
                 var notesSlidePart = EnsureNotesSlidePart(notesSlideParts[notesSlideIdx - 1]);
                 if (properties.TryGetValue("text", out var notesText))
                 {
+<<<<<<< HEAD
                     XmlTextValidator.ValidateOrThrow(notesText, "text");
+=======
+                    XmlTextValidator.ValidateOrThrow(notesText, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                     SetNotesText(notesSlidePart, notesText);
                 }
                 // Reading direction (Arabic / Hebrew speaker notes). Mirrors
@@ -151,6 +161,7 @@ public partial class PowerPointHandler
                 // UNSUPPORTED while Set succeeded.
                 if (properties.TryGetValue("lang", out var notesLang))
                 {
+<<<<<<< HEAD
                     Shape? notesBody = null;
                     var notesShapeTree = notesSlidePart.NotesSlide?.CommonSlideData?.ShapeTree;
                     if (notesShapeTree != null)
@@ -161,6 +172,9 @@ public partial class PowerPointHandler
                             if (ph?.Index?.Value == 1) { notesBody = sh; break; }
                         }
                     }
+=======
+                    var notesBody = FindNotesBodyShape(notesSlidePart.NotesSlide?.CommonSlideData?.ShapeTree);
+>>>>>>> upstream/main
                     if (notesBody != null)
                     {
                         var notesRuns = notesBody.Descendants<Drawing.Run>().ToList();
@@ -180,17 +194,37 @@ public partial class PowerPointHandler
                 // Set side ships at PowerPointHandler.Set.Shape.cs, so dump
                 // emit can target either form via positional ordinals.
                 var paraParentMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]/shape\[(\d+)\]$");
+<<<<<<< HEAD
                 var paraPhMatch = paraParentMatch.Success ? null : Regex.Match(parentPath, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]$");
+=======
+                // Grouped shape parent: /slide[N]/group[K](/group[L])*/shape[M].
+                // dump emits paragraph adds into shapes that live inside (possibly
+                // nested) groups; without this they hit the slide-only matcher and
+                // failed "Element not found". Mirrors the Set-side nested-group
+                // shape resolution.
+                var paraGroupMatch = paraParentMatch.Success
+                    ? null
+                    : Regex.Match(parentPath, @"^/slide\[(\d+)\]((?:/group\[\d+\])+)/shape\[(\d+)\]$");
+                var paraPhMatch = (paraParentMatch.Success || (paraGroupMatch?.Success == true)) ? null : Regex.Match(parentPath, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]$");
+>>>>>>> upstream/main
                 // R57 bt-4: accept connector parents so dump→replay round-trips
                 // multi-paragraph / multi-run connector labels (the inline
                 // `text=` prop on AddConnector handles only the single-run
                 // case). The connector's <p:txBody> is not declared by the
                 // p:cxnSp schema — see ConnectorEnsureTextBody.
+<<<<<<< HEAD
                 var paraCxnMatch = (paraParentMatch.Success || (paraPhMatch?.Success == true))
                     ? null
                     : Regex.Match(parentPath, @"^/slide\[(\d+)\]/connector\[([^\]]+)\]$");
                 if (!paraParentMatch.Success && (paraPhMatch == null || !paraPhMatch.Success) && (paraCxnMatch == null || !paraCxnMatch.Success))
                     throw new ArgumentException("Paragraphs must be added to a shape, placeholder, or connector: /slide[N]/shape[M], /slide[N]/placeholder[X], or /slide[N]/connector[K]");
+=======
+                var paraCxnMatch = (paraParentMatch.Success || (paraGroupMatch?.Success == true) || (paraPhMatch?.Success == true))
+                    ? null
+                    : Regex.Match(parentPath, @"^/slide\[(\d+)\]/connector\[([^\]]+)\]$");
+                if (!paraParentMatch.Success && (paraGroupMatch == null || !paraGroupMatch.Success) && (paraPhMatch == null || !paraPhMatch.Success) && (paraCxnMatch == null || !paraCxnMatch.Success))
+                    throw new ArgumentException("Paragraphs must be added to a shape, placeholder, or connector: /slide[N]/shape[M], /slide[N]/group[K]/.../shape[M], /slide[N]/placeholder[X], or /slide[N]/connector[K]");
+>>>>>>> upstream/main
 
                 SlidePart paraSlidePart;
                 Shape? paraShape = null;
@@ -205,6 +239,17 @@ public partial class PowerPointHandler
                     (paraSlidePart, paraShape) = ResolveShape(paraSlideIdx, paraShapeIdx);
                     paraReturnPathHead = $"/slide[{paraSlideIdx}]/{BuildElementPathSegment("shape", paraShape, paraShapeIdx)}";
                 }
+<<<<<<< HEAD
+=======
+                else if (paraGroupMatch != null && paraGroupMatch.Success)
+                {
+                    paraSlideIdx = int.Parse(paraGroupMatch.Groups[1].Value);
+                    var groupSegs = paraGroupMatch.Groups[2].Value;
+                    paraShapeIdx = int.Parse(paraGroupMatch.Groups[3].Value);
+                    (paraSlidePart, paraShape) = ResolveGroupInnerShapeBySegments(paraSlideIdx, groupSegs, paraShapeIdx);
+                    paraReturnPathHead = $"/slide[{paraSlideIdx}]{groupSegs}/{BuildElementPathSegment("shape", paraShape, paraShapeIdx)}";
+                }
+>>>>>>> upstream/main
                 else if (paraPhMatch != null && paraPhMatch.Success)
                 {
                     paraSlideIdx = int.Parse(paraPhMatch.Groups[1].Value);
@@ -255,14 +300,40 @@ public partial class PowerPointHandler
                     pProps.LeftMargin = (int)Math.Round(SpacingConverter.ParsePointsSigned(pMarL) * EmuConverter.EmuPerPointF);
                 if (properties.TryGetValue("marginRight", out var pMarR) || properties.TryGetValue("marr", out pMarR))
                     pProps.RightMargin = (int)Math.Round(SpacingConverter.ParsePointsSigned(pMarR) * EmuConverter.EmuPerPointF);
+<<<<<<< HEAD
                 if (properties.TryGetValue("list", out var pList) || properties.TryGetValue("liststyle", out pList))
                     ApplyListStyle(pProps, pList);
+=======
+                // bulletRaw (full bullet group) takes precedence over the lossy
+                // `list` keyword when both are present. Probe both
+                // unconditionally: dump emits list AND bulletRaw side by side,
+                // and an else-if short-circuit left `list` unread — flagged as
+                // a false unsupported_property on every numbered-list replay.
+                var hasPBulletRaw = properties.TryGetValue("bulletRaw", out var pBulletRaw) || properties.TryGetValue("bulletraw", out pBulletRaw);
+                var hasPList = properties.TryGetValue("list", out var pList) || properties.TryGetValue("liststyle", out pList) || properties.TryGetValue("bullet", out pList);
+                if (hasPBulletRaw)
+                    ApplyBulletRaw(pProps, pBulletRaw!);
+                else if (hasPList)
+                    ApplyListStyle(pProps, pList!, preserveIndent: properties.ContainsKey("indent") || properties.ContainsKey("marginLeft") || properties.ContainsKey("marginleft") || properties.ContainsKey("marL") || properties.ContainsKey("marl"));
+                // Paragraph-level default run properties (verbatim). Bare runs
+                // inherit size/bold/font from here; see ApplyDefRPrRaw.
+                if (properties.TryGetValue("defRPrRaw", out var pDefRPrRaw) || properties.TryGetValue("defrprraw", out pDefRPrRaw))
+                    ApplyDefRPrRaw(pProps, pDefRPrRaw);
+>>>>>>> upstream/main
                 if (properties.TryGetValue("level", out var pLevelStr))
                 {
                     if (!int.TryParse(pLevelStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var pLevelVal) || pLevelVal < 0 || pLevelVal > 8)
                         throw new ArgumentException($"Invalid 'level' value: '{pLevelStr}'. Expected an integer between 0 and 8 (OOXML a:pPr/@lvl).");
                     pProps.Level = pLevelVal;
                 }
+<<<<<<< HEAD
+=======
+                // CJK / line-break pPr attributes (eaLnBrk / latinLnBrk /
+                // hangingPunct / fontAlgn / defTabSz). Mirror NodeBuilder readback.
+                foreach (var pBreakKey in new[] { "eaLnBrk", "latinLnBrk", "fontAlgn", "defTabSz" })
+                    if (properties.TryGetValue(pBreakKey, out var pBreakVal))
+                        ApplyParagraphBreakProp(pProps, pBreakKey, pBreakVal);
+>>>>>>> upstream/main
                 // Line spacing (CONSISTENCY(lineSpacing): same idiom as AddShape:~180)
                 if (properties.TryGetValue("lineSpacing", out var pLsVal) || properties.TryGetValue("linespacing", out pLsVal))
                 {
@@ -314,7 +385,11 @@ public partial class PowerPointHandler
 
                 // Create initial run with text and run-level properties
                 var paraText = properties.GetValueOrDefault("text", "");
+<<<<<<< HEAD
                 XmlTextValidator.ValidateOrThrow(paraText, "text");
+=======
+                XmlTextValidator.ValidateOrThrow(paraText, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                 var newRun = new Drawing.Run();
                 var rProps = new Drawing.RunProperties { Language = "en-US" };
                 if (properties.TryGetValue("lang", out var pLang) && !string.IsNullOrEmpty(pLang))
@@ -394,6 +469,24 @@ public partial class PowerPointHandler
                         Text = MakePreservingText(seg)
                     });
                 }
+<<<<<<< HEAD
+=======
+                else if (paraText.Length == 0)
+                {
+                    // Empty paragraph (spacer line): real PowerPoint computes
+                    // an empty line's height from <a:endParaRPr>, NOT from an
+                    // empty run's rPr — a `<a:r><a:rPr sz="800"/><a:t/></a:r>`
+                    // still renders at the inherited body size, inflating
+                    // designer spacer paragraphs (8pt gap → 22pt gap). Write
+                    // the collected run properties as endParaRPr instead.
+                    var endPr = new Drawing.EndParagraphRunProperties();
+                    foreach (var attr in rProps.GetAttributes())
+                        endPr.SetAttribute(attr);
+                    foreach (var child in rProps.ChildElements)
+                        endPr.AppendChild(child.CloneNode(true));
+                    newPara.Append(endPr);
+                }
+>>>>>>> upstream/main
                 else
                 {
                     newRun.RunProperties = rProps;
@@ -427,7 +520,17 @@ public partial class PowerPointHandler
     /// </summary>
     private string AddLineBreak(string parentPath, int? index, Dictionary<string, string> properties)
     {
+<<<<<<< HEAD
         var brParaMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]/shape\[(\d+)\](?:/(?:paragraph|p)\[(\d+)\])?$");
+=======
+        // CONSISTENCY(pptx-group-flatten): accept an optional /group[G]/.../group[M]
+        // chain between the slide and the shape so a line break can be added to a
+        // textbox sitting inside a group — exactly mirroring AddRun / AddParagraph,
+        // which already walk the same chain. Without it, dump→replay of an <a:br>
+        // inside a grouped shape reported "Line breaks must be added to a
+        // shape/placeholder or paragraph" even though Get exposed the path verbatim.
+        var brParaMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]((?:/group\[\d+\])*)/shape\[(\d+)\](?:/(?:paragraph|p)\[(\d+)\])?$");
+>>>>>>> upstream/main
         var brPhMatch = brParaMatch.Success ? null : Regex.Match(parentPath, @"^/slide\[(\d+)\]/placeholder\[(\w+)\](?:/(?:paragraph|p)\[(\d+)\])?$");
         if (!brParaMatch.Success && (brPhMatch == null || !brPhMatch.Success))
             throw new ArgumentException(
@@ -436,12 +539,49 @@ public partial class PowerPointHandler
 
         Shape brShape;
         System.Text.RegularExpressions.Group brParaGroup;
+<<<<<<< HEAD
         if (brParaMatch.Success)
         {
             var slideIdx = int.Parse(brParaMatch.Groups[1].Value);
             var shapeIdx = int.Parse(brParaMatch.Groups[2].Value);
             (_, brShape) = ResolveShape(slideIdx, shapeIdx);
             brParaGroup = brParaMatch.Groups[3];
+=======
+        string brReturnPathHead;
+        if (brParaMatch.Success)
+        {
+            var slideIdx = int.Parse(brParaMatch.Groups[1].Value);
+            var grpChain = brParaMatch.Groups[2].Value;
+            var shapeIdx = int.Parse(brParaMatch.Groups[3].Value);
+            if (string.IsNullOrEmpty(grpChain))
+            {
+                (_, brShape) = ResolveShape(slideIdx, shapeIdx);
+            }
+            else
+            {
+                // Walk the /group[N]/.../group[M]/shape[K] chain, filtering each
+                // scope to content elements — same resolution AddRun uses.
+                var sps = GetSlideParts().ToList();
+                if (slideIdx < 1 || slideIdx > sps.Count)
+                    throw new ArgumentException($"Slide {slideIdx} not found (total: {sps.Count})");
+                OpenXmlCompositeElement scope = GetSlide(sps[PathIndex.ToArrayIndex(slideIdx)]).CommonSlideData?.ShapeTree
+                    ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
+                foreach (Match gm in Regex.Matches(grpChain, @"/group\[(\d+)\]"))
+                {
+                    var gIdx = int.Parse(gm.Groups[1].Value);
+                    var groupsHere = scope.Elements<GroupShape>().ToList();
+                    if (gIdx < 1 || gIdx > groupsHere.Count)
+                        throw new ArgumentException($"Group {gIdx} not found in scope (have {groupsHere.Count})");
+                    scope = groupsHere[gIdx - 1];
+                }
+                var shapesInScope = scope.Elements<Shape>().ToList();
+                if (shapeIdx < 1 || shapeIdx > shapesInScope.Count)
+                    throw new ArgumentException($"Shape {shapeIdx} not found in group scope (have {shapesInScope.Count})");
+                brShape = shapesInScope[PathIndex.ToArrayIndex(shapeIdx)];
+            }
+            brParaGroup = brParaMatch.Groups[4];
+            brReturnPathHead = $"/slide[{slideIdx}]{grpChain}/shape[{shapeIdx}]";
+>>>>>>> upstream/main
         }
         else
         {
@@ -450,8 +590,14 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+<<<<<<< HEAD
             brShape = ResolvePlaceholderShape(slideParts[slideIdx - 1], phToken);
             brParaGroup = brPhMatch.Groups[3];
+=======
+            brShape = ResolvePlaceholderShape(slideParts[PathIndex.ToArrayIndex(slideIdx)], phToken);
+            brParaGroup = brPhMatch.Groups[3];
+            brReturnPathHead = $"/slide[{slideIdx}]/placeholder[{phToken}]";
+>>>>>>> upstream/main
         }
 
         var brTextBody = brShape.TextBody
@@ -475,6 +621,18 @@ public partial class PowerPointHandler
         }
 
         var br = new Drawing.Break();
+<<<<<<< HEAD
+=======
+        // Verbatim <a:rPr> on the break — controls the empty line's height
+        // (a bare <a:br/> inherits the paragraph size instead). Emitted by
+        // the dump as rPrRaw when the source break carries one.
+        if (properties != null
+            && (properties.TryGetValue("rPrRaw", out var brRPrRaw) || properties.TryGetValue("rprraw", out brRPrRaw))
+            && !string.IsNullOrWhiteSpace(brRPrRaw))
+        {
+            br.AppendChild(new Drawing.RunProperties(brRPrRaw));
+        }
+>>>>>>> upstream/main
         if (index.HasValue)
         {
             var children = targetPara.ChildElements.ToList();
@@ -502,11 +660,15 @@ public partial class PowerPointHandler
         }
 
         var brIdx = targetPara.Elements<Drawing.Break>().ToList().FindIndex(b => ReferenceEquals(b, br)) + 1;
+<<<<<<< HEAD
         return $"/slide[{(brParaMatch.Success ? brParaMatch.Groups[1].Value : brPhMatch!.Groups[1].Value)}]" +
                (brParaMatch.Success
                     ? $"/shape[{brParaMatch.Groups[2].Value}]"
                     : $"/placeholder[{brPhMatch!.Groups[2].Value}]") +
                $"/paragraph[{targetParaIdx}]/br[{brIdx}]";
+=======
+        return $"{brReturnPathHead}/paragraph[{targetParaIdx}]/br[{brIdx}]";
+>>>>>>> upstream/main
     }
 
     private string AddRun(string parentPath, int? index, Dictionary<string, string> properties)
@@ -690,7 +852,33 @@ public partial class PowerPointHandler
                 // Symmetric with the Set branch in ShapeProperties.cs. Schema
                 // order is enforced by ReorderDrawingRunProperties at the end
                 // of this method (already invoked for endParaRPr inheritance).
+<<<<<<< HEAD
                 if (properties.TryGetValue("textOutline", out var rTextOutline)
+=======
+                // Verbatim <a:blipFill> glyph fill (WordArt picture fill).
+                if ((properties.TryGetValue("textFillRaw", out var rTfRaw)
+                        || properties.TryGetValue("textfillraw", out rTfRaw))
+                    && !string.IsNullOrWhiteSpace(rTfRaw))
+                {
+                    rProps.RemoveAllChildren<Drawing.SolidFill>();
+                    rProps.RemoveAllChildren<Drawing.GradientFill>();
+                    rProps.RemoveAllChildren<Drawing.BlipFill>();
+                    rProps.RemoveAllChildren<Drawing.PatternFill>();
+                    InsertFillInRunProperties(rProps, new Drawing.BlipFill(rTfRaw));
+                }
+
+                // Verbatim <a:ln> (dash pattern / gradient stroke / cap-join —
+                // everything the width:color compound can't express). Wins over
+                // the semantic keys; the emitter suppresses them when present.
+                if ((properties.TryGetValue("textOutlineRaw", out var rToRaw)
+                        || properties.TryGetValue("textoutlineraw", out rToRaw))
+                    && !string.IsNullOrWhiteSpace(rToRaw))
+                {
+                    rProps.RemoveAllChildren<Drawing.Outline>();
+                    rProps.PrependChild(new Drawing.Outline(rToRaw));
+                }
+                else if (properties.TryGetValue("textOutline", out var rTextOutline)
+>>>>>>> upstream/main
                     || properties.TryGetValue("textoutline", out rTextOutline))
                 {
                     if (!rTextOutline.Equals("none", StringComparison.OrdinalIgnoreCase)
@@ -701,18 +889,32 @@ public partial class PowerPointHandler
                         // rationale on SplitCompoundLineValue's positional tuple.
                         var (toWidthPart, toColorPart, _) = SplitCompoundLineValue(rTextOutline);
                         long? widthEmu = null;
+<<<<<<< HEAD
                         string? colorRgb = null;
                         if (toColorPart != null)
                         {
                             widthEmu = Core.EmuConverter.ParseLineWidth(toWidthPart);
                             colorRgb = toColorPart.Equals("none", StringComparison.OrdinalIgnoreCase)
                                 ? null : ParseHelpers.SanitizeColorForOoxml(toColorPart).Rgb;
+=======
+                        // Carry the full color string (incl. +shade/+alpha/+lumMod
+                        // transform chain and #RRGGBBAA alpha) through BuildSolidFill
+                        // so Get's emit form ("#4F81BD11+shade2") replays. Mirrors
+                        // the Set branch in ShapeProperties.cs.
+                        string? colorValue = null;
+                        if (toColorPart != null)
+                        {
+                            widthEmu = Core.EmuConverter.ParseLineWidth(toWidthPart);
+                            colorValue = toColorPart.Equals("none", StringComparison.OrdinalIgnoreCase)
+                                ? null : toColorPart;
+>>>>>>> upstream/main
                         }
                         else
                         {
                             try { widthEmu = Core.EmuConverter.ParseLineWidth(rTextOutline); }
                             catch { widthEmu = null; }
                             if (widthEmu == null && !rTextOutline.Equals("true", StringComparison.OrdinalIgnoreCase))
+<<<<<<< HEAD
                                 colorRgb = ParseHelpers.SanitizeColorForOoxml(rTextOutline).Rgb;
                         }
                         var ln = new Drawing.Outline();
@@ -720,6 +922,14 @@ public partial class PowerPointHandler
                         if (colorRgb != null)
                             ln.AppendChild(new Drawing.SolidFill(
                                 new Drawing.RgbColorModelHex { Val = colorRgb }));
+=======
+                                colorValue = rTextOutline;
+                        }
+                        var ln = new Drawing.Outline();
+                        if (widthEmu.HasValue) ln.Width = (int)widthEmu.Value;
+                        if (colorValue != null)
+                            ln.AppendChild(BuildSolidFill(colorValue));
+>>>>>>> upstream/main
                         rProps.PrependChild(ln);
                     }
                 }
@@ -738,7 +948,10 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("textOutline.color", out var rToColor)
                     || properties.TryGetValue("textoutline.color", out rToColor))
                 {
+<<<<<<< HEAD
                     var rgb = ParseHelpers.SanitizeColorForOoxml(rToColor).Rgb;
+=======
+>>>>>>> upstream/main
                     var ln = rProps.GetFirstChild<Drawing.Outline>();
                     if (ln == null)
                     {
@@ -746,8 +959,13 @@ public partial class PowerPointHandler
                         rProps.PrependChild(ln);
                     }
                     ln.RemoveAllChildren<Drawing.SolidFill>();
+<<<<<<< HEAD
                     ln.AppendChild(new Drawing.SolidFill(
                         new Drawing.RgbColorModelHex { Val = rgb }));
+=======
+                    // BuildSolidFill carries the transform chain / alpha Get emits.
+                    ln.AppendChild(BuildSolidFill(rToColor));
+>>>>>>> upstream/main
                 }
                 if (properties.TryGetValue("strikethrough", out var rStrike) || properties.TryGetValue("strike", out rStrike))
                     rProps.Strike = rStrike.ToLowerInvariant() switch
@@ -792,6 +1010,22 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("color", out var rColor)
                     || properties.TryGetValue("font.color", out rColor))
                     rProps.AppendChild(BuildSolidFill(rColor));
+<<<<<<< HEAD
+=======
+                // CONSISTENCY(highlight): a:highlight slot sits between the fill
+                // and latin/ea in CT_TextCharacterProperties — appending here
+                // (after solidFill, before the font branches below) lands it in
+                // schema position. Same write as the Set case in
+                // ShapeProperties.cs / ApplyPptRunFormatting.
+                if (properties.TryGetValue("highlight", out var rHighlight)
+                    && !rHighlight.Equals("none", StringComparison.OrdinalIgnoreCase)
+                    && !rHighlight.Equals("false", StringComparison.OrdinalIgnoreCase))
+                {
+                    var rHl = new Drawing.Highlight();
+                    rHl.AppendChild(BuildColorElement(rHighlight));
+                    rProps.AppendChild(rHl);
+                }
+>>>>>>> upstream/main
                 if (properties.TryGetValue("font", out var rFont)
                     || properties.TryGetValue("font.name", out rFont))
                 {
@@ -1000,6 +1234,28 @@ public partial class PowerPointHandler
         string line,
         Func<string, Drawing.Run> runFactory)
     {
+<<<<<<< HEAD
+=======
+        // NEWLINE-SEMANTICS-V2: '\v' is the cross-handler soft-line-break
+        // char. In DrawingML that is <a:br/> — a line break INSIDE the
+        // paragraph, as opposed to '\n' which the caller has already split
+        // into separate <a:p> paragraphs. Emit each '\v'-separated chunk,
+        // joined by <a:br/> elements ('\v' is XML-illegal and must never
+        // reach <a:t> as a literal char).
+        var vChunks = line.Split('\v');
+        for (int vi = 0; vi < vChunks.Length; vi++)
+        {
+            if (vi > 0) paragraph.AppendChild(new Drawing.Break());
+            AppendChunkWithTabs(paragraph, vChunks[vi], runFactory);
+        }
+    }
+
+    private static void AppendChunkWithTabs(
+        Drawing.Paragraph paragraph,
+        string line,
+        Func<string, Drawing.Run> runFactory)
+    {
+>>>>>>> upstream/main
         var segments = line.Split('\t');
         for (int i = 0; i < segments.Length; i++)
         {

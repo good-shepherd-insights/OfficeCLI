@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using OfficeCli.Core;
@@ -15,13 +19,52 @@ public static partial class WordBatchEmitter
     /// paragraph); we issue a `set` instead of a fresh `add` so the existing
     /// paragraph gets reused rather than duplicated.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // BUG-DUMP26-01 / BUG-DUMP-SECTNUM: a paragraph's numbering props must never
+    // ride on an `add p` / `set p` as ad-hoc numbering. (1) numId/numLevel that came
+    // from style inheritance (ResolveNumPrFromStyle, no direct w:numPr) must be
+    // dropped — the style already supplies them and emitting them would promote
+    // inherited→explicit on replay. (2) When a direct numId is present, the
+    // abstractNum/num pair is already in /numbering (raw-set wholesale by
+    // EmitNumberingRaw); forwarding numFmt/listStyle/start to AddParagraph triggers
+    // ad-hoc numbering-definition creation — Word allocates a FRESH numId, orphaning
+    // the original abstract numbering's level rPr (color/bold/custom marker). Drop
+    // those so the paragraph just attaches by numId+numLevel to the existing def.
+    // Applied by BOTH the normal paragraph emit AND the section-carrier paragraph
+    // `set` (TryEmitInlineSectionBreak), which builds its pPr props independently.
+    private static void ApplyNumberingInheritanceFilters(IDictionary<string, string> props, DocumentNode pNode)
+    {
+        bool numInherited = pNode.Format.TryGetValue("numInherited", out var niVal)
+            && string.Equals(niVal?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (numInherited)
+        {
+            props.Remove("numId");
+            props.Remove("numLevel");
+            props.Remove("numFmt");
+            props.Remove("listStyle");
+            props.Remove("start");
+        }
+        if (props.ContainsKey("numId"))
+        {
+            props.Remove("numFmt");
+            props.Remove("listStyle");
+            props.Remove("start");
+        }
+    }
+
+>>>>>>> upstream/main
     private static void EmitParagraph(WordHandler word, string sourcePath, string parentPath,
                                       int targetIndex, List<BatchItem> items, bool autoPresent,
                                       BodyEmitContext? ctx = null)
     {
         var pNode = word.Get(sourcePath);
 
+<<<<<<< HEAD
         if (TryEmitDisplayEquation(pNode, parentPath, autoPresent, items)) return;
+=======
+        if (TryEmitDisplayEquation(word, pNode, parentPath, autoPresent, items)) return;
+>>>>>>> upstream/main
 
         // Track source paraId -> target index BEFORE any early-return path
         // (section break, TOC, …). Comments anchored on a section-break or
@@ -73,6 +116,7 @@ public static partial class WordBatchEmitter
         // them would semantically promote inherited→explicit on replay.
         // Mirrors the first-run hoist precedent for run-character props
         // inherited from styles.
+<<<<<<< HEAD
         bool numInherited = pNode.Format.TryGetValue("numInherited", out var niVal)
             && string.Equals(niVal?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
         if (numInherited)
@@ -97,6 +141,9 @@ public static partial class WordBatchEmitter
             props.Remove("listStyle");
             props.Remove("start");
         }
+=======
+        ApplyNumberingInheritanceFilters(props, pNode);
+>>>>>>> upstream/main
         // BUG-R4F-02: a paragraph may carry a numId that does not resolve to any
         // <w:num> in /numbering (dangling reference). This is valid OOXML — Word
         // renders the paragraph, just without a list marker — but the Add-side
@@ -124,9 +171,17 @@ public static partial class WordBatchEmitter
         // `runs` filter sees only the cached display run and emits the field
         // value as static text — PAGE/REF/SEQ/HYPERLINK/NUMPAGES degrade to
         // their evaluated string and stop auto-updating (BUG-X2-05 / X2-1).
+<<<<<<< HEAD
         var fieldEntries = CollapseFieldChains(pNode.Children ?? new List<DocumentNode>());
         // R14-bug1+2: each legacy form field embeds a BookmarkStart/End of its
         // own name. AddFormField recreates that bookmark internally — if the
+=======
+        var fieldEntries = CollapseFieldChains(pNode.Children ?? new List<DocumentNode>(), word);
+        // R14-bug1+2: a legacy form field MAY embed a BookmarkStart/End of its
+        // own name (Word wraps form fields in a bookmark so REF fields can target
+        // them, but a plain FORMCHECKBOX/FORMTEXT authored without that wrap has
+        // NONE). AddFormField recreates the wrapping bookmark internally — if the
+>>>>>>> upstream/main
         // emit pipeline also drops an `add bookmark name=X` row before the
         // `add formfield name=X`, AddFormField throws on the duplicate. Filter
         // bookmarks whose name matches a sibling formfield synth's ffName.
@@ -135,10 +190,81 @@ public static partial class WordBatchEmitter
             .Select(e => e.Format["ffName"]?.ToString() ?? "")
             .Where(n => !string.IsNullOrEmpty(n))
             .ToHashSet(StringComparer.Ordinal);
+<<<<<<< HEAD
         if (formFieldNames.Count > 0)
         {
             fieldEntries = fieldEntries
                 .Where(e => !(e.Type == "bookmark"
+=======
+        // Gate on ANY form field, not only named ones: a paragraph holding only
+        // nameless fields still needs the noBookmark pin pass below, else each
+        // nameless field gains a fabricated ff_<guid> bookmark on rebuild
+        // (BUG-DUMP-R72-FF-BOOKMARK-COUNT).
+        if (fieldEntries.Any(e => e.Type == "formfield"))
+        {
+            // BUG-DUMP-FFCHECKBOX-BOOKMARK: a form field whose SOURCE had no
+            // wrapping bookmark must NOT gain a fabricated one on rebuild.
+            // AddFormField wraps every field in a <w:bookmarkStart name=ffName>
+            // unconditionally; a 54-checkbox grid with no source bookmarks then
+            // gained 54 fabricated Check1/Check1_N bookmarks (and a uniquify
+            // pass), which alters the checkbox cells' content and nudges row
+            // heights → table reflow → page drift. Mark each formfield synth
+            // with whether a matching bookmark actually sits among its siblings;
+            // TryEmitFormFieldRun forwards a `noBookmark` pin to AddFormField so
+            // a bookmark-less source stays bookmark-less. (A field whose source
+            // HAS the bookmark keeps the existing behaviour — the bookmark sibling
+            // is filtered below and AddFormField recreates it.)
+            var bookmarkNamesPresent = fieldEntries
+                .Where(e => e.Type == "bookmark"
+                    && e.Format.TryGetValue("name", out var bnm) && bnm != null)
+                .Select(e => e.Format["name"]!.ToString() ?? "")
+                .ToHashSet(StringComparer.Ordinal);
+            // BUG-DUMP-FF-ROWLEVEL-BOOKMARK / BUG-DUMP-R72-FF-BOOKMARK-COUNT: a
+            // form field's wrapping bookmark may sit at ROW level (a <w:tr> child
+            // between cells) — invisible to the same-paragraph set, and dropped by
+            // the table emitter — so pinning noBookmark purely on the same-paragraph
+            // check would erase every row-level bookmark. The earlier fix consulted
+            // a document-wide NAME SET ("does any bookmark with this name exist?"),
+            // but that over-fires when many fields share one name: a doc with ONE
+            // <w:bookmarkStart name="Check1"> and 26 checkbox fields all named
+            // "Check1" then recreated 26 Check1 bookmarks (+a uniquify cascade).
+            // Use a count-aware BUDGET instead: each name may hand out only as many
+            // wrapping bookmarks as the source actually had. A same-paragraph match
+            // is a real bookmark, so it always recreates AND reserves one budget
+            // unit; a field with no same-paragraph bookmark keeps one only while the
+            // remaining budget (row-level / other-paragraph source bookmarks) lasts;
+            // an unnamed field — which cannot carry a named bookmark — and a field
+            // whose budget is exhausted are pinned noBookmark.
+            foreach (var ffSynth in fieldEntries.Where(e => e.Type == "formfield"))
+            {
+                var ffn = ffSynth.Format.TryGetValue("ffName", out var ffnObj)
+                    ? (ffnObj?.ToString() ?? "")
+                    : "";
+                if (string.IsNullOrEmpty(ffn))
+                {
+                    // A nameless source field had no wrapping bookmark (a bookmark
+                    // needs a name), yet AddFormField would auto-generate an
+                    // ff_<guid> name + bookmark for it (the interactive default).
+                    // Pin noBookmark on round-trip so a bookmark-less field stays
+                    // bookmark-less instead of gaining a fabricated ff_<guid> one.
+                    ffSynth.Format["_noBookmark"] = true;
+                    continue;
+                }
+                if (bookmarkNamesPresent.Contains(ffn))
+                {
+                    // Real same-paragraph wrapping bookmark: always recreate, but
+                    // reserve its budget so a later same-named field can't reuse it.
+                    ctx?.ConsumeBookmarkBudget(word, ffn);
+                    continue;
+                }
+                if (ctx == null || !ctx.ConsumeBookmarkBudget(word, ffn))
+                    ffSynth.Format["_noBookmark"] = true;
+            }
+            if (ctx != null)
+                foreach (var ffn in formFieldNames) ctx.FormFieldBookmarkNames.Add(ffn);
+            fieldEntries = fieldEntries
+                .Where(e => !((e.Type == "bookmark" || e.Type == "bookmarkEnd")
+>>>>>>> upstream/main
                     && e.Format.TryGetValue("name", out var bn)
                     && bn != null
                     && formFieldNames.Contains(bn.ToString() ?? "")))
@@ -188,6 +314,16 @@ public static partial class WordBatchEmitter
         {
             if (runs.Count == 1)
             {
+<<<<<<< HEAD
+=======
+                // BUG-DUMP-R35-2: a wrapper-flattened run that collapses into the
+                // paragraph's own `text` prop bypasses EmitPlainOrHyperlinkRun, so
+                // the deterministic smartTag/customXml flatten warning never fired
+                // for a single-run wrapped paragraph (text survived, loss silent).
+                // CONSISTENCY(wrapper-flatten-warning): same emit as
+                // EmitPlainOrHyperlinkRun's _wrapperFlattened branch.
+                WarnWrapperFlattened(runs[0], ctx);
+>>>>>>> upstream/main
                 var runProps = FilterEmittableProps(runs[0].Format);
                 foreach (var (k, v) in runProps)
                 {
@@ -240,7 +376,33 @@ public static partial class WordBatchEmitter
         // text/format-bearing run exists (the genuine hoist source); a run-less
         // paragraph keeps its bare markRPr keys, same as the non-bookmark empty
         // paragraph that rides the collapse path with full markRPr.
+<<<<<<< HEAD
         bool hasFormatBearingRun = runs.Any(c => c.Type == "run" || c.Type == "r");
+=======
+        // BUG-DUMP-R26: a field chain swallows the paragraph's text runs in
+        // CollapseFieldChains, so a field-result paragraph has NO run-typed
+        // children left — yet the paragraph node's bare character keys were
+        // harvested (firstRun-fallback) from the field's RESULT runs, and the
+        // field emit (raw-set verbatim / add field) replays that formatting
+        // itself. Leaving the harvested keys on `add p` duplicates them onto
+        // the ¶ mark on rebuild (<w:b/> count 2). Field entries are therefore
+        // format-bearing hoist sources too.
+        // BUG-DUMP-MARKSZ-DEL: a paragraph whose only runs are tracked-revision
+        // runs (<w:del>/<w:ins>/<w:moveFrom>/<w:moveTo>) has NO direct hoist
+        // source — Navigation's firstRun (para.Elements<Run>()) skips revision-
+        // wrapped runs, so the paragraph's bare size/size.cs/font.* keys were
+        // read off the ¶-mark rPr, not off a run. Treating the del/ins run as
+        // the hoist source and stripping here dropped the mark's font size, so
+        // a deleted-content table cell collapsed to default line height on
+        // rebuild — pushing every later row down (cumulative drift, +1 page).
+        // Only a non-revision run is a genuine hoist source.
+        static bool IsRevisionWrappedRun(DocumentNode c) =>
+            c.Format.TryGetValue("revision.type", out var rvt)
+            && rvt?.ToString() is "del" or "ins" or "moveFrom" or "moveTo";
+        bool hasFormatBearingRun = runs.Any(c =>
+            (c.Type == "run" || c.Type == "r" || c.Type == "field")
+            && !IsRevisionWrappedRun(c));
+>>>>>>> upstream/main
         if (hasFormatBearingRun)
             StripRunCharacterPropsFromParagraph(props);
         if (autoPresent)
@@ -307,7 +469,11 @@ public static partial class WordBatchEmitter
             {
                 if (sdt.Format.TryGetValue(key, out var v) && v != null)
                 {
+<<<<<<< HEAD
                     var s = v.ToString() ?? "";
+=======
+                    var s = NormalizeSdtEmitValue(v);
+>>>>>>> upstream/main
                     if (s.Length > 0) sdtProps[key] = s;
                 }
             }
@@ -387,7 +553,11 @@ public static partial class WordBatchEmitter
             if (TryEmitPermRun(run, paraTargetPath, items)) continue;
             if (TryEmitPgNumRun(word, run, parentPath, items, ctx)) continue;
             if (TryEmitDateFieldRun(word, run, parentPath, items, ctx)) continue;
+<<<<<<< HEAD
             if (TryEmitHyphenRun(word, run, parentPath, items, ctx)) continue;
+=======
+            if (TryEmitHyphenRun(word, run, parentPath, paraTargetPath, items, ctx, hlBaseline)) continue;
+>>>>>>> upstream/main
             if (TryEmitRubyRun(run, parentPath, paraTargetPath, items, ctx)) continue;
             if (TryEmitBdoRun(run, parentPath, items, ctx)) continue;
             if (TryEmitDirRun(run, parentPath, items, ctx)) continue;
@@ -406,8 +576,13 @@ public static partial class WordBatchEmitter
             if (TryEmitOleRun(run, paraTargetPath, items, ctx, word)) continue;
             if (TryEmitPictureRun(word, run, paraTargetPath, parentPath, targetIndex, items, ctx, sharedAttachPara)) continue;
             if (TryEmitNoteRefRun(word, run, paraTargetPath, items, ctx)) continue;
+<<<<<<< HEAD
             if (TryEmitMixedBreakRun(word, run, parentPath, items, ctx)) continue;
             EmitPlainOrHyperlinkRun(run, paraTargetPath, items, ctx, hlBaseline);
+=======
+            if (TryEmitMixedBreakRun(word, run, parentPath, paraTargetPath, items, ctx)) continue;
+            EmitPlainOrHyperlinkRun(word, run, paraTargetPath, items, ctx, hlBaseline);
+>>>>>>> upstream/main
         }
         // Flush any SDTs that sit after the last run (or whose rank could not be
         // recovered from the XML — int.MaxValue lands here).
@@ -435,8 +610,31 @@ public static partial class WordBatchEmitter
         // paragraph's content; track nesting depth to keep to top-level children.
         var perNameIdx = new Dictionary<string, int>(StringComparer.Ordinal);
         int rank = 0;
+<<<<<<< HEAD
         int depth = 0; // depth relative to the paragraph's content (0 = direct child)
         bool seenParaOpen = false;
+=======
+        bool seenParaOpen = false;
+        // BUG-DUMP-SDTORDER-HYPERLINK: a <w:r> nested inside a <w:hyperlink> (or
+        // an ins/del/smartTag/customXml/dir/bdo run-wrapper) IS surfaced by
+        // Navigation as a paragraph-level /r[N] — its run resolver flattens
+        // Descendants<Run>() excluding only SdtRun-nested runs (see the "r" case
+        // in WordHandler.Navigation.cs). So r[N] must count runs THROUGH those
+        // transparent wrappers; counting only literal top-level children
+        // desynced r[N] (a paragraph with hyperlinks numbered ". If the
+        // assessment" as r[3] here but r[5] in Navigation) and scrambled the
+        // inline-SDT flush order — a content control between two runs came back
+        // attached to the wrong run. Only <w:pPr> and <w:sdt> are opaque (pPr's
+        // children aren't content; an inline SDT's runs surface under the sdt
+        // node, not as paragraph runs); every other run-container is transparent.
+        var transparentWrappers = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "hyperlink", "ins", "del", "moveFrom", "moveTo",
+            "smartTag", "customXml", "dir", "bdo",
+        };
+        var openStack = new Stack<bool>(); // true = this open incremented suppress
+        int suppress = 0; // >0 ⇒ inside an opaque container (pPr / sdt / a run)
+>>>>>>> upstream/main
         // Match element opens/closes/self-closes for the w: and m: namespaces
         // (m:oMathPara / m:oMath surface as paragraph children too).
         foreach (System.Text.RegularExpressions.Match m in
@@ -451,12 +649,25 @@ public static partial class WordBatchEmitter
                 if (!closing) { seenParaOpen = true; }
                 continue;
             }
+<<<<<<< HEAD
             if (closing) { depth--; continue; }
             if (depth == 0)
             {
                 // Direct child of the paragraph — assign the next document rank
                 // under its OOXML local name (matches the /r[N], /sdt[N], …
                 // path segments Navigation builds).
+=======
+            if (closing)
+            {
+                if (openStack.Count > 0 && openStack.Pop()) suppress--;
+                continue;
+            }
+            if (suppress == 0)
+            {
+                // Paragraph-level child (only transparent wrappers above it) —
+                // assign the next document rank under its OOXML local name
+                // (matches the /r[N], /sdt[N], … path segments Navigation builds).
+>>>>>>> upstream/main
                 var seg = name switch
                 {
                     "r" => "r",
@@ -469,9 +680,40 @@ public static partial class WordBatchEmitter
                 };
                 int idx = perNameIdx.TryGetValue(seg, out var c) ? c : 0;
                 perNameIdx[seg] = idx + 1;
+<<<<<<< HEAD
                 map[$"{seg}[{idx + 1}]"] = rank++;
             }
             if (!selfClose) depth++;
+=======
+                int thisRank = rank++;
+                map[$"{seg}[{idx + 1}]"] = thisRank;
+                // BUG-DUMP-INLINESDT-BMEND-RANK: Navigation builds a bookmarkEnd
+                // child's path as bookmarkEnd[@id=N] (id-keyed, not positional —
+                // BUG-DUMP-BMEND-IDPATH), so the positional map key alone misses in
+                // ChildDocRank → the run loop reads rank=int.MaxValue for the
+                // bookmarkEnd child and prematurely flushes a still-pending inline
+                // SDT before the run that precedes it. That silently reorders the
+                // run across the content control ("with [SDT]" -> "[SDT]with"),
+                // garbling text with no validate flag and no visible render change.
+                // Register an id-keyed alias at the SAME rank so the lookup hits and
+                // run<->inline-SDT document order round-trips.
+                if (seg == "bookmarkEnd")
+                {
+                    var idm = System.Text.RegularExpressions.Regex.Match(m.Value, "w:id=\"(\\d+)\"");
+                    if (idm.Success)
+                        map[$"bookmarkEnd[@id={idm.Groups[1].Value}]"] = thisRank;
+                }
+            }
+            if (!selfClose)
+            {
+                // Transparent run-wrappers do NOT suppress their children (inner
+                // runs still count as paragraph runs); everything else (pPr, sdt,
+                // a run and its rPr/text) is opaque.
+                bool opaque = !transparentWrappers.Contains(name);
+                if (opaque) suppress++;
+                openStack.Push(opaque);
+            }
+>>>>>>> upstream/main
         }
         return map;
     }
@@ -490,7 +732,11 @@ public static partial class WordBatchEmitter
 
     // ── Extracted helpers (behavior unchanged from inline original) ──
 
+<<<<<<< HEAD
     private static bool TryEmitDisplayEquation(DocumentNode pNode, string parentPath, bool autoPresent, List<BatchItem> items)
+=======
+    private static bool TryEmitDisplayEquation(WordHandler word, DocumentNode pNode, string parentPath, bool autoPresent, List<BatchItem> items)
+>>>>>>> upstream/main
     {
         // Display-mode equations (<m:oMathPara>) surface in EmitBody's
         // bodyNode.Children as type=paragraph, but a direct Get on the
@@ -506,10 +752,33 @@ public static partial class WordBatchEmitter
         };
         if (!string.IsNullOrEmpty(pNode.Text))
             eqProps["formula"] = pNode.Text!;
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-EQVERBATIM (display): forward the verbatim <m:oMath> so the
+        // rebuilt equation keeps its math-run rPr (Cambria Math, sizes) instead
+        // of being reparsed from the lossy LaTeX string.
+        if (pNode.Format.TryGetValue("xml", out var eqXml)
+            && eqXml != null && eqXml.ToString() is { Length: > 0 } eqXmlS
+            && eqXmlS.Contains("oMath", StringComparison.Ordinal))
+            eqProps["xml"] = eqXmlS;
+        // Carry any OLE/preview-image parts referenced inside the verbatim math
+        // (MathType/Equation objects) so they don't dangle on replay.
+        AddMathInlinedPartProps(word, pNode.Path, eqProps);
+>>>>>>> upstream/main
         // BUG-DUMP19-02: forward block-equation alignment.
         if (pNode.Format.TryGetValue("align", out var eqAlign)
             && eqAlign != null && !string.IsNullOrEmpty(eqAlign.ToString()))
             eqProps["align"] = eqAlign.ToString()!;
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-EQDISPLAY-PPR: forward the wrapper paragraph's spacing so the
+        // rebuilt display-equation paragraph keeps its line height (e.g. 1.5x);
+        // dropping it collapsed the equation line and compressed the page.
+        foreach (var sk in new[] { "lineSpacing", "lineRule", "spaceBefore", "spaceAfter", "wrapperAlign", "wrapperPpr" })
+            if (pNode.Format.TryGetValue(sk, out var sv)
+                && sv != null && sv.ToString() is { Length: > 0 } svs)
+                eqProps[sk] = svs;
+>>>>>>> upstream/main
         items.Add(new BatchItem
         {
             Command = "add",
@@ -554,6 +823,14 @@ public static partial class WordBatchEmitter
                 var s = v switch { bool b => b ? "true" : "false", _ => v.ToString() ?? "" };
                 if (s.Length > 0) sectProps[keyTail] = s;
             }
+<<<<<<< HEAD
+=======
+            // Fold the carrier sectPr's pgBorders.<side>.sz/.color/.space sub-keys
+            // (now prefix-stripped to bare pgBorders.* form) into the single
+            // STYLE;SIZE;COLOR;SPACE value AddSection's pgBorders.<side> case
+            // parses. Mirrors EmitSection's FoldPgBordersProps for the body sectPr.
+            FoldPgBordersProps(sectProps);
+>>>>>>> upstream/main
             items.Add(new BatchItem
             {
                 Command = "add",
@@ -581,6 +858,17 @@ public static partial class WordBatchEmitter
                          .Where(k => k.StartsWith("sectionBreak.", StringComparison.OrdinalIgnoreCase))
                          .ToList())
                 sectPProps.Remove(k);
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-SECTNUM: this `set` reuses AddParagraph/SetElement's numbering
+            // vocabulary, so it must apply the SAME inheritance filters as the normal
+            // emit (line ~70). Without it a section-carrier paragraph that inherits
+            // numbering from its style emitted numId+numFmt+start on the `set`,
+            // triggering ad-hoc numbering-definition creation: a spurious num +
+            // abstractNum in numbering.xml and a direct numPr stamped on a paragraph
+            // that had none in the source.
+            ApplyNumberingInheritanceFilters(sectPProps, pNode);
+>>>>>>> upstream/main
             if (sectPProps.Count > 0)
             {
                 items.Add(new BatchItem
@@ -590,6 +878,19 @@ public static partial class WordBatchEmitter
                     Props = sectPProps
                 });
             }
+<<<<<<< HEAD
+=======
+            // BUG-R12C: the section-carrier paragraph holds its own custom tab
+            // stops in Format["tabs"], which the `set` above can't express (tab
+            // stops round-trip as separate `add tab` ops, never as a pPr prop).
+            // A title-page paragraph that centres its text by tabbing to a
+            // centre-aligned tab stop (jc=left + <w:tab w:val="center"/>) lost
+            // the stop here and the text fell back to the default left tab —
+            // "YEAR OF SUBMISSION" rendered left-aligned instead of centred.
+            // Mirror the normal paragraph path's EmitTabStops at line 287.
+            pNode.Format.TryGetValue("tabs", out var carrierTabs);
+            EmitTabStops("/body/p[last()]", carrierTabs, items);
+>>>>>>> upstream/main
             // BUG-DUMP4-04: a section-break paragraph can also carry visible
             // text runs (the carrier paragraph is just a regular paragraph
             // with sectPr in its pPr). AddSection appends a fresh paragraph
@@ -600,7 +901,34 @@ public static partial class WordBatchEmitter
                 {
                     // BUG-DUMP7-11: include inline w:sdt carrier children.
                     if (c.Type == "sdt") return true;
+<<<<<<< HEAD
                     if (c.Type != "run" && c.Type != "r") return false;
+=======
+                    // BUG-R12C: a tab / positional-tab run surfaces as type
+                    // "tab"/"ptab" with empty Text, so the !IsNullOrEmpty(Text)
+                    // gate below dropped it. A title-page paragraph that centres
+                    // its content by tabbing to a centre tab stop (jc=left +
+                    // leading <w:tab/>) then rendered left-aligned. Keep the tab
+                    // run; the loop emits it via TryEmitTabRun/TryEmitPtabRun.
+                    if (c.Type == "tab" || c.Type == "ptab") return true;
+                    // Spanning bookmarks anchored on the section paragraph:
+                    // dropping the start leaves the matching end dangling
+                    // (replay fails with "no matching open bookmarkStart").
+                    if (c.Type == "bookmark" || c.Type == "bookmarkEnd") return true;
+                    // BUG-DUMP-SECTBR: a pure page/column/line break run surfaces
+                    // as type "break" with empty Text (the main run loop routes it
+                    // through TryEmitBreakRun). The "page break, then a new section"
+                    // idiom — <w:p><w:pPr><w:sectPr/></w:pPr><w:r><w:br
+                    // w:type="page"/></w:r></w:p> — puts that break on the
+                    // section-carrier paragraph, where the run/r/picture gate below
+                    // dropped it, collapsing the forced page break and reflowing the
+                    // section boundary. Keep it for the TryEmitBreakRun call below.
+                    if (c.Type == "break") return true;
+                    // Anchored cover art surfaces as type="picture" when the
+                    // drawing carries an image blip — include it for the
+                    // drawing-carrier branch below.
+                    if (c.Type != "run" && c.Type != "r" && c.Type != "picture") return false;
+>>>>>>> upstream/main
                     if (!string.IsNullOrEmpty(c.Text)) return true;
                     // BUG-DUMP5-08 / BUG-R7B(BUG1): include empty footnote /
                     // endnote reference runs (their visible text comes via the
@@ -609,18 +937,88 @@ public static partial class WordBatchEmitter
                     var rsv = c.Format.TryGetValue("rStyle", out var rsraw) ? rsraw?.ToString() : null;
                     if (ClassifyNoteRefRun(word, c, rsv) != NoteRefKind.None)
                         return true;
+<<<<<<< HEAD
+=======
+                    // A cover-page section paragraph can host anchored
+                    // drawings (textboxes, picture-filled shapes) in
+                    // otherwise text-less runs; dropping them deleted the
+                    // whole cover art. Include drawing/pict-bearing runs.
+                    var crx = word.GetElementXml(c.Path);
+                    if (!string.IsNullOrEmpty(crx)
+                        && (crx.Contains("<w:drawing", StringComparison.Ordinal)
+                            || crx.Contains("<w:pict", StringComparison.Ordinal)))
+                        return true;
+>>>>>>> upstream/main
                     return false;
                 })
                 .ToList();
             if (carrierRuns.Count > 0)
             {
                 var carrierPath = $"/body/p[last()]";
+<<<<<<< HEAD
                 foreach (var run in carrierRuns)
                 {
+=======
+                // BUG-DUMP-SECTHL: a hyperlink hosted in the section-carrier
+                // paragraph (e.g. a List-of-Figures entry whose paragraph also
+                // carries the <w:sectPr>) must round-trip through the same
+                // structured path the main run loop uses. Coalesce consecutive
+                // hyperlink runs (text + leader tabs + page number sharing one
+                // <w:hyperlink> wrapper) into a single synthetic node so
+                // EmitPlainOrHyperlinkRun emits the `add hyperlink` wrapper before
+                // its trailing runs — without this the carrier loop emitted each
+                // run as a bare `add r`, the wrapper was never created, and the
+                // trailing tab/page-number runs (which target .../hyperlink[1])
+                // were dropped. Capture the prior-paragraph hyperlink count so the
+                // wrapper re-indexes from 1 (BUG-R14B), same as the main loop.
+                carrierRuns = CoalesceHyperlinkRuns(carrierRuns);
+                int carrierHlBaseline = items.Count(it => it.Type == "hyperlink"
+                    && string.Equals(it.Parent, carrierPath, StringComparison.Ordinal));
+                foreach (var run in carrierRuns)
+                {
+                    if (run.Type == "bookmark" || run.Type == "bookmarkEnd")
+                    {
+                        TryEmitBookmarkRun(run, carrierPath, items, ctx);
+                        continue;
+                    }
+                    // Coalesced hyperlink run (or a lone hyperlink-wrapped run):
+                    // emit the structured wrapper, not a bare `add r`.
+                    if ((run.Type == "run" || run.Type == "r")
+                        && (run.Format.ContainsKey("url") || run.Format.ContainsKey("anchor")))
+                    {
+                        EmitPlainOrHyperlinkRun(word, run, carrierPath, items, ctx, carrierHlBaseline);
+                        continue;
+                    }
+                    // BUG-R12C: tab / positional-tab runs round-trip through the
+                    // same helpers the main run loop uses, so a leading centre
+                    // tab survives on the section-carrier paragraph.
+                    if (TryEmitTabRun(run, carrierPath, items)) continue;
+                    if (TryEmitPtabRun(run, carrierPath, items)) continue;
+                    // BUG-DUMP-SECTBR: a pure page/column/line break run on the
+                    // section-carrier paragraph round-trips through the same helper
+                    // the main run loop uses, so a forced page break that precedes
+                    // a section boundary survives.
+                    if (TryEmitBreakRun(word, run, parentPath, carrierPath, items, ctx)) continue;
+>>>>>>> upstream/main
                     // BUG-DUMP7-11: inline SDT carrier — same prop whitelist
                     // as the body-paragraph inline-SDT branch.
                     if (run.Type == "sdt")
                     {
+<<<<<<< HEAD
+=======
+                        // BUG-R12C: a rich inline SDT (per-run rPr/color,
+                        // multi-run, nested, or special sdtPr) must round-trip
+                        // verbatim here too. The section-carrier branch only had
+                        // the flat `add sdt text=` path, which dropped the sdtPr
+                        // rStyle/placeholder and the content runs' formatting —
+                        // a title-page "year OF SUBMISSION" control styled by a
+                        // smallCaps character style came back as literal lowercase
+                        // text. Mirror EmitInlineSdt: try the rich raw-set first,
+                        // fall through to the flat emit when it isn't rich (or the
+                        // host isn't raw-set-addressable).
+                        if (TryEmitRichInlineSdt(word, run, parentPath, items, ctx))
+                            continue;
+>>>>>>> upstream/main
                         var sdtCarrierProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                         foreach (var key in new[] { "type", "alias", "tag", "items", "format" })
                         {
@@ -652,13 +1050,76 @@ public static partial class WordBatchEmitter
                     if (carrierNoteKind == NoteRefKind.Footnote)
                     {
                         int idx = ++ctx!.FootnoteCursor.Index;
+<<<<<<< HEAD
                         EmitNoteReference(word, "footnote", idx, idx, carrierPath, items);
+=======
+                        EmitNoteReference(word, "footnote", idx, idx, carrierPath, items, run);
+>>>>>>> upstream/main
                         continue;
                     }
                     if (carrierNoteKind == NoteRefKind.Endnote)
                     {
                         int idx = ++ctx!.EndnoteCursor.Index;
+<<<<<<< HEAD
                         EmitNoteReference(word, "endnote", idx, idx, carrierPath, items);
+=======
+                        EmitNoteReference(word, "endnote", idx, idx, carrierPath, items, run);
+                        continue;
+                    }
+                    // Drawing/pict-bearing carrier run: route through the
+                    // full picture pipeline first (charts, textboxes, wps
+                    // shapes, inline pictures all have typed/carrier paths
+                    // there); only a run the pipeline declines falls back to
+                    // the inlined-parts carriers or — for a drawing with no
+                    // relationship references — a verbatim raw-set.
+                    var carrierRunXml = word.GetElementXml(run.Path);
+                    if (!string.IsNullOrEmpty(carrierRunXml)
+                        && (carrierRunXml.Contains("<w:drawing", StringComparison.Ordinal)
+                            || carrierRunXml.Contains("<w:pict", StringComparison.Ordinal)))
+                    {
+                        if (TryEmitPictureRun(word, run, carrierPath, "/body", 0, items, ctx))
+                            continue;
+                        if (word.GetDrawingShapeEmitData(run.Path) is { } csData)
+                        {
+                            items.Add(new BatchItem
+                            {
+                                Command = "add",
+                                Parent = carrierPath,
+                                Type = "inlinedparts",
+                                Props = PackInlinedPartsProps(csData),
+                            });
+                            continue;
+                        }
+                        if (word.GetVmlShapeEmitData(run.Path) is { } cvData)
+                        {
+                            items.Add(new BatchItem
+                            {
+                                Command = "add",
+                                Parent = carrierPath,
+                                Type = "inlinedparts",
+                                Props = PackInlinedPartsProps(cvData),
+                            });
+                            continue;
+                        }
+                        if (!HasExternalRelRef(carrierRunXml))
+                        {
+                            items.Add(new BatchItem
+                            {
+                                Command = "raw-set",
+                                Part = "/document",
+                                Xpath = "/w:document/w:body/w:p[last()]",
+                                Action = "append",
+                                Xml = carrierRunXml
+                            });
+                        }
+                        else
+                        {
+                            ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                                Element: "drawing",
+                                Path: run.Path,
+                                Reason: "section-paragraph drawing references relationships that cannot be reconstructed; it is dropped on replay"));
+                        }
+>>>>>>> upstream/main
                         continue;
                     }
                     var rProps = FilterEmittableProps(run.Format);
@@ -673,6 +1134,44 @@ public static partial class WordBatchEmitter
                     });
                 }
             }
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R61-TOCSECT: a cross-paragraph field (canonically a TOC or
+            // INDEX) can OPEN or CLOSE in a section-carrier paragraph — the
+            // paragraph holds both the section's <w:sectPr> and a field marker run
+            // (<w:fldChar w:fldCharType="begin"/> + <w:instrText> + separate for
+            // the opener, or the terminating end fldChar for the closer). The
+            // carrier branch emits the section + visible runs but never the bare
+            // field marker runs (they carry no visible text, so the carrierRuns
+            // filter drops them). Worse, the field's entry paragraphs round-trip
+            // verbatim via EmitCrossParagraphFieldMember but this opener/closer
+            // paragraph reaches THIS branch instead: the sectPr's
+            // <w:headerReference>/<w:footerReference r:id="…"/> trips that member's
+            // HasExternalRelRef guard (a false positive — the header/footer ref is
+            // recreated by the section emit, not a dangling content rel), so it
+            // falls back to the typed section emit here. Dropping the begin fldChar
+            // + instrText leaves an empty INDEX/TOC instruction (Word regenerates
+            // an EMPTY field — the whole index/toc disappears, reflowing the doc);
+            // dropping the end fldChar leaves the field unterminated (Word renders
+            // the raw field code). Re-emit every fldChar AND instrText run verbatim
+            // via a rel-free raw-set append onto the rebuilt section paragraph
+            // (these marker runs carry no relationship of their own), restoring the
+            // field's opener instruction / terminator.
+            foreach (var fcRun in (pNode.Children ?? new List<DocumentNode>())
+                         .Where(c => c.Type == "fieldChar" || c.Type == "instrText"))
+            {
+                var fcXml = word.GetElementXml(fcRun.Path);
+                if (string.IsNullOrEmpty(fcXml)) continue;
+                items.Add(new BatchItem
+                {
+                    Command = "raw-set",
+                    Part = "/document",
+                    Xpath = "/w:document/w:body/w:p[last()]",
+                    Action = "append",
+                    Xml = fcXml
+                });
+            }
+>>>>>>> upstream/main
             return true;
         }
     }
@@ -741,7 +1240,57 @@ public static partial class WordBatchEmitter
                 && (c.Format.TryGetValue("instruction", out var iv)
                     && iv?.ToString()?.TrimStart().StartsWith("TOC", StringComparison.OrdinalIgnoreCase) == true));
         if (instrChild == null) return false;
+<<<<<<< HEAD
         var instr = instrChild.Format["instruction"]!.ToString()!;
+=======
+        // BUG-DUMP-TOC-COLOCATED-PICTURE: the typed `add toc` fast path emits ONLY
+        // the TOC field and returns, so any OTHER content co-located in the same
+        // paragraph is dropped. The canonical case is a background/letterhead
+        // picture anchored on the TOC's first paragraph (a behindDoc logo) — it
+        // vanished silently. Bail to the generic EmitParagraph path when the
+        // paragraph also carries a drawing: that path emits the picture via
+        // TryEmitPictureRun AND round-trips the TOC field verbatim through the
+        // generic field-emit (instr=…), so Word still regenerates the TOC.
+        if (pNode.Children.Any(c => c.Type == "picture")) return false;
+        var instr = instrChild.Format["instruction"]!.ToString()!;
+        // BUG-DUMP-TOC-LOSSY: the typed `add toc` path does NOT round-trip an
+        // arbitrary TOC field. AddToc reconstructs a CANONICAL instruction —
+        // it always emits ` TOC \o "{levels}"` (defaulting levels to "1-3"),
+        // always appends ` \u `, and always writes the "Update field to see
+        // table of contents" placeholder as the field result. ParseTocInstruction
+        // only understands \o \h \z \t \b, so any other switch is silently
+        // dropped. Concrete corruptions this caused:
+        //  - ` TOC \h \z \c "Table" ` (a Table-of-Tables / table-of-captions)
+        //    became ` TOC \o "1-3" \h \z \u ` — \c "Table" dropped, a bogus
+        //    \o "1-3" fabricated, so the field switched from a caption index to
+        //    a heading index.
+        //  - ` TOC \h \z \t "Style,1" ` (a custom-style index with no \o) gained
+        //    a fabricated ` \o "1-3"`.
+        //  - A bare ` TOC \o "1-3" ` (no \u) gained a stray ` \u `.
+        // Only fire the typed path for an instruction AddToc reproduces BYTE-FOR-
+        // BYTE from the parsed props (same switch set, in canonical form) that is
+        // self-contained in THIS paragraph. Anything AddToc would reshape — a
+        // missing \o or \u that it fabricates, or any switch it can't represent —
+        // bails to the generic field-emit path (CollapseFieldChains →
+        // BuildFieldAddProps default arm), which preserves the full instruction
+        // verbatim via `instr=`. A cross-paragraph TOC (the canonical Word shape,
+        // whose begin/instr/separate open here, whose cached entries live in
+        // following paragraphs or a top-level <w:sdt>, and whose end closes
+        // elsewhere) is routed verbatim by the cross-paragraph field-span
+        // machinery (GetCrossParagraphFieldSpanRanges → EmitCrossParagraphFieldMember)
+        // and never reaches this method; the self-contained guard here is a safety
+        // net for a span that escapes that detection. The authored `add toc`
+        // shape (` TOC \o "1-3" \h \u ` + placeholder, all in one paragraph)
+        // round-trips byte-for-byte through AddToc and stays on the typed path.
+        if (!TocInstructionRoundTripsThroughAddToc(instr)) return false;
+        var fldCharTypes = pNode.Children
+            .Where(c => c.Type == "fieldChar")
+            .Select(c => c.Format.TryGetValue("fieldCharType", out var fv) ? fv?.ToString() : null)
+            .ToList();
+        bool selfContained = fldCharTypes.Any(t => string.Equals(t, "begin", StringComparison.OrdinalIgnoreCase))
+            && fldCharTypes.Any(t => string.Equals(t, "end", StringComparison.OrdinalIgnoreCase));
+        if (!selfContained) return false;
+>>>>>>> upstream/main
         var tocProps = ParseTocInstruction(instr);
         items.Add(new BatchItem
         {
@@ -753,6 +1302,68 @@ public static partial class WordBatchEmitter
         return true;
     }
 
+<<<<<<< HEAD
+=======
+    // True when AddToc would reproduce this TOC instruction BYTE-FOR-BYTE from
+    // the props ParseTocInstruction extracts. AddToc emits a fixed canonical
+    // shape — ` TOC \o "{levels}"` (+ ` \h` if hyperlinks, + ` \z` if page
+    // numbers suppressed, + ` \t "{cs}"`, + ` \b "{bm}"`) and ALWAYS appends
+    // ` \u `. So the typed path is faithful only when the source instruction
+    // already has \o and \u, optionally h/z/t/b, and nothing else (any switch
+    // ParseTocInstruction can't represent — \c \f \a \n \p \s \d \l \w \x \# —
+    // or a missing \o / \u that AddToc would fabricate, makes it lossy).
+    // Reconstruct AddToc's exact output from the parsed props and compare,
+    // normalizing only inter-token whitespace so source switch ORDER doesn't
+    // matter (AddToc emits o,h,z,t,b,u; the source may list them differently).
+    private static bool TocInstructionRoundTripsThroughAddToc(string instruction)
+    {
+        var props = ParseTocInstruction(instruction);
+        // ParseTocInstruction sets levels only when \o is present; AddToc would
+        // default it to "1-3" and so fabricate an \o the source lacks.
+        if (!props.ContainsKey("levels")) return false;
+        // AddToc always appends \u; a source without \u would gain one.
+        if (!System.Text.RegularExpressions.Regex.IsMatch(instruction, "\\\\u\\b")) return false;
+        // Reject any switch AddToc can't represent (would be silently dropped).
+        foreach (System.Text.RegularExpressions.Match m in
+                 System.Text.RegularExpressions.Regex.Matches(instruction, "\\\\([A-Za-z#])"))
+        {
+            if (!"ohztbu".Contains(m.Groups[1].Value, StringComparison.Ordinal)) return false;
+        }
+        // Rebuild AddToc's canonical instruction (mirrors AddToc in
+        // WordHandler.Add.Structure.cs) and compare on a whitespace-normalized,
+        // switch-sorted basis so ordering differences alone don't force a bail.
+        var rebuilt = new System.Text.StringBuilder($" TOC \\o \"{props["levels"]}\"");
+        if (props.TryGetValue("hyperlinks", out var h) && h == "true") rebuilt.Append(" \\h");
+        if (props.TryGetValue("pageNumbers", out var z) && z == "false") rebuilt.Append(" \\z");
+        if (props.TryGetValue("customStyles", out var cs) && !string.IsNullOrEmpty(cs))
+            rebuilt.Append($" \\t \"{cs}\"");
+        if (props.TryGetValue("bookmark", out var bm) && !string.IsNullOrEmpty(bm))
+            rebuilt.Append($" \\b \"{bm}\"");
+        rebuilt.Append(" \\u ");
+        return TocCanonicalForm(rebuilt.ToString()) == TocCanonicalForm(instruction);
+    }
+
+    // Canonical comparison form for a TOC instruction: collapse runs of
+    // whitespace to a single space, trim, and sort the switch tokens (each a
+    // `\x` optionally followed by its quoted/bare argument) so two instructions
+    // that differ only in switch order compare equal.
+    private static string TocCanonicalForm(string instruction)
+    {
+        var collapsed = System.Text.RegularExpressions.Regex
+            .Replace(instruction.Trim(), "\\s+", " ");
+        // Split into the leading "TOC" token plus each `\x [arg]` switch.
+        var m = System.Text.RegularExpressions.Regex.Match(collapsed, "^TOC\\b");
+        if (!m.Success) return collapsed;
+        var rest = collapsed[m.Length..];
+        var switches = System.Text.RegularExpressions.Regex
+            .Matches(rest, "\\\\[A-Za-z#](?:\\s+(?:\"[^\"]*\"|[^\\\\\\s]+))?")
+            .Select(s => System.Text.RegularExpressions.Regex.Replace(s.Value.Trim(), "\\s+", " "))
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToList();
+        return "TOC " + string.Join(" ", switches);
+    }
+
+>>>>>>> upstream/main
     private static bool ShouldCollapseSingleRun(WordHandler word, List<DocumentNode> runs, int breaksCount, int bookmarksCount, int inlineSdtsCount)
     {
         // Single-run / no-run paragraph: collapse run formatting into the
@@ -935,6 +1546,15 @@ public static partial class WordBatchEmitter
                 endProps["name"] = ens;
             else
                 return true; // unnamed end marker — start emit recreates pair
+<<<<<<< HEAD
+=======
+            // A legacy form field's embedded bookmark closes in a LATER
+            // paragraph than the field run; AddFormField already recreated
+            // the whole pair, so this stray end would fail with "no matching
+            // open bookmarkStart" on replay.
+            if (ctx != null && ctx.FormFieldBookmarkNames.Contains(endProps["name"]))
+                return true;
+>>>>>>> upstream/main
             endProps["end"] = "true";
             items.Add(new BatchItem
             {
@@ -954,7 +1574,23 @@ public static partial class WordBatchEmitter
         }
         if (bmProps.Count == 0) return true; // skip unnamed/anonymous bookmarks
         if (run.Format.TryGetValue("_spanOpen", out var sp) && sp is bool bsp && bsp)
+<<<<<<< HEAD
             bmProps["open"] = "true";
+=======
+        {
+            bmProps["open"] = "true";
+            // BUG-DUMP-R47-5: forward the SOURCE bookmark id for a span-open
+            // start so a matching <w:bookmarkEnd> that round-trips verbatim via a
+            // raw-set (e.g. inside a TOC <w:sdt> block) still pairs with it.
+            // Without the id, AddBookmark allocates a fresh one and the start is
+            // left unpaired (the raw-set end keeps the source id). AddBookmark
+            // honors this id only on the open=true path; EnsureBookmarkIds dedupes
+            // any collision by renumbering the matched pair.
+            if (run.Format.TryGetValue("id", out var bmSrcId)
+                && bmSrcId?.ToString() is { Length: > 0 } bmSrcIdStr)
+                bmProps["id"] = bmSrcIdStr;
+        }
+>>>>>>> upstream/main
         // BUG-DUMP-R32-4: forward colFirst/colLast for an inline
         // table-column-range bookmark (mirrors the body-direct case).
         ForwardBookmarkColRange(run.Format, bmProps);
@@ -981,6 +1617,16 @@ public static partial class WordBatchEmitter
         if (format.TryGetValue("colLast", out var cl)
             && cl?.ToString() is { Length: > 0 } cls)
             bmProps["colLast"] = cls;
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-BMDISPLACED: forward w:displacedByCustomXml ("next"/"prev")
+        // so a bookmark adjacent to an SDT/custom-XML boundary keeps it — losing
+        // it shifts the marker across the boundary and PAGEREF/TOC entries to the
+        // bookmark render "Error! Bookmark not defined."
+        if (format.TryGetValue("displacedByCustomXml", out var dbcx)
+            && dbcx?.ToString() is { Length: > 0 } dbcxs)
+            bmProps["displacedByCustomXml"] = dbcxs;
+>>>>>>> upstream/main
     }
 
     // BUG-DUMP-PERM: emit a ranged editing-permission marker (<w:permStart>/
@@ -1029,7 +1675,19 @@ public static partial class WordBatchEmitter
         // a non-empty rPr. Restricted to /body hosts with no external rels (same
         // constraints as the other raw-set fallbacks) so no r:id/r:embed can
         // dangle; everything else stays on the lossless typed `add pagebreak`.
+<<<<<<< HEAD
         if (parentPath == "/body")
+=======
+        // BUG-DUMP-DELBREAK: a break run wrapped in <w:del>/<w:ins>/move (e.g. a
+        // tracked-DELETED page break — invisible in Word's final view) must NOT
+        // take the verbatim raw-set path below: RawElementXml(run.Path) returns
+        // the bare <w:r>, NOT the surrounding <w:del>, so the deletion wrapper is
+        // dropped and the break resurrects as a LIVE page break (each one adds a
+        // page). Route revision-wrapped breaks through the typed `add pagebreak`
+        // path, which forwards revision.* so AddBreak re-wraps the rebuilt run.
+        bool isRevisionWrapped = run.Format.ContainsKey("revision.type");
+        if (parentPath == "/body" && !isRevisionWrapped)
+>>>>>>> upstream/main
         {
             var rawXml = word.RawElementXml(run.Path);
             if (!string.IsNullOrEmpty(rawXml)
@@ -1047,15 +1705,58 @@ public static partial class WordBatchEmitter
                 return true;
             }
         }
+<<<<<<< HEAD
+=======
+        var brkProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["type"] = string.IsNullOrEmpty(breakType) ? "line" : breakType!
+        };
+        if (run.Format.TryGetValue("breakClear", out var brkClear)
+            && brkClear?.ToString() is { Length: > 0 } brkClearS)
+            brkProps["breakClear"] = brkClearS;
+        // BUG-DUMP-BREAKRPR: the verbatim raw-set fallback above only runs for
+        // /body hosts. For breaks in other containers (table cells, header/
+        // footer) the typed `add pagebreak` builds a bare <w:r><w:br/></w:r> and
+        // drops the run's rPr — whose font/size sets the height of the line the
+        // break starts, so the line collapsed to the default size and inflated
+        // cell/row height. Forward the source run's <w:rPr> so AddBreak re-applies
+        // it. Extract from the raw run XML (Navigation strips typography keys off
+        // break nodes, so there is no scalar Format to read).
+        var brkRawXml = word.RawElementXml(run.Path);
+        if (!string.IsNullOrEmpty(brkRawXml))
+        {
+            try
+            {
+                var brkRunEl = System.Xml.Linq.XElement.Parse(brkRawXml!);
+                var wNsBrk = (System.Xml.Linq.XNamespace)"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+                var brkRPrEl = brkRunEl.Element(wNsBrk + "rPr");
+                if (brkRPrEl != null)
+                    brkProps["breakRunRpr"] = brkRPrEl.ToString(System.Xml.Linq.SaveOptions.DisableFormatting);
+            }
+            catch { /* bare break: no rPr to forward */ }
+        }
+        // BUG-DUMP-DELBREAK: forward the tracked-change attribution so AddBreak
+        // re-wraps the rebuilt break run in <w:del>/<w:ins>/move. Without this a
+        // deleted (invisible) page break replays as a live break and inflates the
+        // page count. Mirrors the deleted-field forwarding (WrapRunsInRevision).
+        foreach (var rk in new[] { "revision.type", "revision.author", "revision.date", "revision.id" })
+            if (run.Format.TryGetValue(rk, out var rv)
+                && rv?.ToString() is { Length: > 0 } rvs)
+                brkProps[rk] = rvs;
+>>>>>>> upstream/main
         items.Add(new BatchItem
         {
             Command = "add",
             Parent = paraTargetPath,
             Type = "pagebreak",
+<<<<<<< HEAD
             Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["type"] = string.IsNullOrEmpty(breakType) ? "line" : breakType!
             }
+=======
+            Props = brkProps
+>>>>>>> upstream/main
         });
         return true;
     }
@@ -1071,7 +1772,11 @@ public static partial class WordBatchEmitter
     // page/column <w:br>, re-insert the whole <w:r> verbatim via a raw-set
     // append (mirrors the rich-break / ruby / pgNum raw-set fallback), so text
     // AND the break — with full run formatting — survive intact.
+<<<<<<< HEAD
     private static bool TryEmitMixedBreakRun(WordHandler word, DocumentNode run, string parentPath, List<BatchItem> items, BodyEmitContext? ctx)
+=======
+    private static bool TryEmitMixedBreakRun(WordHandler word, DocumentNode run, string parentPath, string paraTargetPath, List<BatchItem> items, BodyEmitContext? ctx)
+>>>>>>> upstream/main
     {
         // Only plain text runs reach here (break-only runs are Type=="break"
         // and consumed by TryEmitBreakRun upstream). Picture/field/etc. runs
@@ -1099,6 +1804,37 @@ public static partial class WordBatchEmitter
         // Surface the deterministic "break lost" warning, then defer.
         if (parentPath != "/body")
         {
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R27 (BUG-DUMP-R24-3 follow-up): a SINGLE page/column break
+            // that PRECEDES all text in its run (<w:r><w:br w:type="page"/><w:t>…
+            // </w:t></w:r>) — pervasive in table cells whose leading page break
+            // splits the row across pages — still round-trips in a non-body host:
+            // emit the break as a typed `add pagebreak` on the paragraph's OWN
+            // resolvable path (paraTargetPath = "{parentPath}/p[last()]" works for
+            // cell/header/footer paragraphs, unlike the body-only raw-set xpath),
+            // then return FALSE so the normal text path emits the run's <w:t>
+            // AFTER it — preserving break-then-text order. Mid-run / trailing /
+            // multi-break runs can't be ordered this way and keep warn-and-defer.
+            var brkMatches = System.Text.RegularExpressions.Regex.Matches(
+                rawXml, @"<w:br\b[^>]*\bw:type=""(page|column)""");
+            var firstTextIdx = rawXml.IndexOf("<w:t", StringComparison.Ordinal);
+            if (brkMatches.Count == 1
+                && (firstTextIdx < 0 || brkMatches[0].Index < firstTextIdx))
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = paraTargetPath,
+                    Type = "pagebreak",
+                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["type"] = brkMatches[0].Groups[1].Value
+                    }
+                });
+                return false; // text path (EmitPlainOrHyperlinkRun) emits <w:t> after
+            }
+>>>>>>> upstream/main
             ctx?.Warnings.Add(new DocxUnsupportedWarning(
                 Element: "break",
                 Path: run.Path,
@@ -1328,7 +2064,11 @@ public static partial class WordBatchEmitter
         return true;
     }
 
+<<<<<<< HEAD
     private static bool TryEmitHyphenRun(WordHandler word, DocumentNode run, string parentPath, List<BatchItem> items, BodyEmitContext? ctx)
+=======
+    private static bool TryEmitHyphenRun(WordHandler word, DocumentNode run, string parentPath, string paraTargetPath, List<BatchItem> items, BodyEmitContext? ctx, int hlBaseline = 0)
+>>>>>>> upstream/main
     {
         // BUG-DUMP-R40-3: a run containing <w:noBreakHyphen/> (non-breaking
         // hyphen) or <w:softHyphen/> (discretionary hyphen) — siblings of <w:t>
@@ -1340,6 +2080,7 @@ public static partial class WordBatchEmitter
         // co-located <w:t> text in the same run — survive the round-trip.
         // RunToNode stamps Format["_hasHyphen"].
         if (!run.Format.ContainsKey("_hasHyphen")) return false;
+<<<<<<< HEAD
         // Only the /body host has the addressable last() paragraph anchor the
         // raw-set targets; a header/footer/cell-hosted hyphen needs a different
         // anchor (backlog, same conservatism as the pgNum/dateField fallback).
@@ -1370,6 +2111,40 @@ public static partial class WordBatchEmitter
             Xpath = "/w:document/w:body/w:p[last()]",
             Action = "append",
             Xml = rawXml!
+=======
+        // BUG-DUMP-HYPHEN-CELL + BUG-DUMP-HYPHEN-RESERIALIZE: emit a structural
+        // hyphen run (<w:noBreakHyphen/> / <w:softHyphen/>) as a typed
+        // `add r --prop hyphen=noBreak|soft` for EVERY host — body, header,
+        // footer, table cell. AddRun rebuilds the element via the SDK at apply
+        // time (splitting `text` at the cached glyph in source order), so it
+        // survives in any host.
+        //
+        // The OLD /body path used a raw-set append of the verbatim <w:r> against
+        // /w:body/w:p[last()]. That inserted the element correctly, but when a
+        // LATER `add r` in the SAME paragraph mutated p[last()], the SDK
+        // re-serialized the paragraph and silently converted the raw-injected
+        // <w:noBreakHyphen/> back to its U+2011 glyph (tester: 5/159 in a real
+        // FRC report degraded this way). The typed `add r hyphen=` path has no
+        // such re-serialization hazard — AddRun builds the element through the
+        // live DOM in document order, like any other run. Dropping the raw-set
+        // also removes the external-rel guard that path needed; a structural
+        // hyphen run carries no relationship reference.
+        string hyKind = run.Format.TryGetValue("_hasHyphen", out var hk)
+            && string.Equals(hk?.ToString(), "soft", StringComparison.OrdinalIgnoreCase)
+            ? "soft" : "noBreak";
+        var hyProps = FilterEmittableProps(run.Format);
+        hyProps.Remove("_hasHyphen");
+        hyProps["hyphen"] = hyKind;
+        if (!string.IsNullOrEmpty(run.Text)) hyProps["text"] = run.Text!;
+        else hyProps.Remove("text");
+        var hyParent = ResolveHyperlinkParent(run, paraTargetPath, items);
+        items.Add(new BatchItem
+        {
+            Command = "add",
+            Parent = hyParent,
+            Type = "r",
+            Props = hyProps
+>>>>>>> upstream/main
         });
         return true;
     }
@@ -1463,10 +2238,35 @@ public static partial class WordBatchEmitter
         // Always emit `formula` (even when empty); ToLatex may legitimately
         // return "" for minimal m:oMath.
         eqProps["formula"] = run.Text ?? "";
+<<<<<<< HEAD
         var eqParent = paraTargetPath;
         if (!string.IsNullOrEmpty(run.Path))
         {
             var idxEq = run.Path.LastIndexOf("/equation[", StringComparison.Ordinal);
+=======
+        // BUG-DUMP-EQVERBATIM: also carry the verbatim <m:oMath> so AddEquation
+        // can restore the math EXACTLY — the LaTeX formula string drops every
+        // math-run <w:rPr> (rFonts="Cambria Math" / sz) and simplifies some
+        // structures, so a formatted equation rebuilt from the string alone
+        // renders at the wrong font/size. AddEquation falls back to `formula`
+        // when this is absent or unparseable, so the interactive path is unchanged.
+        var eqXml = run.Format.TryGetValue("_omathXml", out var exv) ? exv?.ToString() : null;
+        if (!string.IsNullOrEmpty(eqXml) && eqXml.Contains("oMath", StringComparison.Ordinal))
+            eqProps["xml"] = eqXml;
+        // Carry any OLE/preview-image parts referenced inside the verbatim math
+        // (MathType/Equation objects) so they don't dangle on replay.
+        AddMathInlinedPartProps(word, run.Path, eqProps);
+        var eqParent = paraTargetPath;
+        if (!string.IsNullOrEmpty(run.Path))
+        {
+            // R3-bt-1: the NodeBuilder now emits the resolvable `/oMath[N]`
+            // segment for inline equations (was `/equation[N]`). Strip whichever
+            // is present so the derived hyperlink-parent logic keeps working for
+            // both the new paths and any legacy `/equation[` producer.
+            var idxEq = run.Path.LastIndexOf("/oMath[", StringComparison.Ordinal);
+            if (idxEq < 0)
+                idxEq = run.Path.LastIndexOf("/equation[", StringComparison.Ordinal);
+>>>>>>> upstream/main
             if (idxEq > 0)
             {
                 var derived = run.Path.Substring(0, idxEq);
@@ -1485,8 +2285,23 @@ public static partial class WordBatchEmitter
                     // rather than the content).
                     var srcHlPath = run.Path.Substring(0, idxEq); // …/hyperlink[K]
                     var hlSeg = derived.Substring(hlIdx); // /hyperlink[K]
+<<<<<<< HEAD
                     int alreadyEmitted = items.Count(it => it.Type == "hyperlink"
                         && string.Equals(it.Parent, paraTargetPath, StringComparison.Ordinal));
+=======
+                    // BUG-DUMP-FIELDHL-XPARA: count hyperlink rows since THIS
+                    // paragraph's own `add p` — paraTargetPath ("/…/p[last()]") is
+                    // shared by every paragraph, so a global count let an earlier
+                    // paragraph's hyperlink suppress the missing-hyperlink emit here
+                    // and route the equation to a non-existent /hyperlink[K].
+                    int eqLastParaAdd = items.FindLastIndex(it =>
+                        it.Command == "add" && it.Type == "p");
+                    int alreadyEmitted = 0;
+                    for (int hi = eqLastParaAdd + 1; hi < items.Count; hi++)
+                        if (items[hi].Type == "hyperlink"
+                            && string.Equals(items[hi].Parent, paraTargetPath, StringComparison.Ordinal))
+                            alreadyEmitted++;
+>>>>>>> upstream/main
                     var rebasedHl = paraTargetPath + hlSeg;
                     int wantK = 0;
                     var kStr = hlSeg.Length > 11 ? hlSeg[11..^1] : "";
@@ -1552,10 +2367,39 @@ public static partial class WordBatchEmitter
             if (string.IsNullOrEmpty(sv)) continue;
             props[bare] = sv!;
         }
+<<<<<<< HEAD
         // Preserve cached display text where AddFormField would otherwise
         // emit the placeholder symbol (text input) or "false" (checkbox).
         if (!string.IsNullOrEmpty(run.Text) && !props.ContainsKey("text"))
             props["text"] = run.Text!;
+=======
+        // Field-run formatting forwarded by CollapseFieldChains (theme/literal
+        // fonts, size, bold, …) — AddFormField stamps it on every field run.
+        foreach (var (k, v) in run.Format)
+        {
+            if (v == null) continue;
+            if (!FieldResultFormatKeys.Contains(k) || props.ContainsKey(k)) continue;
+            var s2 = v switch { bool b => b ? "true" : "false", _ => v.ToString() ?? "" };
+            if (s2.Length > 0) props[k] = s2;
+        }
+        // Preserve cached display text where AddFormField would otherwise
+        // emit the placeholder symbol (text input) or "false" (checkbox).
+        if (!props.ContainsKey("text"))
+        {
+            if (!string.IsNullOrEmpty(run.Text))
+                props["text"] = run.Text!;
+            else
+                // Explicit empty pin: the source field has NO cached result
+                // run; without the pin AddFormField fabricates an NBSP
+                // placeholder and every empty form row gains a glyph.
+                props["text"] = "";
+        }
+        // BUG-DUMP-FFCHECKBOX-BOOKMARK: the source field had no wrapping
+        // bookmark (marked by EmitParagraph when no matching bookmark sibling
+        // exists). Pin noBookmark so AddFormField does NOT fabricate one.
+        if (run.Format.TryGetValue("_noBookmark", out var nbObj) && nbObj is bool nbB && nbB)
+            props["noBookmark"] = "true";
+>>>>>>> upstream/main
         items.Add(new BatchItem
         {
             Command = "add",
@@ -1569,6 +2413,61 @@ public static partial class WordBatchEmitter
     private static bool TryEmitFieldRun(WordHandler word, DocumentNode run, string paraTargetPath, string parentPath, List<BatchItem> items, BodyEmitContext? ctx = null)
     {
         if (run.Type != "field") return false;
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R28-INCLUDEPICTURE: a marker-only synth emitted by
+        // CollapseFieldChains when it decomposed a drawing-result field
+        // (INCLUDEPICTURE). It carries the source paths of one contiguous run of
+        // fldChar/instrText (and any text result) runs to round-trip verbatim via
+        // raw-set, interleaved with the real `picture` nodes the same decompose
+        // produced. The markers carry no relationships, so the append is safe.
+        if (run.Format.TryGetValue("_fieldMarkerRaw", out var fmr) && fmr is bool fmrB && fmrB)
+        {
+            // BUG-DUMP-FLDSIMPLE-IMG: a fldSimple decomposed into a complex field
+            // carries synthesized begin/instr/separate/end fldChar markers as inline
+            // raw XML (no source slice paths exist for them). Append that verbatim.
+            if (run.Format.TryGetValue("_markerInlineXml", out var mixObj)
+                && mixObj is string mix && !string.IsNullOrEmpty(mix)
+                && ResolveRawSetHost(parentPath, ctx) is { } inlineHost)
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "raw-set",
+                    Part = inlineHost.Part,
+                    Xpath = inlineHost.XPath,
+                    Action = "append",
+                    Xml = mix
+                });
+                return true;
+            }
+            var markerPaths = run.Format.TryGetValue("_markerSlicePaths", out var mspObj)
+                ? mspObj as List<string> : null;
+            if (markerPaths is { Count: > 0 } && ResolveRawSetHost(parentPath, ctx) is { } markerHost)
+            {
+                var sb = new System.Text.StringBuilder();
+                foreach (var mp in markerPaths)
+                {
+                    // Entries starting with '<' are pre-synthesized verbatim XML
+                    // (bookmarkStart/End interleaved with the markers — their
+                    // node paths don't resolve here); the rest are source paths.
+                    var mx = mp.StartsWith('<') ? mp : word.GetElementXml(mp);
+                    if (!string.IsNullOrEmpty(mx)) sb.Append(mx);
+                }
+                if (sb.Length > 0)
+                {
+                    items.Add(new BatchItem
+                    {
+                        Command = "raw-set",
+                        Part = markerHost.Part,
+                        Xpath = markerHost.XPath,
+                        Action = "append",
+                        Xml = sb.ToString()
+                    });
+                }
+            }
+            return true;
+        }
+>>>>>>> upstream/main
         // BUG-DUMP-R26-2: a field whose cached result has multiple distinctly-
         // formatted runs can't round-trip through `add field` (single-rPr model
         // collapses the runs and leaks the first run's bold onto the fldChar
@@ -1585,12 +2484,49 @@ public static partial class WordBatchEmitter
         {
             var sb = new System.Text.StringBuilder();
             bool ok = true;
+<<<<<<< HEAD
             foreach (var p in spStr.Split('\n'))
             {
                 if (string.IsNullOrEmpty(p)) continue;
                 var xml = word.GetElementXml(p);
                 if (string.IsNullOrEmpty(xml)) { ok = false; break; }
                 sb.Append(xml);
+=======
+            var rfSlice = spStr.Split('\n').Where(p => !string.IsNullOrEmpty(p)).ToList();
+            // BUG-DUMP-H78: a tracked deletion inside the result is a <w:del> sibling
+            // BETWEEN field runs; per-path extraction resolves each path to its inner
+            // <w:r> and strips the <w:del> wrapper. The emitter sets
+            // _fieldSliceForceRange so we take the contiguous sibling-range extraction
+            // (begin..end) directly, capturing the <w:del>/<w:delText> in place.
+            bool forceRange = run.Format.TryGetValue("_fieldSliceForceRange", out var frv)
+                && frv is bool frvB && frvB;
+            if (forceRange && rfSlice.Count > 0)
+            {
+                ok = false; // skip per-path; fall to the range resolve below
+            }
+            else
+            {
+                foreach (var p in rfSlice)
+                {
+                    var xml = word.GetElementXml(p);
+                    if (string.IsNullOrEmpty(xml)) { ok = false; break; }
+                    sb.Append(xml);
+                }
+            }
+            // BUG-DUMP-R56-NESTEDFORMFIELD: same bookmark-in-slice fragility as
+            // the nested-field branch — fall back to a contiguous sibling-range
+            // resolve when a per-child path (e.g. a bookmark indexed by w:id)
+            // doesn't navigate.
+            if (!ok && rfSlice.Count > 0)
+            {
+                var rangeXml = word.GetSiblingRangeXml(rfSlice[0], rfSlice[^1]);
+                if (!string.IsNullOrEmpty(rangeXml))
+                {
+                    sb.Clear();
+                    sb.Append(rangeXml);
+                    ok = true;
+                }
+>>>>>>> upstream/main
             }
             if (ok && sb.Length > 0)
             {
@@ -1697,6 +2633,7 @@ public static partial class WordBatchEmitter
             // verbatim via raw-set so the full fldChar/instrText sequence (and the
             // inner field) survives, instead of collapsing to cached display text.
             // Each slice run carries a resolvable source Path; concatenate their
+<<<<<<< HEAD
             // OuterXml and append to the just-emitted host paragraph at
             // /w:document/w:body/w:p[last()] (the same last()-relative attach the
             // ruby/bdo raw-set fallbacks use). Only a /body host has an
@@ -1705,6 +2642,19 @@ public static partial class WordBatchEmitter
             var slicePaths = run.Format.TryGetValue("_nestedFieldSlicePaths", out var nfSpObj)
                 ? nfSpObj as List<string> : null;
             if (parentPath == "/body" && slicePaths is { Count: > 0 })
+=======
+            // OuterXml and append to the just-emitted host paragraph.
+            // BUG-DUMP-R47-6: resolve the host via ResolveRawSetHost so a nested
+            // field inside a HEADER/FOOTER/table cell round-trips too — not only
+            // /body. A running-header with a nested IF/QUOTE/STYLEREF field (the
+            // common "Chapter N — Title" header) was flattening to bare cached
+            // text on the non-/body fallback, which changed the rendered header
+            // height and cascaded body pagination across every page of the
+            // section. Mirrors the _richFieldResult host resolution just above.
+            var slicePaths = run.Format.TryGetValue("_nestedFieldSlicePaths", out var nfSpObj)
+                ? nfSpObj as List<string> : null;
+            if (slicePaths is { Count: > 0 } && ResolveRawSetHost(parentPath, ctx) is { } nestedHost)
+>>>>>>> upstream/main
             {
                 var sb = new System.Text.StringBuilder();
                 bool allResolved = true;
@@ -1714,6 +2664,7 @@ public static partial class WordBatchEmitter
                     if (string.IsNullOrEmpty(rx)) { allResolved = false; break; }
                     sb.Append(rx);
                 }
+<<<<<<< HEAD
                 if (allResolved && sb.Length > 0)
                 {
                     items.Add(new BatchItem
@@ -1725,6 +2676,52 @@ public static partial class WordBatchEmitter
                         Xml = sb.ToString()
                     });
                     return true;
+=======
+                // BUG-DUMP-R56-NESTEDFORMFIELD: the slice may interleave
+                // bookmarkStart/bookmarkEnd children (the inner field carries a
+                // form-field bookmark), whose query paths (indexed by w:id) don't
+                // round-trip through NavigateToElement — per-child resolution then
+                // bails to the lossy cached-text fallback, dropping the nested
+                // FORMTEXT structure, its bookmark AND the field-run formatting
+                // (bold/size/font). Resolve the contiguous begin..end sibling
+                // range from the parent instead; it captures every interleaved
+                // element verbatim regardless of individual path navigability.
+                if (!allResolved)
+                {
+                    var rangeXml = word.GetSiblingRangeXml(slicePaths[0], slicePaths[^1]);
+                    if (!string.IsNullOrEmpty(rangeXml))
+                    {
+                        sb.Clear();
+                        sb.Append(rangeXml);
+                        allResolved = true;
+                    }
+                }
+                if (allResolved && sb.Length > 0)
+                {
+                    var nestedXml = sb.ToString();
+                    // External rel inside the nested field (e.g. a hyperlink r:id)
+                    // would dangle in the rebuilt part — the raw-set can't recreate
+                    // the rel. Warn + fall through rather than emit a broken ref.
+                    if (HasExternalRelRef(nestedXml))
+                    {
+                        ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                            Element: "field.nested",
+                            Path: run.Path,
+                            Reason: "nested field carrying an external relationship (hyperlink/image) cannot round-trip verbatim; the relationship target is not carried through dump→batch, so the inner field codes are dropped on replay"));
+                    }
+                    else
+                    {
+                        items.Add(new BatchItem
+                        {
+                            Command = "raw-set",
+                            Part = nestedHost.Part,
+                            Xpath = nestedHost.XPath,
+                            Action = "append",
+                            Xml = nestedXml
+                        });
+                        return true;
+                    }
+>>>>>>> upstream/main
                 }
             }
             // Fallback (non-body host or unresolvable slice): preserve the cached
@@ -1801,8 +2798,21 @@ public static partial class WordBatchEmitter
                     unsupportedFmt.Add(bare);
                     continue;
                 }
+<<<<<<< HEAD
                 // Map font.latin/font.ascii/font.hAnsi onto AddField's `font`.
                 var target = bare.StartsWith("font.", StringComparison.OrdinalIgnoreCase) ? "font" : bare;
+=======
+                // Map the literal face slots (font.latin/font.ascii/font.hAnsi)
+                // onto AddField's uniform `font`. BUG-DUMP-FIELDHINT: font.hint is
+                // NOT a face — it's the rFonts hint attribute; collapsing it wrote
+                // a bogus font="eastAsia" face and dropped the hint, so the cached
+                // result glyph (a GB3 ①②③) re-rendered in the Latin face and the
+                // cell reflowed. Pass it through so AddField's per-slot loop applies
+                // it via ApplyRunFormatting (RunFonts.Hint).
+                var target = bare.Equals("font.hint", StringComparison.OrdinalIgnoreCase)
+                    ? "font.hint"
+                    : (bare.StartsWith("font.", StringComparison.OrdinalIgnoreCase) ? "font" : bare);
+>>>>>>> upstream/main
                 if (!fieldProps.ContainsKey(target))
                 {
                     var s = v switch { bool b => b ? "true" : "false", _ => v.ToString() ?? "" };
@@ -1874,8 +2884,30 @@ public static partial class WordBatchEmitter
                     {
                         var rebased = paraTargetPath
                             + candidateHlParent.Substring(hlIdxStart);
+<<<<<<< HEAD
                         int emittedHls = items.Count(it => it.Type == "hyperlink"
                             && string.Equals(it.Parent, paraTargetPath, StringComparison.Ordinal));
+=======
+                        // BUG-DUMP-FIELDHL-XPARA: paraTargetPath is the literal
+                        // "/…/p[last()]" — IDENTICAL for every paragraph (dump always
+                        // targets the most-recently-added p). Counting hyperlink rows
+                        // by Parent==paraTargetPath therefore tallied hyperlinks from
+                        // ALL prior paragraphs, so a field-ONLY hyperlink (no separate
+                        // display run → no `add hyperlink` row of its own) inherited a
+                        // phantom "hyperlink exists" from an unrelated earlier
+                        // paragraph and routed the field to /hyperlink[1] that doesn't
+                        // exist in THIS paragraph — "Path not found" on replay dropped
+                        // the whole REF/PAGEREF field and its visible text. Count only
+                        // hyperlink rows emitted SINCE the current paragraph's own
+                        // `add p` boundary so the tally is paragraph-local.
+                        int lastParaAdd = items.FindLastIndex(it =>
+                            it.Command == "add" && it.Type == "p");
+                        int emittedHls = 0;
+                        for (int hi = lastParaAdd + 1; hi < items.Count; hi++)
+                            if (items[hi].Type == "hyperlink"
+                                && string.Equals(items[hi].Parent, paraTargetPath, StringComparison.Ordinal))
+                                emittedHls++;
+>>>>>>> upstream/main
                         if (emittedHls >= kIdx)
                             fldParent = rebased;
                     }
@@ -1933,11 +2965,19 @@ public static partial class WordBatchEmitter
             // BUG-R3 (dump emits `add textbox` into a table cell): see the
             // sibling site below — a cell-hosted textbox must attach to its
             // containing paragraph (paraTargetPath inside the cell), never as a
+<<<<<<< HEAD
             // direct <w:tc> child. LibreOffice exports textboxes wrapped in
             // <mc:AlternateContent>, so they reach this "run"-typed branch.
             string? attachParaAc = sharedAttachPara
                 ?? (parentPath.Contains("/tc[", StringComparison.Ordinal) ? paraTargetPath : null);
             if (isTextbox && TryEmitTextbox(word, run, probeXml, parentPath, items, ctx, attachParaAc))
+=======
+            // direct <w:tc> child. Some editors export textboxes wrapped in
+            // <mc:AlternateContent>, so they reach this "run"-typed branch.
+            string? attachParaAc = sharedAttachPara
+                ?? (parentPath.Contains("/tc[", StringComparison.Ordinal) ? paraTargetPath : null);
+            if (isTextbox && TryEmitTextbox(word, run, probeXml, parentPath, items, ctx, attachParaAc, paraTargetPath))
+>>>>>>> upstream/main
                 return true;
             // AlternateContent-wrapped non-textbox shapes — connector lines
             // (<wps:cNvCnPr>, e.g. a letterhead separator), autoshapes, groups
@@ -1978,6 +3018,57 @@ public static partial class WordBatchEmitter
                 });
                 return true;
             }
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-R47-3: a legacy VML IMAGE pict (<w:pict><v:shape
+            // type="#_x0000_t75"><v:imagedata r:id>) — NOT a textbox, so the
+            // IsVmlTextbox path above never fired — carries its bitmap through an
+            // image-part rel. The no-rel raw-set just above skips it (it DOES carry
+            // r:id), so it used to fall straight into the warn-drop below and the
+            // image vanished from the rebuild (a full-width Gantt/diagram image
+            // disappearing shifts body pagination by several pages). Ship it through
+            // the same inlined-parts vmlshape carrier the rel-bearing VML-textbox
+            // path uses: GetVmlShapeEmitData inlines the v:imagedata image part(s)
+            // and AddVmlShape rewrites the rel id on replay. Fires for any
+            // pict-bearing run whose references all resolve.
+            if (probeXml.Contains("<w:pict", StringComparison.Ordinal)
+                && word.GetVmlShapeEmitData(run.Path) is { } vmlImgData)
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = sharedAttachPara ?? paraTargetPath,
+                    Type = "inlinedparts",
+                    Props = PackInlinedPartsProps(vmlImgData),
+                });
+                return true;
+            }
+            // BUG-DUMP-WPG-GROUP: an mc:AlternateContent-wrapped DrawingML group
+            // (<wpg:wgp> group of pictures) or shape surfaces as a plain "run"
+            // node — the Drawing lives inside the AltContent so there is no typed
+            // picture node, the no-rel raw-set above skipped it (its blips carry
+            // r:embed), and it is a <w:drawing> not a <w:pict> so the VML carrier
+            // skipped it too. It then fell into the warn-drop below and the WHOLE
+            // group (every nested image) vanished. Ship it through the inlined-
+            // parts carrier: GetDrawingShapeEmitData inlines every referenced
+            // image part and rewrites the rel ids on replay, so the group drawing
+            // round-trips verbatim. Mirrors the wps:wsp shape carrier in the
+            // type=="picture" branch below. GuardCarrierContentTypes returns null
+            // for a drawing referencing an unsupported part (a chart, …), so those
+            // correctly fall through to the warn-drop instead of being mis-routed.
+            if (probeXml.Contains("<w:drawing", StringComparison.Ordinal)
+                && word.GetDrawingShapeEmitData(run.Path) is { } grpData)
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = sharedAttachPara ?? paraTargetPath,
+                    Type = "inlinedparts",
+                    Props = PackInlinedPartsProps(grpData),
+                });
+                return true;
+            }
+>>>>>>> upstream/main
             // Drawing-bearing but not safely raw-set-able inline (lives in a
             // header/footer/cell, or carries an external relationship we can't
             // re-anchor). Flag the loss rather than silently dropping it.
@@ -1999,12 +3090,38 @@ public static partial class WordBatchEmitter
         // non-textbox-shape raw-set convention.
         {
             var shapeXml = word.GetElementXml(run.Path);
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-WPG-GROUP: a DrawingML GROUP (<wpg:wgp> — multiple pictures/
+            // shapes grouped, often mc:AlternateContent-wrapped) surfaces as
+            // type="picture" because GetImageBinary finds the FIRST nested blip.
+            // The picture path below would flatten the whole group to that single
+            // <pic:pic>, dropping every other grouped image AND the group structure.
+            // Route the group through the inlined-parts carrier instead, so all
+            // nested image parts + the verbatim group drawing round-trip. Mirrors
+            // the wps:wsp shape carrier just below; GuardCarrierContentTypes nulls
+            // out a group referencing an unsupported part so it falls through.
+            if (!string.IsNullOrEmpty(shapeXml)
+                && shapeXml.Contains("<wpg:wgp", StringComparison.Ordinal)
+                && word.GetDrawingShapeEmitData(run.Path) is { } wpgData)
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = sharedAttachPara ?? paraTargetPath,
+                    Type = "inlinedparts",
+                    Props = PackInlinedPartsProps(wpgData),
+                });
+                return true;
+            }
+>>>>>>> upstream/main
             if (!string.IsNullOrEmpty(shapeXml)
                 && IsWpsShapeDrawing(shapeXml)
                 && ctx != null
                 && ResolveRawSetHost(parentPath, ctx) is { } shapeHost)
             {
                 // The shape's blipFill references an embedded image part via
+<<<<<<< HEAD
                 // r:embed; the dump can't carry that media binary + rel into a
                 // raw-set, so a verbatim passthrough would dangle the r:embed and
                 // corrupt the file. Scrub the blipFill rel (replace with a neutral
@@ -2012,6 +3129,29 @@ public static partial class WordBatchEmitter
                 // and warn that the image bitmap is dropped — the geometry and
                 // outline, the load-bearing shape semantics, still round-trip.
                 // A wps:wsp with NO external rel (plain fill) raw-sets verbatim.
+=======
+                // r:embed; a verbatim raw-set would dangle it. Ship the run
+                // through the inlined-parts carrier (verbatim runXml +
+                // part{N} image bytes, rel ids rewritten on replay) so the
+                // bitmap fill survives — same shape as the vmlshape carrier.
+                // A wps:wsp with NO external rel (plain fill) raw-sets verbatim.
+                if (HasExternalRelRef(shapeXml)
+                    && word.GetDrawingShapeEmitData(run.Path) is { } shpData)
+                {
+                    items.Add(new BatchItem
+                    {
+                        Command = "add",
+                        Parent = paraTargetPath,
+                        Type = "inlinedparts",
+                        Props = PackInlinedPartsProps(shpData),
+                    });
+                    return true;
+                }
+                // Fallback (unresolvable reference): scrub the blipFill rel
+                // (neutral solidFill placeholder keeps the shape valid) and
+                // warn that the image bitmap is dropped — geometry and outline
+                // still round-trip.
+>>>>>>> upstream/main
                 var scrubbed = ScrubDrawingBlipFillRels(shapeXml, out var blipDropped);
                 if (blipDropped)
                     ctx.Warnings.Add(new DocxUnsupportedWarning(
@@ -2099,13 +3239,21 @@ public static partial class WordBatchEmitter
                 // no positionH/V at all, so the regex simply won't match (safe).
                 var hPosMatch = System.Text.RegularExpressions.Regex.Match(
                     picXml,
+<<<<<<< HEAD
                     @"<wp:positionH\b[^>]*>.*?<wp:posOffset>(\d+)</wp:posOffset>.*?</wp:positionH>",
+=======
+                    @"<wp:positionH\b[^>]*>.*?<wp:posOffset>(-?\d+)</wp:posOffset>.*?</wp:positionH>",
+>>>>>>> upstream/main
                     System.Text.RegularExpressions.RegexOptions.Singleline);
                 if (hPosMatch.Success)
                     picProps["hPosition"] = hPosMatch.Groups[1].Value + "emu";
                 var vPosMatch = System.Text.RegularExpressions.Regex.Match(
                     picXml,
+<<<<<<< HEAD
                     @"<wp:positionV\b[^>]*>.*?<wp:posOffset>(\d+)</wp:posOffset>.*?</wp:positionV>",
+=======
+                    @"<wp:positionV\b[^>]*>.*?<wp:posOffset>(-?\d+)</wp:posOffset>.*?</wp:positionV>",
+>>>>>>> upstream/main
                     System.Text.RegularExpressions.RegexOptions.Singleline);
                 if (vPosMatch.Success)
                     picProps["vPosition"] = vPosMatch.Groups[1].Value + "emu";
@@ -2121,9 +3269,70 @@ public static partial class WordBatchEmitter
                 var blipInner = CapturePicBlipInnerXml(picXml);
                 if (!string.IsNullOrEmpty(blipInner))
                     picProps["blipEffects"] = blipInner!;
+<<<<<<< HEAD
                 var spEffectLst = CapturePicSpPrEffectLst(picXml);
                 if (!string.IsNullOrEmpty(spEffectLst))
                     picProps["spEffects"] = spEffectLst!;
+=======
+                // BUG-R13C consistency: CapturePicBlipInnerXml/StripRelReferencingBlipExts
+                // drops the SVG companion (<asvg:svgBlip r:embed=…>) because its dangling
+                // relationship would abort the whole `add picture`; the PNG raster
+                // fallback still renders, so content is conserved but the VECTOR layer is
+                // lost. Surface that as a warning — mirroring the theme-image / OLE
+                // fallback-drop warnings — instead of dropping it silently.
+                if (picXml.Contains("svgBlip", StringComparison.Ordinal))
+                    ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                        "picture", run.Path,
+                        "SVG vector layer (svgBlip) dropped on round-trip; PNG raster fallback preserved"));
+                // BUG-DUMP-H82: StripRelReferencingBlipExts drops ANY <a:ext> that
+                // references a relationship, not only the SVG companion — most
+                // notably the Office 2010 artistic-effect extension
+                // (<a14:imgProps><a14:imgLayer r:embed=…><a14:imgEffect>…) whose
+                // r:embed points at a `.wdp` (HD Photo) backing layer. That drop was
+                // silent (the svgBlip warning above didn't match), losing the
+                // editable effect + its .wdp source with no signal. Warn for any
+                // rel-referencing ext drop that ISN'T the already-warned svgBlip,
+                // mirroring the drop-but-warn model for lossy media extensions.
+                else if (BlipHasRelReferencingExt(picXml))
+                    ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                        "picture", run.Path,
+                        "image effect layer (e.g. Office artistic effect / HD-photo .wdp backing layer) dropped on round-trip; raster image preserved"));
+                var spEffectLst = CapturePicSpPrEffectLst(picXml);
+                if (!string.IsNullOrEmpty(spEffectLst))
+                    picProps["spEffects"] = spEffectLst!;
+                // The fixed spPr rebuild also drops xfrm flip flags
+                // (<a:xfrm flipH="1"> — mirrored logos), a content extent
+                // (<a:ext>) that legitimately differs from the frame's
+                // wp:extent, bwMode, and explicit <a:noFill/>/<a:ln> blocks.
+                // Capture the whole <pic:spPr> verbatim; AddPicture swaps its
+                // rebuilt spPr for this block (and then skips the narrower
+                // spEffects injection — the effectLst already rides inside).
+                var spPrWhole = System.Text.RegularExpressions.Regex.Match(
+                    picXml,
+                    @"<pic:spPr[^>]*?>.*?</pic:spPr>|<pic:spPr[^>]*?/>",
+                    System.Text.RegularExpressions.RegexOptions.Singleline);
+                if (spPrWhole.Success)
+                    picProps["spPrXml"] = spPrWhole.Value;
+                // Anchor wrap distances (distT/distB/distL/distR — the gap
+                // between a floating image and the text wrapping around it).
+                // CreateAnchorImageRun hardcodes T/B=0, L/R=114300; a figure
+                // with asymmetric distances shifted every adjacent line.
+                // Capture as "T,B,L,R" so AddPicture restores them. Inline
+                // pictures have no <wp:anchor>, so the match simply won't fire.
+                var anchorMatch = System.Text.RegularExpressions.Regex.Match(
+                    picXml, @"<wp:anchor\b([^>]*)>");
+                if (anchorMatch.Success)
+                {
+                    string DistAttr(string n) =>
+                        System.Text.RegularExpressions.Regex.Match(
+                            anchorMatch.Groups[1].Value, n + "=\"(\\d+)\"") is { Success: true } mm
+                            ? mm.Groups[1].Value : "0";
+                    var wt = DistAttr("distT"); var wb = DistAttr("distB");
+                    var wl = DistAttr("distL"); var wr = DistAttr("distR");
+                    if (!(wt == "0" && wb == "0" && wl == "114300" && wr == "114300"))
+                        picProps["wrapDist"] = $"{wt},{wb},{wl},{wr}";
+                }
+>>>>>>> upstream/main
             }
             items.Add(new BatchItem
             {
@@ -2144,6 +3353,30 @@ public static partial class WordBatchEmitter
         {
             var spec = ctx.ChartSpecs[ctx.ChartCursor.Index];
             ctx.ChartCursor.Index++;
+<<<<<<< HEAD
+=======
+            // VERBATIM-FIRST: carry the chart part + its sidecars byte-for-byte
+            // instead of rebuilding from semantic props. The typed BuildChartProps
+            // path below de-references the chart data (numRef→numLit, drops strRef
+            // category labels / ptCount data points / dLbls / externalData) and
+            // renders a visibly compressed chart. The verbatim <w:drawing> also
+            // preserves the host wrapper (wp:extent / effectExtent / anchor) for
+            // free, so the R38-1 / anchor width fix-ups below are unnecessary on
+            // this path. Falls through to the typed path when the carrier can't
+            // resolve every referenced part (return null) — same conservative
+            // fallback as the other inlined-parts carriers.
+            if (word.GetChartVerbatimEmitData(run.Path) is { } chartVerbatim)
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = paraTargetPath,
+                    Type = "inlinedparts",
+                    Props = PackInlinedPartsProps(chartVerbatim),
+                });
+                return true;
+            }
+>>>>>>> upstream/main
             var chartProps = BuildChartProps(spec);
             // BUG-DUMP-R38-1: the chart node's width/height come from
             // WordHandler.Query formatted as 1-decimal CENTIMETRES (cx/cy /
@@ -2167,6 +3400,58 @@ public static partial class WordBatchEmitter
                     chartProps["width"] = chartExtMatch.Groups[1].Value + "emu";
                     chartProps["height"] = chartExtMatch.Groups[2].Value + "emu";
                 }
+<<<<<<< HEAD
+=======
+                // A chart wrapped in <wp:anchor> is a FLOATING chart — capture
+                // its wrap + position so AddChart rebuilds the anchor instead of
+                // flattening it to an inline frame (which drops it entirely on
+                // replay, since only inline charts ever got a spec). Inline
+                // charts have no <wp:anchor>, so none of these fire. Mirrors the
+                // floating-picture capture above.
+                CaptureChartAnchorProps(chartXml!, chartProps);
+            }
+            // A chart may carry a c:userShapes overlay drawing (a logo / photo /
+            // annotation drawn on top of the chart in Word's chart editor) on a
+            // ChartDrawingPart. AddChart rebuilds the chart from scratch, so
+            // without shipping that part the overlay vanishes. Pack it (verbatim
+            // chartshapes XML + embedded images) under a `userShapes.` prefix;
+            // AddChart re-creates the part and the <c:userShapes> reference.
+            var usData = word.GetChartUserShapesEmitData(run.Path);
+            if (usData != null)
+            {
+                chartProps["userShapesXml"] = usData.RunXml;
+                int upi = 0;
+                foreach (var part in usData.Parts)
+                {
+                    upi++;
+                    chartProps[$"userShapes.part{upi}.relId"] = part.RelId;
+                    chartProps[$"userShapes.part{upi}.data"] =
+                        $"data:{part.ContentType};base64,{System.Convert.ToBase64String(part.Bytes)}";
+                }
+                int uei = 0;
+                foreach (var ext in usData.Externals)
+                {
+                    uei++;
+                    chartProps[$"userShapes.ext{uei}.relId"] = ext.RelId;
+                    chartProps[$"userShapes.ext{uei}.type"] = ext.Type;
+                    chartProps[$"userShapes.ext{uei}.target"] = ext.Target;
+                }
+            }
+            // BUG-DUMP-CHART-SIDECARS: carry the native chart's sidecar parts
+            // (chartStyle / chartColorStyle / themeOverride / embedded data
+            // workbook) so AddChart re-attaches them instead of rebuilding a
+            // chart stripped of its theme, custom colours, and editable data.
+            var sidecars = word.GetChartSidecarEmitData(run.Path);
+            if (sidecars != null)
+            {
+                foreach (var (role, ct, bytes) in sidecars)
+                {
+                    // One part per role for native charts (style/colors/
+                    // themeOverride/package each appear at most once).
+                    chartProps[$"sidecar.{role}.data"] =
+                        $"data:{ct};base64,{System.Convert.ToBase64String(bytes)}";
+                }
+>>>>>>> upstream/main
             }
             items.Add(new BatchItem
             {
@@ -2199,7 +3484,11 @@ public static partial class WordBatchEmitter
             // host) first; otherwise fall back to paraTargetPath for cells.
             string? attachPara = sharedAttachPara
                 ?? (parentPath.Contains("/tc[", StringComparison.Ordinal) ? paraTargetPath : null);
+<<<<<<< HEAD
             if (TryEmitTextbox(word, run, rawXml, parentPath, items, ctx, attachPara))
+=======
+            if (TryEmitTextbox(word, run, rawXml, parentPath, items, ctx, attachPara, paraTargetPath))
+>>>>>>> upstream/main
                 return true;
         }
         // BUG-R3 (linked external image): a <w:drawing> carrying an
@@ -2210,6 +3499,25 @@ public static partial class WordBatchEmitter
         // the SmartArt/non-textbox warn-and-skip on the AlternateContent path
         // above) instead of falling through to a silent raw-set or a silent
         // return.
+<<<<<<< HEAD
+=======
+        // SmartArt: the diagram's data/layout/quickStyle/colors parts (plus the
+        // data part's rendered-drawing child) ship base64-inlined in a
+        // self-contained `add diagram`, mirroring the `add activex` carrier —
+        // previously the whole diagram was warn-dropped as unreconstructable.
+        if (!string.IsNullOrEmpty(rawXml) && rawXml.Contains("relIds")
+            && word.GetDiagramEmitData(run.Path) is { } dgmData)
+        {
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = paraTargetPath,
+                Type = "inlinedparts",
+                Props = PackInlinedPartsProps(dgmData),
+            });
+            return true;
+        }
+>>>>>>> upstream/main
         if (!string.IsNullOrEmpty(rawXml) && DrawingHasUnreconstructableRel(rawXml))
         {
             string detail = rawXml.Contains("r:link")
@@ -2258,6 +3566,73 @@ public static partial class WordBatchEmitter
         // and the caller surfaces a loss warning (mirrors the SmartArt path).
         xml.Contains("r:link");
 
+<<<<<<< HEAD
+=======
+    // Capture a floating chart's <wp:anchor> wrap + positioning into props that
+    // AddChart/BuildChartFrame consume (anchor / wrap / hposition / vposition /
+    // halign / valign / hrelative / vrelative / behindtext / relativeHeight /
+    // effectExtent / wrapDist). No-op when the drawing is an inline chart (no
+    // <wp:anchor>). Regex-scoped per positionH/positionV block so H→hposition
+    // and V→vposition map correctly. Mirrors the floating-picture capture.
+    private static void CaptureChartAnchorProps(string chartXml, Dictionary<string, string> props)
+    {
+        var anchorMatch = System.Text.RegularExpressions.Regex.Match(chartXml, @"<wp:anchor\b([^>]*)>");
+        if (!anchorMatch.Success) return;
+        props["anchor"] = "true";
+        var attrs = anchorMatch.Groups[1].Value;
+
+        string Attr(string scope, string n) =>
+            System.Text.RegularExpressions.Regex.Match(scope, n + "=\"(-?\\d+)\"") is { Success: true } m
+                ? m.Groups[1].Value : "0";
+
+        if (System.Text.RegularExpressions.Regex.Match(attrs, "behindDoc=\"(1|true)\"").Success)
+            props["behindtext"] = "true";
+        var rh = System.Text.RegularExpressions.Regex.Match(attrs, "relativeHeight=\"(\\d+)\"");
+        if (rh.Success) props["relativeHeight"] = rh.Groups[1].Value;
+
+        var wt = Attr(attrs, "distT"); var wb = Attr(attrs, "distB");
+        var wl = Attr(attrs, "distL"); var wr = Attr(attrs, "distR");
+        if (!(wt == "0" && wb == "0" && wl == "114300" && wr == "114300"))
+            props["wrapDist"] = $"{wt},{wb},{wl},{wr}";
+
+        var ee = System.Text.RegularExpressions.Regex.Match(
+            chartXml,
+            @"wp:effectExtent\b[^>]*\bl=""(-?\d+)""[^>]*\bt=""(-?\d+)""[^>]*\br=""(-?\d+)""[^>]*\bb=""(-?\d+)""");
+        if (ee.Success && !(ee.Groups[1].Value == "0" && ee.Groups[2].Value == "0"
+            && ee.Groups[3].Value == "0" && ee.Groups[4].Value == "0"))
+            props["effectExtent"] = $"{ee.Groups[1].Value},{ee.Groups[2].Value},{ee.Groups[3].Value},{ee.Groups[4].Value}";
+
+        // Wrap mode — which wp:wrap* child is present.
+        props["wrap"] =
+            chartXml.Contains("<wp:wrapSquare") ? "square" :
+            chartXml.Contains("<wp:wrapTight") ? "tight" :
+            chartXml.Contains("<wp:wrapThrough") ? "through" :
+            chartXml.Contains("<wp:wrapTopAndBottom") ? "topandbottom" :
+            chartXml.Contains("<wp:wrapNone") ? "none" : "square";
+
+        // Per-axis relativeFrom + posOffset/align, scoped to each block.
+        var hBlock = System.Text.RegularExpressions.Regex.Match(
+            chartXml, @"<wp:positionH\b[^>]*>.*?</wp:positionH>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        var vBlock = System.Text.RegularExpressions.Regex.Match(
+            chartXml, @"<wp:positionV\b[^>]*>.*?</wp:positionV>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        void AxisProps(System.Text.RegularExpressions.Match block, string relKey, string posKey, string alignKey)
+        {
+            if (!block.Success) return;
+            var rel = System.Text.RegularExpressions.Regex.Match(block.Value, "relativeFrom=\"([^\"]+)\"");
+            if (rel.Success) props[relKey] = rel.Groups[1].Value;
+            var align = System.Text.RegularExpressions.Regex.Match(block.Value, @"<wp:align>([^<]+)</wp:align>");
+            if (align.Success) { props[alignKey] = align.Groups[1].Value; return; }
+            var off = System.Text.RegularExpressions.Regex.Match(block.Value, @"<wp:posOffset>(-?\d+)</wp:posOffset>");
+            if (off.Success) props[posKey] = off.Groups[1].Value + "emu";
+        }
+        AxisProps(hBlock, "hrelative", "hposition", "halign");
+        AxisProps(vBlock, "vrelative", "vposition", "valign");
+    }
+
+>>>>>>> upstream/main
     // BUG-DUMP-R45-4: capture the inner XML of the FIRST <a:blip> inside a
     // picture's drawing (the recolor/alpha children — duotone / biLevel /
     // alphaModFix / lum* / clrChange — that AddPicture's fixed blip rebuild
@@ -2274,9 +3649,67 @@ public static partial class WordBatchEmitter
             System.Text.RegularExpressions.RegexOptions.Singleline);
         if (!m.Success) return null;
         var inner = m.Groups[1].Value.Trim();
+<<<<<<< HEAD
         return inner.Length > 0 ? inner : null;
     }
 
+=======
+        inner = StripRelReferencingBlipExts(inner);
+        return inner.Length > 0 ? inner : null;
+    }
+
+    // BUG-R13C: an <a:blip>'s <a:extLst> can carry an <a:ext> whose child
+    // references an external package relationship — most commonly the SVG
+    // companion <asvg:svgBlip r:embed="rIdN"/> (a PNG fallback + SVG original).
+    // The dump inlines only the raster <a:blip> source (the base64 `src`); the
+    // SVG part and its relationship are not carried through dump→batch, so the
+    // r:embed="rIdN" both dangles AND, injected as a bare fragment, fails to
+    // parse ("'r' is an undeclared prefix") — the whole `add picture` step
+    // aborts and the image is lost. Drop any <a:ext> block that references a
+    // relationship (r:embed / r:link / r:id); the raster fallback still renders.
+    // Exts with no relationship reference (e.g. a14:useLocalDpi) are kept.
+    // BUG-DUMP-H82: true when the picture's first <a:blip> carries an <a:ext>
+    // that references a relationship (r:embed/r:link/r:id) — i.e. an extension
+    // that StripRelReferencingBlipExts will drop. Used to warn on the non-svgBlip
+    // drops (Office 2010 artistic effects + their .wdp backing layer) that were
+    // previously stripped silently. Scoped to the <a:blip> inner so the main
+    // r:embed attribute on <a:blip> (carried through by AddPicture) is not counted.
+    private static bool BlipHasRelReferencingExt(string picXml)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(
+            picXml, @"<a:blip\b[^>]*?>(.*?)</a:blip>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (!m.Success) return false;
+        foreach (System.Text.RegularExpressions.Match ext in
+                 System.Text.RegularExpressions.Regex.Matches(
+                     m.Groups[1].Value, @"<a:ext\b[^>]*>.*?</a:ext>",
+                     System.Text.RegularExpressions.RegexOptions.Singleline))
+            if (System.Text.RegularExpressions.Regex.IsMatch(ext.Value, @"\br:(embed|link|id)\s*="))
+                return true;
+        return false;
+    }
+
+    private static string StripRelReferencingBlipExts(string blipInner)
+    {
+        if (string.IsNullOrEmpty(blipInner)
+            || !blipInner.Contains("<a:ext", StringComparison.Ordinal))
+            return blipInner;
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(
+            blipInner,
+            @"<a:ext\b[^>]*>.*?</a:ext>",
+            mm => System.Text.RegularExpressions.Regex.IsMatch(mm.Value, @"\br:(embed|link|id)\s*=")
+                ? string.Empty
+                : mm.Value,
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        // Drop a now-empty <a:extLst></a:extLst> (or self-closed) so a plain
+        // raster blip emits no spurious empty wrapper.
+        cleaned = System.Text.RegularExpressions.Regex.Replace(
+            cleaned, @"<a:extLst>\s*</a:extLst>", string.Empty,
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        return cleaned.Trim();
+    }
+
+>>>>>>> upstream/main
     // BUG-DUMP-R45-4: capture the verbatim <a:effectLst>…</a:effectLst> sitting
     // inside the picture's <pic:spPr> (the drop-shadow / glow / reflection that
     // AddPicture's fixed spPr rebuild drops). Returns null when no effectLst is
@@ -2315,12 +3748,36 @@ public static partial class WordBatchEmitter
 
     private static bool IsTextboxDrawing(string rawXml)
     {
+<<<<<<< HEAD
         // Mirrors WordHandler.CountTextboxesInHost / Navigation's textbox
         // selector — a textbox is a wps:wsp with txBox=1 cNvSpPr or a
         // wps:txbx child carrying w:txbxContent.
         return rawXml.Contains("txBox=\"1\"")
             || rawXml.Contains("<wps:txbx")
             || rawXml.Contains("txbxContent");
+=======
+        // A wpg:wgp GROUP (e.g. a `diagram`, whose node shapes are themselves
+        // textboxes) is NOT a plain textbox. Classifying it as one makes the
+        // textbox-only-paragraph shortcut flatten the whole group down to its
+        // first child textbox, dropping every other node + connector. Let a
+        // group fall through to the general drawing path, which round-trips the
+        // whole <w:drawing> verbatim (raw-set) since a native diagram carries no
+        // external relationship references.
+        if (rawXml.Contains("<wpg:wgp", StringComparison.Ordinal)) return false;
+
+        // Mirrors WordHandler.CountTextboxesInHost / Navigation's textbox
+        // selector — a textbox is a wps:wsp with txBox=1 cNvSpPr or a
+        // wps:txbx child carrying w:txbxContent.
+        // BUG-DUMP-TXBXCONTENT-LITERAL (H31 family): the third probe must match
+        // the <w:txbxContent> ELEMENT open tag, not the bare token — a run whose
+        // visible text literally contains "txbxContent" (docs describing OOXML
+        // textbox internals) would otherwise be misrouted through the textbox
+        // drawing path, which extracts no drawing payload and silently drops the
+        // plain text. The sibling clauses already use element-anchored forms.
+        return rawXml.Contains("txBox=\"1\"")
+            || rawXml.Contains("<wps:txbx")
+            || System.Text.RegularExpressions.Regex.IsMatch(rawXml, @"<\w*:?txbxContent[\s/>]");
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -2352,6 +3809,14 @@ public static partial class WordBatchEmitter
     {
         if (string.IsNullOrEmpty(rawXml)) return false;
         if (IsTextboxDrawing(rawXml)) return false;          // textbox has its own path
+<<<<<<< HEAD
+=======
+        // A drawing whose graphicData is a CHART must take the typed chart
+        // emit further down — claiming it here raw-set the chart's r:id
+        // verbatim with no chart part behind it, producing a file real Word
+        // refuses to open.
+        if (rawXml.Contains("drawingml/2006/chart", StringComparison.Ordinal)) return false;
+>>>>>>> upstream/main
         if (!rawXml.Contains("<wps:wsp", StringComparison.Ordinal)) return false;
         // A genuine shape carries a preset/custom geometry or its own shape
         // properties — that's what the picture path cannot represent.
@@ -2413,10 +3878,54 @@ public static partial class WordBatchEmitter
     /// </summary>
     private static bool TryEmitTextbox(WordHandler word, DocumentNode run, string rawXml,
                                        string parentPath, List<BatchItem> items, BodyEmitContext? ctx,
+<<<<<<< HEAD
                                        string? attachParaPath = null)
     {
         if (ctx == null) return false;
 
+=======
+                                       string? attachParaPath = null, string? paraTargetPath = null)
+    {
+        if (ctx == null) return false;
+
+        // BUG-DUMP-TEXTBOX-INDEX-DESYNC: the typed `add textbox` path reads source
+        // inner content via word.Get on the SOURCE textbox index, which must track
+        // Navigation's source /<host>/textbox[N]. Navigation counts ONLY a
+        // <w:drawing> whose inner XML carries `<wps:txbx` or `txBox="1"` (a
+        // DrawingML textbox) — NOT a bare legacy <w:pict><v:textbox> VML box. So a
+        // verbatim path bumps the SOURCE ordinal only when its rawXml matches that
+        // same rule; bumping for a bare-VML box (which Navigation does not index)
+        // would itself desync the following typed textbox's read. (TextboxCounters —
+        // the REBUILD index for the emit target — counts only typed `add textbox`
+        // rows and is deliberately NOT bumped here.) Keyed by parentPath, matching
+        // the typed path's host key.
+        void BumpSourceTextboxOrdinalForVerbatim()
+        {
+            // BUG-DUMP-TBLORDINAL-TEXTBOX: a textbox shipped VERBATIM (raw-set /
+            // inlined-parts carrier) carries its <w:txbxContent> tables WITHOUT
+            // going through EmitTable, so EmitTable's `++TableOrdinalBox` never
+            // fires for them — yet the later `(//w:tbl)[N]` cell raw-set selectors
+            // count ALL tables in document order (including textbox-nested ones).
+            // Leaving the ordinal short made every following table's selector land
+            // N tables early, so a cell-content raw-set targeted the wrong table —
+            // here a tr[57] cell-merge XPath hit a 7-row table and the cell text
+            // was dropped. Bump the ordinal by the shipped XML's table count so the
+            // `(//w:tbl)` numbering stays in lockstep with replay. Mirrors the
+            // EmitSdt carrier's identical adjustment. (Unconditional — any shipped
+            // table must count, regardless of whether the box is Navigation-indexed.)
+            int tblCount = System.Text.RegularExpressions.Regex
+                .Matches(rawXml, "<w:tbl[ >]").Count;
+            if (tblCount > 0) ctx.TableOrdinalBox[0] += tblCount;
+
+            bool navigationCountsIt = rawXml.Contains("<w:drawing", StringComparison.Ordinal)
+                && (rawXml.Contains("<wps:txbx", StringComparison.Ordinal)
+                    || rawXml.Contains("txBox=\"1\"", StringComparison.Ordinal));
+            if (!navigationCountsIt) return;
+            ctx.SourceTextboxCounters[parentPath] =
+                (ctx.SourceTextboxCounters.TryGetValue(parentPath, out var _pv) ? _pv : 0) + 1;
+        }
+
+>>>>>>> upstream/main
         // BUG-DUMP-R26-6: a LEGACY VML textbox (<w:pict> with <v:shape
         // type="#_x0000_t202"> / <v:textbox><w:txbxContent>) is a different
         // shape family than the modern DrawingML box `add textbox` produces.
@@ -2440,6 +3949,27 @@ public static partial class WordBatchEmitter
             // (fillcolor/strokecolor, no r:id) still round-trip verbatim.
             if (HasExternalRelRef(rawXml))
             {
+<<<<<<< HEAD
+=======
+                // The rel refs are resolvable (hyperlinks inside the textbox
+                // content, v:imagedata image parts): ship them through the
+                // inlined-parts carrier so the shape round-trips with its
+                // relationships recreated — previously warn-dropped.
+                var vmlParent = attachParaPath ?? paraTargetPath;
+                var vmlData = vmlParent != null ? word.GetVmlShapeEmitData(run.Path) : null;
+                if (vmlData != null)
+                {
+                    BumpSourceTextboxOrdinalForVerbatim();
+                    items.Add(new BatchItem
+                    {
+                        Command = "add",
+                        Parent = vmlParent,
+                        Type = "inlinedparts",
+                        Props = PackInlinedPartsProps(vmlData),
+                    });
+                    return true;
+                }
+>>>>>>> upstream/main
                 ctx.Warnings.Add(new DocxUnsupportedWarning(
                     Element: "textbox.vmlContent",
                     Path: run.Path,
@@ -2447,6 +3977,10 @@ public static partial class WordBatchEmitter
             }
             else
             {
+<<<<<<< HEAD
+=======
+                BumpSourceTextboxOrdinalForVerbatim();
+>>>>>>> upstream/main
                 items.Add(new BatchItem
                 {
                     Command = "raw-set",
@@ -2459,6 +3993,35 @@ public static partial class WordBatchEmitter
             }
         }
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-TEXTBOX-IMG: a MODERN DrawingML textbox shape (wps:wsp +
+        // txbxContent, often mc:AlternateContent/wpg-wrapped — e.g. a letterhead
+        // shape pairing a caption box with a logo) that ALSO carries an embedded
+        // picture (<a:blip r:embed>) loses that image on the typed `add textbox`
+        // path below, which extracts only geometry + text. The image binary then
+        // vanishes from the rebuild (this is the wpg-group image-loss class: a
+        // page of grouped letterhead shapes silently dropping their logos). Route
+        // such a shape through the inlined-parts carrier so the embedded image
+        // part + verbatim shape XML (box + text + picture) round-trip, mirroring
+        // the VML carrier above. Plain textboxes (no embedded image) keep the
+        // typed `add textbox` path so they stay cleanly editable.
+        if (rawXml.Contains("r:embed", StringComparison.Ordinal)
+            && (attachParaPath ?? paraTargetPath) is { } tbImgParent
+            && word.GetDrawingShapeEmitData(run.Path) is { } tbImgData)
+        {
+            BumpSourceTextboxOrdinalForVerbatim();
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = tbImgParent,
+                Type = "inlinedparts",
+                Props = PackInlinedPartsProps(tbImgData),
+            });
+            return true;
+        }
+
+>>>>>>> upstream/main
         // Only emit a typed `add textbox` for hosts AddTextbox itself
         // supports: /body, /body/tbl[..]/tc[N], /header[N], /footer[N].
         // Other parents fall through to the raw-set append.
@@ -2474,11 +4037,29 @@ public static partial class WordBatchEmitter
         // /body/textbox[K] addressing remains continuous across the doc.
         string emitParent = attachParaPath ?? hostPath;
 
+<<<<<<< HEAD
         // Allocate next 1-based textbox index for this host.
+=======
+        // Allocate the REBUILD textbox index (n): only typed `add textbox` rows
+        // count, because that is what the replayed SET ops can address.
+>>>>>>> upstream/main
         int n = ctx.TextboxCounters.TryGetValue(hostPath, out var prev) ? prev + 1 : 1;
         ctx.TextboxCounters[hostPath] = n;
         string textboxPath = hostPath == "/" ? "/textbox[" + n + "]" : $"{hostPath}/textbox[{n}]";
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-TEXTBOX-INDEX-DESYNC: allocate the SOURCE textbox index (sourceN)
+        // separately — it counts EVERY textbox (verbatim + typed) so it matches
+        // Navigation's source /<host>/textbox[N]. The inner-content recursion below
+        // READS from sourceReadPath (sourceN) but EMITS into textboxPath (n). When
+        // no verbatim sibling precedes this textbox the two indices coincide
+        // (sourceN == n) and behaviour is unchanged.
+        int sourceN = (ctx.SourceTextboxCounters.TryGetValue(hostPath, out var sprev) ? sprev : 0) + 1;
+        ctx.SourceTextboxCounters[hostPath] = sourceN;
+        string sourceReadPath = hostPath == "/" ? "/textbox[" + sourceN + "]" : $"{hostPath}/textbox[{sourceN}]";
+
+>>>>>>> upstream/main
         // Extract geometry / wrap / fill / anchor from the drawing XML so the
         // rebuilt textbox keeps its layout. Conservative best-effort — any
         // attribute we can't parse falls back to AddTextbox's defaults.
@@ -2662,7 +4243,11 @@ public static partial class WordBatchEmitter
         // existing (autoPresent: true) and the rest emit as fresh adds.
         try
         {
+<<<<<<< HEAD
             var txbxNode = word.Get(textboxPath);
+=======
+            var txbxNode = word.Get(sourceReadPath);
+>>>>>>> upstream/main
             var children = txbxNode.Children ?? new List<DocumentNode>();
             int innerPIdx = 0;
             int innerTblIdx = 0;
@@ -2677,7 +4262,11 @@ public static partial class WordBatchEmitter
                     // Navigation layer can't re-resolve — the user-facing
                     // path segment is "textbox", not "txbxContent". Use the
                     // canonical /body/textbox[N]/p[M] form instead.
+<<<<<<< HEAD
                     var sourceParaPath = $"{textboxPath}/p[{innerPIdx}]";
+=======
+                    var sourceParaPath = $"{sourceReadPath}/p[{innerPIdx}]";
+>>>>>>> upstream/main
                     EmitParagraph(word, sourceParaPath, textboxPath, innerPIdx, items,
                                   autoPresent: !firstParaSeen, ctx);
                     firstParaSeen = true;
@@ -2691,7 +4280,11 @@ public static partial class WordBatchEmitter
                     // `add table` rows target /body/textbox[N]/tbl[K]
                     // (AddTable already accepts a TextBoxContent parent).
                     innerTblIdx++;
+<<<<<<< HEAD
                     var sourceTblPath = $"{textboxPath}/tbl[{innerTblIdx}]";
+=======
+                    var sourceTblPath = $"{sourceReadPath}/tbl[{innerTblIdx}]";
+>>>>>>> upstream/main
                     EmitTable(word, sourceTblPath, innerTblIdx, items, ctx,
                               parentTablePath: null, containerPath: textboxPath);
                 }
@@ -2801,6 +4394,7 @@ public static partial class WordBatchEmitter
             var root = parentPath.StartsWith("/header[", StringComparison.Ordinal) ? "/w:hdr" : "/w:ftr";
             return (parentPath, $"{root}/w:p[last()]");
         }
+<<<<<<< HEAD
         // Table cell: EmitTable stashes the current cell's global-ordinal XPath
         // in the context box while walking the cell's paragraphs. Append into
         // that cell's last paragraph. The container part is the document for a
@@ -2810,6 +4404,21 @@ public static partial class WordBatchEmitter
             && ctx?.CurrentCellXPathBox is { } box && box[0] is { } cellXPath)
         {
             return ("/document", $"{cellXPath}/w:p[last()]");
+=======
+        // Table cell: EmitTable stashes the current cell's ordinal XPath in the
+        // context box while walking the cell's paragraphs. Append into that
+        // cell's last paragraph. CurrentCellPartBox carries the owning part:
+        // "/document" for a body table, the header/footer part path for a
+        // header/footer-hosted table (BUG-DUMP-R35-HFCELL — previously the part
+        // was hardcoded "/document" and header/footer cells were not carried at
+        // all, so a rich inline SDT there fell through to the lossy typed emit).
+        if (parentPath.Contains("/tc[", StringComparison.Ordinal)
+            && ctx?.CurrentCellXPathBox is { } box && box[0] is { } cellXPath)
+        {
+            var cellPart = ctx.CurrentCellPartBox is { } pbox && pbox[0] is { } p
+                ? p : "/document";
+            return (cellPart, $"{cellXPath}/w:p[last()]");
+>>>>>>> upstream/main
         }
         return null;
     }
@@ -2845,8 +4454,53 @@ public static partial class WordBatchEmitter
             if (!string.IsNullOrEmpty(data.Width)) props["width"] = data.Width!;
             if (!string.IsNullOrEmpty(data.Height)) props["height"] = data.Height!;
             if (!string.IsNullOrEmpty(data.Name)) props["name"] = data.Name!;
+<<<<<<< HEAD
             if (data.IconBytes is { Length: > 0 })
                 props["icon"] = $"data:{data.IconContentType ?? "image/png"};base64,{Convert.ToBase64String(data.IconBytes)}";
+=======
+            // Floating-OLE positioning: the verbatim v:shape style (position:
+            // absolute + margin + z-index + wrap) keeps the object out of the text
+            // flow on replay, plus the original native object box.
+            if (!string.IsNullOrEmpty(data.ShapeStyle)) props["shapeStyle"] = data.ShapeStyle!;
+            if (!string.IsNullOrEmpty(data.DxaOrig)) props["dxaOrig"] = data.DxaOrig!;
+            if (!string.IsNullOrEmpty(data.DyaOrig)) props["dyaOrig"] = data.DyaOrig!;
+            // BUG-DUMP-OLECROP: forward the VML imagedata crop so AddOle re-applies
+            // it — an uncropped preview renders larger and pushes later pages down.
+            if (!string.IsNullOrEmpty(data.Crop)) props["crop"] = data.Crop!;
+            // BUG-DUMP-DELOLE: forward tracked-change attribution so AddOle re-wraps
+            // the rebuilt OLE run in <w:del>/<w:ins>/move. A tracked-DELETED figure
+            // (invisible in Word's final view) otherwise resurrects as a LIVE
+            // full-size object, inflating the page count and cascading a render
+            // drift. Mirrors the deleted-break (TryEmitBreakRun) / deleted-field
+            // forwarding. revision.* live on the run node (set by the Get-side
+            // DeletedRun/InsertedRun ancestor walk), not on GetOleEmitData.
+            foreach (var rk in new[] { "revision.type", "revision.author", "revision.date", "revision.id" })
+                if (run.Format.TryGetValue(rk, out var rv)
+                    && rv?.ToString() is { Length: > 0 } rvs)
+                    props[rk] = rvs;
+            if (data.IconBytes is { Length: > 0 })
+                props["icon"] = $"data:{data.IconContentType ?? "image/png"};base64,{Convert.ToBase64String(data.IconBytes)}";
+            // BUG-DUMP-OLERPR: forward the OLE run's <w:rPr> so AddOle re-applies
+            // it. The run wrapping <w:object> can carry run typography that affects
+            // layout — most visibly a <w:bdr> border box around the object, but
+            // also rFonts/sz that set the host line height. AddOle otherwise builds
+            // a bare <w:r> and the lost border/line-height nudged every following
+            // line, reflowing the page. Mirrors the break-run rPr forwarding above;
+            // extract from raw XML since Navigation strips typography off ole nodes.
+            var oleRawXml = word.RawElementXml(run.Path);
+            if (!string.IsNullOrEmpty(oleRawXml))
+            {
+                try
+                {
+                    var oleRunEl = System.Xml.Linq.XElement.Parse(oleRawXml!);
+                    var wNsOle = (System.Xml.Linq.XNamespace)"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+                    var oleRPrEl = oleRunEl.Element(wNsOle + "rPr");
+                    if (oleRPrEl != null)
+                        props["runRpr"] = oleRPrEl.ToString(System.Xml.Linq.SaveOptions.DisableFormatting);
+                }
+                catch { /* no rPr to forward */ }
+            }
+>>>>>>> upstream/main
             items.Add(new BatchItem
             {
                 Command = "add",
@@ -2857,6 +4511,29 @@ public static partial class WordBatchEmitter
             return true;
         }
 
+<<<<<<< HEAD
+=======
+        // An ActiveX form control (<w:object> hosting <w:control r:id> with a
+        // VML preview image, no o:OLEObject) has no embedded OLE payload, so
+        // GetOleEmitData returns null — previously every such control (radio
+        // buttons, checkboxes in form templates) was warn-dropped and its table
+        // cell rebuilt empty. Emit a self-contained `add activex` instead:
+        // verbatim run XML plus every referenced part's bytes base64-inlined,
+        // mirroring the `add ole` data: URI design.
+        var axData = word.GetActiveXEmitData(run.Path);
+        if (axData != null)
+        {
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = paraTargetPath,
+                Type = "inlinedparts",
+                Props = PackInlinedPartsProps(axData),
+            });
+            return true;
+        }
+
+>>>>>>> upstream/main
         if (ctx != null)
         {
             var progId = run.Format.TryGetValue("progId", out var pid) ? pid?.ToString() : null;
@@ -2871,6 +4548,90 @@ public static partial class WordBatchEmitter
         return true;
     }
 
+<<<<<<< HEAD
+=======
+    // Shared prop packing for the inlined-parts carriers (`add activex`,
+    // `add diagram`): verbatim run XML + one part{N}.relId/part{N}.data pair
+    // per referenced package part, with part{N}.child{M}.* for nested parts.
+    // BUG-DUMP-OLE-IN-OMATH: a MathType / Equation OLE object embedded inside the
+    // verbatim <m:oMath> carrier references its binary (<o:OLEObject r:id>) and
+    // preview image (<v:imagedata r:id>) by relationship id. The `xml` carrier
+    // ships those refs but not the parts, so they dangle on replay (a silent
+    // embedding loss plus a validator NullReferenceException). Base64-inline the
+    // referenced parts as part{N}.* (the same carrier shape as activex/vmlshape)
+    // so AddEquation rematerializes them and rewrites the r:ids. No-op when the
+    // math carries no verbatim xml or references no parts (the common case), so
+    // the interactive `add equation formula=` path is untouched.
+    private static void AddMathInlinedPartProps(WordHandler word, string? mathPath, Dictionary<string, string> eqProps)
+    {
+        if (string.IsNullOrEmpty(mathPath)
+            || !eqProps.TryGetValue("xml", out var xml)
+            || string.IsNullOrEmpty(xml)
+            || !xml.Contains(":id=\"", StringComparison.Ordinal))
+            return;
+        var inlined = word.GetMathInlinedPartsEmitData(mathPath);
+        if (inlined == null) return;
+        foreach (var kv in PackInlinedPartsProps(inlined))
+            if (!string.Equals(kv.Key, "runXml", StringComparison.Ordinal))
+                eqProps[kv.Key] = kv.Value;
+    }
+
+    private static Dictionary<string, string> PackInlinedPartsProps(WordHandler.ActiveXEmitData data)
+    {
+        var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["runXml"] = data.RunXml,
+        };
+        int pi = 0;
+        foreach (var part in data.Parts)
+        {
+            pi++;
+            props[$"part{pi}.relId"] = part.RelId;
+            props[$"part{pi}.data"] =
+                $"data:{part.ContentType};base64,{Convert.ToBase64String(part.Bytes)}";
+            int ci = 0;
+            foreach (var child in part.Children)
+            {
+                ci++;
+                props[$"part{pi}.child{ci}.relId"] = child.RelId;
+                props[$"part{pi}.child{ci}.data"] =
+                    $"data:{child.ContentType};base64,{Convert.ToBase64String(child.Bytes)}";
+                // BUG-DUMP-R71-USERSHAPES-IMG: a child can own further parts (a
+                // chart userShapes drawing -> its image). Emit that grandchild
+                // level so the drawing's r:embed isn't left dangling on replay.
+                int gi = 0;
+                foreach (var gc in child.Children)
+                {
+                    gi++;
+                    props[$"part{pi}.child{ci}.gc{gi}.relId"] = gc.RelId;
+                    props[$"part{pi}.child{ci}.gc{gi}.data"] =
+                        $"data:{gc.ContentType};base64,{Convert.ToBase64String(gc.Bytes)}";
+                }
+            }
+            // Per-part external rels (e.g. a chart's <c:externalData r:id> ->
+            // external oleObject workbook). Recreated on the part itself, with
+            // the original id, since the verbatim part bytes reference it.
+            int pei = 0;
+            foreach (var ext in part.Externals)
+            {
+                pei++;
+                props[$"part{pi}.ext{pei}.relId"] = ext.RelId;
+                props[$"part{pi}.ext{pei}.type"] = ext.Type;
+                props[$"part{pi}.ext{pei}.target"] = ext.Target;
+            }
+        }
+        int ei = 0;
+        foreach (var ext in data.Externals)
+        {
+            ei++;
+            props[$"ext{ei}.relId"] = ext.RelId;
+            props[$"ext{ei}.type"] = ext.Type;
+            props[$"ext{ei}.target"] = ext.Target;
+        }
+        return props;
+    }
+
+>>>>>>> upstream/main
     private static bool TryEmitNoteRefRun(WordHandler word, DocumentNode run, string paraTargetPath, List<BatchItem> items, BodyEmitContext? ctx)
     {
         // Footnote/endnote reference runs carry a <w:footnoteReference> /
@@ -2896,13 +4657,21 @@ public static partial class WordBatchEmitter
         if (noteKind == NoteRefKind.Footnote)
         {
             int idx = ++ctx.FootnoteCursor.Index; // 1-based source/target index
+<<<<<<< HEAD
             EmitNoteReference(word, "footnote", idx, idx, paraTargetPath, items);
+=======
+            EmitNoteReference(word, "footnote", idx, idx, paraTargetPath, items, run);
+>>>>>>> upstream/main
             return true;
         }
         if (noteKind == NoteRefKind.Endnote)
         {
             int idx = ++ctx.EndnoteCursor.Index; // 1-based source/target index
+<<<<<<< HEAD
             EmitNoteReference(word, "endnote", idx, idx, paraTargetPath, items);
+=======
+            EmitNoteReference(word, "endnote", idx, idx, paraTargetPath, items, run);
+>>>>>>> upstream/main
             return true;
         }
         return false;
@@ -2921,8 +4690,23 @@ public static partial class WordBatchEmitter
         var raw = word.GetElementXml(run.Path);
         if (!string.IsNullOrEmpty(raw))
         {
+<<<<<<< HEAD
             if (raw.Contains("footnoteReference", StringComparison.Ordinal)) return NoteRefKind.Footnote;
             if (raw.Contains("endnoteReference", StringComparison.Ordinal)) return NoteRefKind.Endnote;
+=======
+            // BUG-DUMP-NOTEREF-LITERAL: match the <w:footnoteReference> ELEMENT
+            // open tag, not the bare token. A run whose visible text literally
+            // contains the word "footnoteReference"/"endnoteReference" (common in
+            // docs that describe OOXML/Word internals) is NOT a note anchor — the
+            // old substring probe matched the word inside <w:t>…</w:t> and replaced
+            // the whole run with a synthesized note reference, silently dropping all
+            // its text. Require the element open-tag form `<[prefix:]footnoteReference`
+            // followed by a tag-terminating char so text content can never match.
+            if (System.Text.RegularExpressions.Regex.IsMatch(raw, @"<\w*:?footnoteReference[\s/>]"))
+                return NoteRefKind.Footnote;
+            if (System.Text.RegularExpressions.Regex.IsMatch(raw, @"<\w*:?endnoteReference[\s/>]"))
+                return NoteRefKind.Endnote;
+>>>>>>> upstream/main
             return NoteRefKind.None;
         }
         if (string.Equals(rStyle, "FootnoteReference", StringComparison.OrdinalIgnoreCase)) return NoteRefKind.Footnote;
@@ -2930,7 +4714,48 @@ public static partial class WordBatchEmitter
         return NoteRefKind.None;
     }
 
+<<<<<<< HEAD
     private static void EmitPlainOrHyperlinkRun(DocumentNode run, string paraTargetPath, List<BatchItem> items, BodyEmitContext? ctx = null, int hlBaseline = 0)
+=======
+    // BUG-DUMP-R35-2: deterministic flatten warning for a run synthesized from
+    // inside a <w:smartTag>/<w:customXml> wrapper (Navigation marks it with
+    // Format["_wrapperFlattened"]). Shared by the per-run emit path
+    // (EmitPlainOrHyperlinkRun) and the single-run paragraph collapse path so
+    // the wrapper loss is never silent regardless of which shape the
+    // paragraph takes. CONSISTENCY(wrapper-flatten-warning).
+    private static void WarnWrapperFlattened(DocumentNode run, BodyEmitContext? ctx)
+    {
+        if (run.Format.TryGetValue("_wrapperFlattened", out var wfObj)
+            && wfObj is bool wfB && wfB && ctx != null)
+        {
+            ctx.Warnings.Add(new DocxUnsupportedWarning(
+                Element: "smartTag/customXml",
+                Path: run.Path,
+                Reason: "inline smartTag/customXml wrapper flattened on dump→batch round-trip; the wrapped run text and formatting are preserved, only the wrapper element is dropped"));
+        }
+    }
+
+    // BUG-DUMP-R28-REWRITTEN: mirror AddHyperlink's accept logic
+    // (WordHandler.Add.Misc.cs): a url is emittable iff it is a fragment anchor
+    // (#name), a safe-scheme absolute URI, or a relative target. The SDK leaves a
+    // "rewritten://<guid>" placeholder when a Target is so malformed it cannot be
+    // parsed into a System.Uri at all (the canonical case is a mailto: whose
+    // address part is free text typed into the link field). Emitting `add
+    // hyperlink url=…` for such a value aborts the batch step (AddHyperlink
+    // throws "Invalid hyperlink URL"), dropping the run. Returns false so the
+    // caller drops the url and degrades to a plain run, preserving the text.
+    private static bool IsEmittableHyperlinkUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        if (url.StartsWith("rewritten:", StringComparison.OrdinalIgnoreCase)) return false;
+        if (url.StartsWith("#", StringComparison.Ordinal)) return true;
+        if (Uri.TryCreate(url, UriKind.Absolute, out _))
+            return Core.HyperlinkUriValidator.IsSafeScheme(url);
+        return Uri.TryCreate(url, UriKind.Relative, out _);
+    }
+
+    private static void EmitPlainOrHyperlinkRun(WordHandler word, DocumentNode run, string paraTargetPath, List<BatchItem> items, BodyEmitContext? ctx = null, int hlBaseline = 0)
+>>>>>>> upstream/main
     {
         // BUG-R12A(BUG1): a hyperlink wrapper with >1 run or any per-run rPr was
         // stashed by CoalesceHyperlinkRuns with its original runs in Children.
@@ -2944,7 +4769,11 @@ public static partial class WordBatchEmitter
         if (run.Format.TryGetValue("_hlStructured", out var hlsObj) && hlsObj is bool hlsB && hlsB
             && run.Children is { Count: > 0 } hlRuns)
         {
+<<<<<<< HEAD
             EmitStructuredHyperlink(hlRuns, paraTargetPath, items, ctx, hlBaseline);
+=======
+            EmitStructuredHyperlink(word, hlRuns, paraTargetPath, items, ctx, hlBaseline);
+>>>>>>> upstream/main
             return;
         }
         var rProps = FilterEmittableProps(run.Format);
@@ -2956,6 +4785,7 @@ public static partial class WordBatchEmitter
         // consistent with how Word often strips these and with the project's
         // flatten precedents. Surface a deterministic warning so the wrapper
         // loss isn't silent (matches the external-rel / picBullet convention).
+<<<<<<< HEAD
         if (run.Format.TryGetValue("_wrapperFlattened", out var wfObj)
             && wfObj is bool wfB && wfB && ctx != null)
         {
@@ -2964,6 +4794,9 @@ public static partial class WordBatchEmitter
                 Path: run.Path,
                 Reason: "inline smartTag/customXml wrapper flattened on dump→batch round-trip; the wrapped run text and formatting are preserved, only the wrapper element is dropped"));
         }
+=======
+        WarnWrapperFlattened(run, ctx);
+>>>>>>> upstream/main
         // CONSISTENCY(move-range-markers): a moveFrom/moveTo run's own w:id in
         // the source usually differs from its paired half (the pairing lives on
         // the bracketing range markers' shared w:name, not on the run id). Rewrite
@@ -2997,6 +4830,7 @@ public static partial class WordBatchEmitter
         {
             // AddHyperlink writes its own color/underline defaults from theme;
             // drop the inferred `color: hyperlink` / `underline: single` Get
+<<<<<<< HEAD
             // echoes back so we don't override those defaults.
             if (rProps.TryGetValue("color", out var hlColor)
                 && string.Equals(hlColor, "hyperlink", StringComparison.OrdinalIgnoreCase))
@@ -3005,6 +4839,41 @@ public static partial class WordBatchEmitter
                 && string.Equals(hlUl, "single", StringComparison.OrdinalIgnoreCase))
                 rProps.Remove("underline");
             rProps.Remove("isHyperlink");
+=======
+            // echoes back so we don't override those defaults. Track the drops:
+            // a dropped key means the SOURCE had an explicit element that the
+            // defaults reproduce — the "inherit" sentinel below must NOT fire
+            // for it, or the explicit single underline / theme color vanishes.
+            bool hlColorDropped = false, hlUnderlineDropped = false;
+            if (rProps.TryGetValue("color", out var hlColor)
+                && string.Equals(hlColor, "hyperlink", StringComparison.OrdinalIgnoreCase))
+            {
+                rProps.Remove("color");
+                hlColorDropped = true;
+            }
+            if (rProps.TryGetValue("underline", out var hlUl)
+                && string.Equals(hlUl, "single", StringComparison.OrdinalIgnoreCase))
+            {
+                rProps.Remove("underline");
+                hlUnderlineDropped = true;
+            }
+            rProps.Remove("isHyperlink");
+            // BUG-DUMP-R28-REWRITTEN: a malformed Target (SDK rewritten://
+            // placeholder, or a mailto whose address is free text) cannot be
+            // expressed as `add hyperlink` — the url fails AddHyperlink's
+            // validation and aborts the batch step, dropping the run. Drop the
+            // unusable url (+ warn) so the wrapper degrades to a plain run and the
+            // visible text survives. A tooltip/tgtFrame/history-only wrapper still
+            // emits (those don't need a parseable url).
+            if (rProps.TryGetValue("url", out var hlUrlCheck) && !IsEmittableHyperlinkUrl(hlUrlCheck))
+            {
+                rProps.Remove("url");
+                ctx?.Warnings.Add(new DocxUnsupportedWarning(
+                    Element: "hyperlink.url",
+                    Path: run.Path,
+                    Reason: $"hyperlink target '{hlUrlCheck}' is malformed (not a valid absolute/relative URI or anchor) and cannot round-trip; the link is dropped and its text is preserved as plain text"));
+            }
+>>>>>>> upstream/main
             // Bare <w:hyperlink> wrapper with no url/anchor/tooltip/tgtFrame
             // /history carries no round-trippable property — AddHyperlink
             // would reject it. Fall through and emit as a plain run.
@@ -3021,6 +4890,26 @@ public static partial class WordBatchEmitter
                 });
                 return;
             }
+<<<<<<< HEAD
+=======
+            // The SOURCE run has no <w:color>/<w:u> at all (a TOC leader row
+            // that deliberately looks like plain text). Without the sentinel,
+            // AddHyperlink stamps its theme-blue + single-underline defaults
+            // and the dotted leader comes back blue. Injected only on the real
+            // `add hyperlink` path — the bare-wrapper fallback above emits a
+            // plain `add r`, whose color parser must not see "inherit".
+            if (!hlColorDropped && !rProps.ContainsKey("color")) rProps["color"] = "inherit";
+            if (!hlUnderlineDropped && !rProps.ContainsKey("underline")) rProps["underline"] = "inherit";
+            // BUG-DUMP-HYPERLINK-EMPTYTEXT: the wrapper's display text comes from
+            // the source run's <w:t>. When that run is EMPTY, line 3600 above
+            // omits the `text` key (empty text isn't emitted) — and AddHyperlink's
+            // `GetValueOrDefault("text", url ?? anchor ?? "link")` then injects the
+            // URL/anchor as VISIBLE text (e.g. a 3-run hyperlink whose first run is
+            // <w:t></w:t> rebuilt as "ex191….htmInsider Trading…"). Emit an
+            // explicit empty `text` so the wrapper's first run stays empty and the
+            // real display text comes from the trailing structured `add r` runs.
+            if (!rProps.ContainsKey("text")) rProps["text"] = "";
+>>>>>>> upstream/main
             items.Add(new BatchItem
             {
                 Command = "add",
@@ -3055,7 +4944,11 @@ public static partial class WordBatchEmitter
     // the current paragraph's hyperlinks re-index from 1. Subtracting the
     // baseline yields the wrapper's LIVE 1-based index inside this paragraph,
     // which is what the trailing `add r` rows must target.
+<<<<<<< HEAD
     private static void EmitStructuredHyperlink(List<DocumentNode> hlRuns, string paraTargetPath,
+=======
+    private static void EmitStructuredHyperlink(WordHandler word, List<DocumentNode> hlRuns, string paraTargetPath,
+>>>>>>> upstream/main
                                                 List<BatchItem> items, BodyEmitContext? ctx, int hlBaseline = 0)
     {
         // Build the wrapper add from the first run's props (url/anchor/tooltip/…
@@ -3067,14 +4960,26 @@ public static partial class WordBatchEmitter
         var firstClone = new DocumentNode
         {
             Path = first.Path,
+<<<<<<< HEAD
             Type = first.Type,
             Text = first.Text,
+=======
+            Type = "run",
+            // A tab-first hyperlink (TOC leader): the wrapper's text "\t" is
+            // split into a real <w:tab/> by AddText, so the leader stays the
+            // hyperlink's first child in source order.
+            Text = first.Type == "tab" ? "\t" : first.Text,
+>>>>>>> upstream/main
             Format = new Dictionary<string, object?>(first.Format, StringComparer.OrdinalIgnoreCase),
         };
         firstClone.Format.Remove("_hlStructured");
         int hlBefore = items.Count(it => it.Type == "hyperlink"
             && string.Equals(it.Parent, paraTargetPath, StringComparison.Ordinal));
+<<<<<<< HEAD
         EmitPlainOrHyperlinkRun(firstClone, paraTargetPath, items, ctx);
+=======
+        EmitPlainOrHyperlinkRun(word, firstClone, paraTargetPath, items, ctx);
+>>>>>>> upstream/main
         int hlAfter = items.Count(it => it.Type == "hyperlink"
             && string.Equals(it.Parent, paraTargetPath, StringComparison.Ordinal));
         // If the first run did not materialize a hyperlink row (bare wrapper with
@@ -3095,7 +5000,11 @@ public static partial class WordBatchEmitter
                 clone.Format.Remove("_hlStructured");
                 clone.Format.Remove("url");
                 clone.Format.Remove("anchor");
+<<<<<<< HEAD
                 EmitPlainOrHyperlinkRun(clone, paraTargetPath, items, ctx);
+=======
+                EmitPlainOrHyperlinkRun(word, clone, paraTargetPath, items, ctx);
+>>>>>>> upstream/main
             }
             return;
         }
@@ -3104,6 +5013,42 @@ public static partial class WordBatchEmitter
         var hlPath = $"{paraTargetPath}/hyperlink[{hlAfter - hlBaseline}]";
         for (int k = 1; k < hlRuns.Count; k++)
         {
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-FOOTNOTE-IN-HYPERLINK: a footnote/endnote REFERENCE run
+            // nested INSIDE a hyperlink (e.g. a linked phrase that also carries a
+            // footnote) reaches here as a wrapped child. Emitting it as a bare
+            // `add r` drops the <w:footnoteReference> element AND fails to advance
+            // the per-reference note cursor — so a LATER note body (the highest id)
+            // silently disappears (the visible symptom is "the last footnote went
+            // missing"). Classify it and route through the note-reference emit
+            // (targeting the hyperlink path so the mark stays inside the link),
+            // advancing the cursor exactly like a top-level note ref.
+            if (ctx != null)
+            {
+                var khStyle = hlRuns[k].Format.TryGetValue("rStyle", out var khrs) ? khrs?.ToString() : null;
+                var khNote = ClassifyNoteRefRun(word, hlRuns[k], khStyle);
+                // AddFootnote/AddEndnote require a PARAGRAPH parent (they reject a
+                // hyperlink path), so anchor the note ref on paraTargetPath rather
+                // than hlPath. The reference lands in the host paragraph adjacent to
+                // the link instead of strictly inside it — the same "good enough"
+                // boundary trade-off the comment-in-SDT/oMath strips accept — but the
+                // note body + continuous numbering are preserved (cursor advances in
+                // document order), which is what was silently lost before.
+                if (khNote == NoteRefKind.Footnote)
+                {
+                    int fidx = ++ctx.FootnoteCursor.Index;
+                    EmitNoteReference(word, "footnote", fidx, fidx, paraTargetPath, items, hlRuns[k]);
+                    continue;
+                }
+                if (khNote == NoteRefKind.Endnote)
+                {
+                    int eidx = ++ctx.EndnoteCursor.Index;
+                    EmitNoteReference(word, "endnote", eidx, eidx, paraTargetPath, items, hlRuns[k]);
+                    continue;
+                }
+            }
+>>>>>>> upstream/main
             var rProps = FilterEmittableProps(hlRuns[k].Format);
             // The hyperlink-wrapper keys belong to the <w:hyperlink>, not its
             // child runs — strip them so `add r` doesn't choke / re-wrap.
@@ -3129,8 +5074,29 @@ public static partial class WordBatchEmitter
             if (rProps.TryGetValue("underline", out var u)
                 && string.Equals(u, "single", StringComparison.OrdinalIgnoreCase))
                 rProps.Remove("underline");
+<<<<<<< HEAD
             if (!string.IsNullOrEmpty(hlRuns[k].Text))
                 rProps["text"] = hlRuns[k].Text!;
+=======
+            if (hlRuns[k].Type == "tab")
+                rProps["text"] = "\t";
+            else if (!string.IsNullOrEmpty(hlRuns[k].Text))
+                rProps["text"] = hlRuns[k].Text!;
+            // BUG-DUMP-HYPHEN-RESERIALIZE: a structural hyphen run
+            // (<w:noBreakHyphen/>/<w:softHyphen/>) INSIDE a hyperlink reaches the
+            // structured-hyperlink trailing-run emit, not TryEmitHyphenRun. Emit
+            // it with the hyphen= prop so AddRun rebuilds the element instead of
+            // persisting the U+2011/U+00AD glyph as literal <w:t> text (the glyph
+            // wraps differently and degrades the round-trip). Mirrors the
+            // host-agnostic hyphen emit; AddRun accepts a hyperlink parent.
+            // Read _hasHyphen from the ORIGINAL run Format — FilterEmittableProps
+            // (rProps) strips it via SkipKeys, so it's gone from rProps here.
+            if (hlRuns[k].Format.TryGetValue("_hasHyphen", out var khKindObj))
+            {
+                rProps["hyphen"] = string.Equals(khKindObj?.ToString(), "soft", StringComparison.OrdinalIgnoreCase)
+                    ? "soft" : "noBreak";
+            }
+>>>>>>> upstream/main
             items.Add(new BatchItem
             {
                 Command = "add",
@@ -3164,6 +5130,30 @@ public static partial class WordBatchEmitter
         // text emit. Full rel preservation is a separate, larger effort.
         if (HasExternalRelRef(rawXml!))
         {
+<<<<<<< HEAD
+=======
+            // Ship the SDT through the inlined-parts carrier (verbatim sdtXml +
+            // part{N}/ext{N} data, rel ids rewritten on replay) — same shape as
+            // the block-level EmitSdt and cell-level EmitCellSdt carriers, so
+            // an inline picture control keeps its image. The replay `add sdt`
+            // targets the host paragraph just added by EmitParagraph
+            // (p[last()]), where AddSdt injects a run-level SdtRun. Body host
+            // only: header/footer/cell hosts route through their own emitters.
+            if (parentPath == "/body" && word.GetSdtEmitData(sdt.Path) is { } inlineSdtData)
+            {
+                var carrierProps = PackInlinedPartsProps(inlineSdtData);
+                carrierProps["sdtXml"] = WordHandler.StripVerbatimCommentMarkers(carrierProps["runXml"]);
+                carrierProps.Remove("runXml");
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = "/body/p[last()]",
+                    Type = "sdt",
+                    Props = carrierProps,
+                });
+                return true;
+            }
+>>>>>>> upstream/main
             ctx?.Warnings.Add(new DocxUnsupportedWarning(
                 Element: "sdt.richContent",
                 Path: sdt.Path,
@@ -3211,6 +5201,29 @@ public static partial class WordBatchEmitter
             // <w:sdtPr>/<w:sdtEndPr><w:rPr>; a content rPr sits under <w:r>.
             && System.Text.RegularExpressions.Regex.IsMatch(sdtXml, "<w:r[ >].*?<w:rPr"))
             return true;
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-H80-1: a run-level SDT whose content carries a tracked change
+        // (<w:del>/<w:ins>/<w:moveFrom>/<w:moveTo>) cannot round-trip through the
+        // flat `add sdt text=` path — a del-only content paragraph (no live run)
+        // flattens to an empty run and the deletion is silently dropped. This is
+        // the inline-path counterpart of the block-SDT fix (IsRichBlockSdt in
+        // WordBatchEmitter.Resources.cs); the block fix did not cover this path.
+        if (sdtXml.Contains("<w:del", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:ins", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:moveFrom", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:moveTo", StringComparison.Ordinal))
+            return true;
+        // BUG-DUMP-H94: a run-level SDT whose content carries a range/anchor marker
+        // (<w:bookmarkStart/End>, <w:commentRangeStart/End> / <w:commentReference>,
+        // <w:permStart/End>) loses those markers through the flat `add sdt text=`
+        // path (seeds only text). Inline-path counterpart of the IsRichBlockSdt
+        // fix; force the verbatim raw-set path.
+        if (sdtXml.Contains("<w:bookmark", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:comment", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:perm", StringComparison.Ordinal))
+            return true;
+>>>>>>> upstream/main
         return sdtXml.Contains("<w:hyperlink", StringComparison.Ordinal)
             || sdtXml.Contains("<w:fldChar", StringComparison.Ordinal)
             || sdtXml.Contains("w:instrText", StringComparison.Ordinal)
@@ -3218,7 +5231,26 @@ public static partial class WordBatchEmitter
             || sdtXml.Contains("<w:drawing", StringComparison.Ordinal)
             || sdtXml.Contains("<w:br", StringComparison.Ordinal)
             || sdtXml.Contains("<w:tab", StringComparison.Ordinal)
+<<<<<<< HEAD
             || sdtXml.Contains("<w:cr", StringComparison.Ordinal);
+=======
+            || sdtXml.Contains("<w:cr", StringComparison.Ordinal)
+            // BUG-DUMP-H95: text-less run-content the typed path drops (produce no
+            // <w:t>) — symbol, positional tab (<w:ptab> ≠ <w:tab>), hyphen markers.
+            || sdtXml.Contains("<w:sym", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:ptab", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:noBreakHyphen", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:softHyphen", StringComparison.Ordinal)
+            // BUG-DUMP-EQUATION-SDT: an EQUATION content control (<w:sdtPr><w:equation/>
+            // … <w:sdtContent><m:oMathPara>/<m:oMath>) carries its math in m: runs
+            // (<m:r>/<m:t>), not <w:r>/<w:t>, so none of the run checks above fire and
+            // the typed `add sdt` path silently dropped the entire equation (wrapper +
+            // math). Treat any SDT carrying math content — or the <w:equation/> sdtPr
+            // type marker — as rich so it raw-sets verbatim, preserving the control
+            // type and the equation.
+            || sdtXml.Contains("<m:oMath", StringComparison.Ordinal)
+            || sdtXml.Contains("<w:equation", StringComparison.Ordinal);
+>>>>>>> upstream/main
     }
 
     // Collapse OOXML complex field chains (fldChar(begin) + instrText + …
@@ -3258,8 +5290,23 @@ public static partial class WordBatchEmitter
             hlEnd - hlIdxStart - hlMarker.Length);
         if (!int.TryParse(kStr, out var kIdx)) return paraTargetPath;
         var rebased = paraTargetPath + candidateHlParent.Substring(hlIdxStart);
+<<<<<<< HEAD
         int emittedHls = items.Count(it => it.Type == "hyperlink"
             && string.Equals(it.Parent, paraTargetPath, StringComparison.Ordinal));
+=======
+        // BUG-DUMP-FIELDHL-XPARA: paraTargetPath ("/…/p[last()]") is identical for
+        // every paragraph, so counting hyperlink rows by Parent==paraTargetPath
+        // tallied hyperlinks from ALL prior paragraphs — a tab/ptab/equation run in
+        // a hyperlink that emitted no `add hyperlink` row of its own would inherit a
+        // phantom hyperlink from an earlier paragraph and route to a non-existent
+        // /hyperlink[K]. Count only rows since this paragraph's own `add p`.
+        int lastParaAdd = items.FindLastIndex(it => it.Command == "add" && it.Type == "p");
+        int emittedHls = 0;
+        for (int hi = lastParaAdd + 1; hi < items.Count; hi++)
+            if (items[hi].Type == "hyperlink"
+                && string.Equals(items[hi].Parent, paraTargetPath, StringComparison.Ordinal))
+                emittedHls++;
+>>>>>>> upstream/main
         return emittedHls >= kIdx ? rebased : paraTargetPath;
     }
 
@@ -3303,7 +5350,18 @@ public static partial class WordBatchEmitter
         {
             var run = runs[i];
             string? url = null, anchor = null, hlParent = null;
+<<<<<<< HEAD
             if (run.Type == "run" || run.Type == "r")
+=======
+            // Tab runs INSIDE a hyperlink (a TOC row whose link wraps the
+            // leader tab + page number) carry the same anchor/_hyperlinkParent
+            // markers — include them so the wrapper add is emitted before (and
+            // contains) the tab. Excluding them split the link: the tab run
+            // raced ahead of the wrapper (its parent guard miscounted across
+            // paragraphs sharing the literal /body/p[last()] parent) and the
+            // replay dropped it.
+            if (run.Type == "run" || run.Type == "r" || run.Type == "tab")
+>>>>>>> upstream/main
             {
                 if (run.Format.TryGetValue("url", out var u))
                     url = u?.ToString();
@@ -3331,11 +5389,42 @@ public static partial class WordBatchEmitter
             // values mark a hyperlink boundary even when URL/anchor match.
             int j = i + 1;
             var group = new List<DocumentNode> { run };
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-H99: zero-width position anchors (bookmark/perm markers) that
+            // sit BETWEEN two runs of the SAME hyperlink are stashed here and
+            // re-emitted right after the merged wrapper, so an interior anchor does
+            // not fragment the one <w:hyperlink> into two.
+            var pendingInterior = new List<DocumentNode>();
+>>>>>>> upstream/main
             var sb = new System.Text.StringBuilder(run.Text ?? "");
             while (j < runs.Count)
             {
                 var next = runs[j];
+<<<<<<< HEAD
                 if (next.Type != "run" && next.Type != "r") break;
+=======
+                if (next.Type != "run" && next.Type != "r" && next.Type != "tab")
+                {
+                    // BUG-DUMP-H99: a <w:bookmarkStart/End> or <w:permStart/End>
+                    // interior to a hyperlink (e.g. an _Hlk edit anchor Word inserts
+                    // mid-link) previously broke the coalesce walk here, splitting one
+                    // hyperlink into two on round-trip (silent injection 1→2). When a
+                    // later run with the SAME url/anchor/_hyperlinkParent follows, the
+                    // marker is interior: stash it (re-emitted just after the merged
+                    // wrapper, where the zero-width anchor is position-equivalent) and
+                    // keep coalescing. Any other non-run node — a second hyperlink,
+                    // field, sdt, drawing — is a genuine boundary and still breaks.
+                    if (IsInteriorHyperlinkMarker(next)
+                        && HasSameHyperlinkRunAhead(runs, j + 1, url, anchor, hlParent))
+                    {
+                        pendingInterior.Add(next);
+                        j++;
+                        continue;
+                    }
+                    break;
+                }
+>>>>>>> upstream/main
                 next.Format.TryGetValue("url", out var nUrlObj);
                 next.Format.TryGetValue("anchor", out var nAncObj);
                 next.Format.TryGetValue("_hyperlinkParent", out var nHlpObj);
@@ -3346,7 +5435,11 @@ public static partial class WordBatchEmitter
                 if (!string.Equals(nAnchor, anchor, StringComparison.Ordinal)) break;
                 if (!string.Equals(nHlParent, hlParent, StringComparison.Ordinal)) break;
                 group.Add(next);
+<<<<<<< HEAD
                 sb.Append(next.Text ?? "");
+=======
+                sb.Append(next.Type == "tab" ? "\t" : (next.Text ?? ""));
+>>>>>>> upstream/main
                 j++;
             }
             // BUG-R12A(BUG1): the flat `add hyperlink text=Part1Part2` fast path
@@ -3360,7 +5453,14 @@ public static partial class WordBatchEmitter
             var merged = new DocumentNode
             {
                 Path = run.Path,
+<<<<<<< HEAD
                 Type = run.Type,
+=======
+                // Normalize to "run": a group whose FIRST member is a tab must
+                // not surface as a tab-typed node, or TryEmitTabRun would
+                // intercept it ahead of the hyperlink emit.
+                Type = "run",
+>>>>>>> upstream/main
                 Text = sb.ToString(),
                 Format = new Dictionary<string, object?>(run.Format, StringComparer.OrdinalIgnoreCase),
             };
@@ -3370,11 +5470,53 @@ public static partial class WordBatchEmitter
                 merged.Children = group;
             }
             result.Add(merged);
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-H99: re-emit any interior bookmark/perm markers right after
+            // the merged wrapper (their original document position fell between the
+            // coalesced runs; a zero-width anchor is position-equivalent there).
+            result.AddRange(pendingInterior);
+>>>>>>> upstream/main
             i = j;
         }
         return result;
     }
 
+<<<<<<< HEAD
+=======
+    // BUG-DUMP-H99: zero-width position anchors that may sit interior to a
+    // hyperlink's run sequence. Splitting the coalesce walk at one of these
+    // fragmented a single <w:hyperlink> into two on round-trip.
+    private static bool IsInteriorHyperlinkMarker(DocumentNode n) =>
+        n.Type is "bookmark" or "bookmarkEnd" or "permStart" or "permEnd";
+
+    // True when, looking forward from `from`, the next run/r/tab carries the same
+    // url + anchor + _hyperlinkParent as the group being coalesced — i.e. the
+    // intervening marker(s) are interior to ONE hyperlink rather than separating
+    // two distinct same-target hyperlinks (which carry different _hyperlinkParent).
+    private static bool HasSameHyperlinkRunAhead(List<DocumentNode> runs, int from,
+        string? url, string? anchor, string? hlParent)
+    {
+        for (int k = from; k < runs.Count; k++)
+        {
+            var n = runs[k];
+            if (n.Type == "run" || n.Type == "r" || n.Type == "tab")
+            {
+                n.Format.TryGetValue("url", out var uo);
+                n.Format.TryGetValue("anchor", out var ao);
+                n.Format.TryGetValue("_hyperlinkParent", out var ho);
+                return string.Equals(uo?.ToString(), url, StringComparison.Ordinal)
+                    && string.Equals(ao?.ToString(), anchor, StringComparison.Ordinal)
+                    && string.Equals(ho?.ToString(), hlParent, StringComparison.Ordinal);
+            }
+            // Skip further interior markers; any other node is a boundary.
+            if (IsInteriorHyperlinkMarker(n)) continue;
+            return false;
+        }
+        return false;
+    }
+
+>>>>>>> upstream/main
     // BUG-DUMP-HOIST: run-level character properties that WordHandler.Navigation
     // surfaces on the paragraph node (via the firstRun fallback) but which must
     // NOT ride on `add p` for multi-run paragraphs — every individual run gets

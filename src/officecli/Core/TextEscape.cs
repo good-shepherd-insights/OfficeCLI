@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -16,8 +20,13 @@ namespace OfficeCli.Core;
 /// <c>\n</c> was always consumed by the second replace.
 ///
 /// <see cref="Resolve"/> does a single left-to-right scan that recognizes
+<<<<<<< HEAD
 /// <c>\\</c> (literal backslash), <c>\n</c> (LF), <c>\t</c> (TAB), and
 /// <c>\r</c> (CR). Unknown escape sequences are passed through verbatim
+=======
+/// <c>\\</c> (literal backslash), <c>\n</c> (LF), <c>\t</c> (TAB),
+/// <c>\r</c> (CR), and <c>\v</c> (VT, the soft-line-break char). Unknown escape sequences are passed through verbatim
+>>>>>>> upstream/main
 /// so today's behavior for stray backslashes (e.g. Windows paths typed
 /// without doubling) doesn't regress.
 /// </summary>
@@ -48,6 +57,12 @@ public static class TextEscape
                 case 'n':  sb.Append('\n'); i++; break;
                 case 't':  sb.Append('\t'); i++; break;
                 case 'r':  sb.Append('\r'); i++; break;
+<<<<<<< HEAD
+=======
+                // NEWLINE-SEMANTICS-V2: '\v' = soft line break, the same
+                // two-char escape convenience text= already gives \n / \t.
+                case 'v':  sb.Append('\v'); i++; break;
+>>>>>>> upstream/main
                 default:
                     // Unknown escape — pass the backslash through verbatim
                     // (subsequent char handled on next iteration).
@@ -57,4 +72,21 @@ public static class TextEscape
         }
         return sb.ToString();
     }
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// Inverse of <see cref="Resolve"/>: double every backslash so a value that
+    /// already holds its final text survives a downstream Resolve unchanged.
+    /// Needed when a payload whose escapes are already literal (JSON) is handed
+    /// to the CLI parser, which resolves them. Returns the input unchanged when
+    /// it contains no backslash.
+    /// </summary>
+    public static string Protect(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? string.Empty;
+        if (value.IndexOf('\\') < 0) return value;
+        return value.Replace("\\", "\\\\");
+    }
+>>>>>>> upstream/main
 }

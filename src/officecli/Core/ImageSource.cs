@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Net;
@@ -134,6 +138,12 @@ internal static class ImageSource
 
         var contentType = MimeToContentType(mime);
         var bytes = Convert.FromBase64String(data);
+        // An empty payload decodes "successfully" to zero bytes and would
+        // flow all the way into a 0-byte media part — schema-valid, but the
+        // picture renders broken in Word/PowerPoint. Reject up front, like
+        // the extpart carrier does for empty data.
+        if (bytes.Length == 0)
+            throw new ArgumentException("Invalid data URI: empty base64 payload (would produce a 0-byte image).");
         return (new MemoryStream(bytes), contentType);
     }
 
@@ -142,6 +152,7 @@ internal static class ImageSource
 
     private static (Stream, PartTypeInfo) ResolveUrl(string url)
     {
+<<<<<<< HEAD
         // SSRF guard: validate the *actual* IP at connect time, for every
         // connection including each redirect hop. Redirects stay enabled so
         // legitimate public CDNs that 30x still work, but no hop is allowed to
@@ -180,6 +191,12 @@ internal static class ImageSource
                 }
             }
         };
+=======
+        // SSRF guard lives in the shared SsrfGuard so image and file fetch can
+        // never diverge in policy. See SsrfGuard for the connect-time / redirect
+        // / DNS-rebinding rationale.
+        var handler = SsrfGuard.CreateGuardedHandler("image");
+>>>>>>> upstream/main
 
         using var client = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.Add("User-Agent", "OfficeCLI");
@@ -187,11 +204,21 @@ internal static class ImageSource
         var response = client.GetAsync(url).GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
 
+<<<<<<< HEAD
         // Enforce the size cap whether or not the server sends Content-Length.
         var declared = response.Content.Headers.ContentLength;
         if (declared is > MaxRemoteImageBytes)
             throw new ArgumentException($"Remote image exceeds {MaxRemoteImageBytes / (1024 * 1024)} MB limit.");
         var bytes = ReadBounded(response.Content.ReadAsStream(), MaxRemoteImageBytes, url);
+=======
+        // Enforce the shared size cap whether or not the server sends
+        // Content-Length. ReadBounded lives in SsrfGuard so image and file
+        // fetch share one limit (see SsrfGuard.MaxRemoteBytes).
+        var declared = response.Content.Headers.ContentLength;
+        if (declared is > SsrfGuard.MaxRemoteBytes)
+            throw new ArgumentException($"Remote image exceeds {SsrfGuard.MaxRemoteBytes / (1024 * 1024)} MB limit.");
+        var bytes = SsrfGuard.ReadBounded(response.Content.ReadAsStream(), SsrfGuard.MaxRemoteBytes, url, "image");
+>>>>>>> upstream/main
         var stream = new MemoryStream(bytes);
 
         // Try content-type header first
@@ -279,7 +306,7 @@ internal static class ImageSource
             "image/jpeg" or "image/jpg" => ImagePartType.Jpeg,
             "image/gif" => ImagePartType.Gif,
             "image/bmp" => ImagePartType.Bmp,
-            "image/tiff" => ImagePartType.Tiff,
+            "image/tiff" or "image/tif" => ImagePartType.Tiff,
             "image/svg+xml" => ImagePartType.Svg,
             "image/emf" or "image/x-emf" => ImagePartType.Emf,
             "image/wmf" or "image/x-wmf" => ImagePartType.Wmf,

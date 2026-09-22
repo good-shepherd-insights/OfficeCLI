@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "toc",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["tableofcontents"],
+>>>>>>> upstream/main
   "parent": "body|paragraph",
   "operations": {
     "add": true,

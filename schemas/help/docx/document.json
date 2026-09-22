@@ -432,6 +432,29 @@
       "readback": "true when settings/evenAndOddHeaders is present",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "updateFields": {
+      "type": "bool",
+      "description": "write <w:updateFields w:val=\"true\"/> so Word recomputes every field (TOC / PAGE / NUMPAGES / SEQ / PAGEREF) on open instead of showing the stale write-time cache. Set on /settings or /.",
+      "aliases": ["updateFieldsOnOpen"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "readback": "true when settings/updateFields is present",
+      "enforcement": "report"
+    },
+    "recalcFields": {
+      "type": "enum",
+      "values": ["seq"],
+      "description": "compute and write cached field values officecli CAN evaluate without a layout engine — currently SEQ numbering (Figure/Table 1,2,3… counted in body document order, honouring \\n / \\c / \\r and arabic/roman/alphabetic formats). PAGE/PAGEREF/TOC page numbers need pagination — pair with updateFields=true to defer those to Word. Heading-relative SEQ (\\s) and SEQ outside the body are left for Word. Set on / .",
+      "add": false,
+      "set": true,
+      "get": false,
+      "readback": "n/a (action — writes field result caches; read values back via get/query on the field)",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "autoHyphenation": {
       "type": "bool",
       "description": "enable automatic hyphenation (settings/autoHyphenation).",
@@ -441,6 +464,19 @@
       "readback": "true when settings/autoHyphenation is present",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "trackRevisions": {
+      "type": "bool",
+      "description": "document-level track-changes MODE toggle (settings/trackRevisions; Word: Review > Track Changes). Turns the document into tracked mode so edits made in a word processor become revisions. Distinct from the per-run/paragraph revision.type keys that author the tracked-change DATA itself. Set on /settings or /.",
+      "aliases": ["trackChanges"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "readback": "true when settings/trackRevisions is present",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "defaultTabStop": {
       "type": "string",
       "description": "default tab stop (e.g. \"720\" twips or \"0.5in\").",

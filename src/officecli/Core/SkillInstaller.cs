@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -27,13 +31,26 @@ internal static class SkillInstaller
         (["copilot", "github-copilot"],   "GitHub Copilot", ".copilot",             Path.Combine(".copilot", "skills")),
         (["codex", "openai-codex"],       "Codex CLI",      ".agents",              Path.Combine(".agents", "skills")),
         (["cursor"],                      "Cursor",         ".cursor",              Path.Combine(".cursor", "skills")),
+        // Pi (earendil-works/pi) implements the Agent Skills standard; its
+        // global skill locations are ~/.pi/agent/skills/ and ~/.agents/skills/.
+        // Target the ~/.pi one — the ~/.agents fallback is already covered by
+        // the Codex CLI row when that directory exists.
+        (["pi", "pi-agent"],              "Pi",             ".pi",                  Path.Combine(".pi", "agent", "skills")),
         (["windsurf"],                    "Windsurf",       ".windsurf",            Path.Combine(".windsurf", "skills")),
         (["minimax", "minimax-cli"],      "MiniMax CLI",    ".minimax",             Path.Combine(".minimax", "skills")),
+<<<<<<< HEAD
         (["opencode"],                    "OpenCode",       ".opencode",            Path.Combine(".opencode", "skills")),
+=======
+        (["opencode"],                    "OpenCode",       Path.Combine(".config", "opencode"), Path.Combine(".config", "opencode", "skills")),
+>>>>>>> upstream/main
         (["hermes", "hermes-agent"],      "Hermes Agent",   ".hermes",              Path.Combine(".hermes", "skills")),
         (["openclaw"],                    "OpenClaw",       ".openclaw",            Path.Combine(".openclaw", "skills")),
         (["nanobot"],                     "NanoBot",        Path.Combine(".nanobot", "workspace"),   Path.Combine(".nanobot", "workspace", "skills")),
         (["zeroclaw"],                    "ZeroClaw",       Path.Combine(".zeroclaw", "workspace"),  Path.Combine(".zeroclaw", "workspace", "skills")),
+        // DeepSeek Harness (deepseek-ai/deepseek-harness) scans <dshHome>/skills
+        // where dshHome is $DSH_HOME or ~/.dsh (packages/skill/skill-filesystem).
+        // It also scans ~/.agents/skills, already covered by the Codex CLI row.
+        (["dsh", "deepseek-harness"],     "DeepSeek Harness", ".dsh",               Path.Combine(".dsh", "skills")),
     ];
 
     // Guide name → skill folder name mapping
@@ -48,6 +65,57 @@ internal static class SkillInstaller
         ["academic-paper"]  = "officecli-academic-paper",
         ["data-dashboard"]  = "officecli-data-dashboard",
         ["financial-model"] = "officecli-financial-model",
+        ["word-form"]       = "officecli-word-form",
+    };
+
+    // One-line trigger per skill — a compact, always-on discovery lure injected
+    // into the MCP tool description. Full routing guidance stays lazy (load_skill
+    // with no name returns the catalog; name=X returns the SKILL.md). This is the
+    // "push minimal trigger, pull the detail" half of the discovery design: it
+    // costs a fraction of the full descriptions but is enough to prompt the
+    // agent to load the right skill. Keys must track SkillMap (a missing entry
+    // degrades to the bare name via BuildSkillTriggerSummary; asserted in tests).
+    private static readonly Dictionary<string, string> SkillTriggers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["pptx"]            = "slide decks / presentations",
+        ["word"]            = "Word docs, reports, letters, memos",
+        ["excel"]           = "spreadsheets, financial models, dashboards",
+        ["word-form"]       = "fillable forms, content controls, protected docs",
+        ["morph-ppt"]       = "cross-slide Morph animation / continuous motion",
+        ["morph-ppt-3d"]    = "3D Morph decks (GLB models, camera)",
+        ["pitch-deck"]      = "fundraising / investor decks (seed, Series A/B/C)",
+        ["academic-paper"]  = "academic papers / research reports",
+        ["data-dashboard"]  = "data dashboards",
+        ["financial-model"] = "financial models / projections",
+    };
+
+    /// <summary>
+    /// Compact one-line-per-skill trigger summary for the MCP tool description.
+    /// Always-on but small; the agent reads it to decide which skill to
+    /// <c>load_skill</c>. Order follows SkillMap; a skill without a curated
+    /// trigger degrades to its name so the list never silently drops a skill.
+    /// </summary>
+    public static string BuildSkillTriggerSummary()
+    {
+        var parts = SkillMap.Keys.Select(name =>
+            SkillTriggers.TryGetValue(name, out var t) ? $"{name} → {t}" : name);
+        // Directive, not merely informational: an informational phrasing ("for
+        // the full guide") was empirically ignored even by capable models, which
+        // jumped straight to create/add and guessed the schema. The imperative
+        // FIRST … BEFORE … is what actually triggers a skill load + help-first.
+        return "IMPORTANT — before you create/add/set/remove on any Office file, FIRST run the command "
+            + "`load_skill <X>` for that file type (it loads the build guide and tells you to "
+            + "consult `help` for the schema). Pick X by need: "
+            + string.Join(" · ", parts)
+            + ". (run `load_skill` with no name to list all skills.)";
+    }
+
+    // Bundled skill assets that cannot ride the MCP/CLI text channel intact
+    // (read as text they would corrupt). Listed in the reference manifest but
+    // served only via `officecli skills install`.
+    private static readonly HashSet<string> BinarySkillExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".pptx", ".docx", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".glb", ".pdf", ".zip", ".ico",
     };
 
     /// <summary>
@@ -95,35 +163,51 @@ internal static class SkillInstaller
     /// </summary>
     private static string GetSkillDescription(string folder)
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = $"skills/{folder}/SKILL.md";
+        var desc = GetFullSkillDescription(folder);
+        return desc.Length > 60 ? desc[..57] + "..." : desc;  // truncate for aligned console listing
+    }
 
-        if (resourceName == null) return "";
-
-        var content = LoadEmbeddedResource(resourceName);
-        if (content == null) return "";
-
-        // Parse YAML front-matter: find description field
-        if (!content.StartsWith("---")) return "";
-
+    /// <summary>
+    /// Full (untruncated) front-matter <c>description</c> of a skill's SKILL.md.
+    /// For officecli skills this field carries the routing guidance ("Use when…
+    /// / Trigger on… / Do NOT trigger for…"), so it is exactly what an agent
+    /// needs to pick a skill. Empty string when absent.
+    /// </summary>
+    private static string GetFullSkillDescription(string folder)
+    {
+        var content = LoadEmbeddedResource($"skills/{folder}/SKILL.md");
+        if (content == null || !content.StartsWith("---")) return "";
         var endIdx = content.IndexOf("---", 3);
         if (endIdx < 0) return "";
-
-        var frontMatter = content[3..endIdx];
-        foreach (var line in frontMatter.Split('\n'))
+        foreach (var line in content[3..endIdx].Split('\n'))
         {
             var trimmed = line.Trim();
             if (trimmed.StartsWith("description:", StringComparison.OrdinalIgnoreCase))
-            {
-                var desc = trimmed["description:".Length..].Trim().Trim('"');
-                // Truncate long descriptions for display
-                if (desc.Length > 60)
-                    desc = desc[..57] + "...";
-                return desc;
-            }
+                return trimmed["description:".Length..].Trim().Trim('"');
         }
-
         return "";
+    }
+
+    /// <summary>
+    /// Agent-facing skill catalog: every skill's name plus its full routing
+    /// description, with usage pointers. Returned by <c>load_skill</c> with no
+    /// name (CLI and MCP) so an agent can discover which skill applies before
+    /// drilling into its SKILL.md. Pay-on-demand — not injected into every
+    /// session's tool description.
+    /// </summary>
+    public static string BuildSkillCatalog()
+    {
+        var sb = new StringBuilder();
+        sb.Append("# officecli skills\n\n");
+        sb.Append("Workflow guides for building documents. Match the triggers below, then:\n");
+        sb.Append("- `load_skill <name>` — the skill's full SKILL.md + a manifest of its bundled reference files\n");
+        sb.Append("- `load_skill <name> --path <relpath>` — one bundled reference file\n\n");
+        foreach (var (name, folder) in SkillMap)
+        {
+            var desc = GetFullSkillDescription(folder);
+            sb.Append($"## {name}\n{(desc.Length > 0 ? desc : "(no description)")}\n\n");
+        }
+        return sb.ToString().TrimEnd() + "\n";
     }
 
     /// <summary>
@@ -175,7 +259,103 @@ internal static class SkillInstaller
         var content = LoadEmbeddedResource($"skills/{folder}/SKILL.md");
         if (content == null)
             throw new ArgumentException($"Embedded SKILL.md not found for '{skillName}'");
+<<<<<<< HEAD
         return StripSetupSection(content);
+=======
+        // A SKILL.md is an entry point that defers detail to bundled reference
+        // files (reference/*.md, helper scripts, style libraries). Append a
+        // manifest so a text-channel caller (MCP / CLI, no skill install) knows
+        // those files exist and how to fetch them — otherwise every
+        // "see reference/foo" pointer in the body is a dead link.
+        return StripSetupSection(content) + BuildReferenceManifest(skillName);
+    }
+
+    /// <summary>
+    /// Relative paths of every embedded file for a skill except SKILL.md,
+    /// sorted. Uses resource names only (no content read) so binary assets are
+    /// listed without being mangled.
+    /// </summary>
+    public static IReadOnlyList<string> ListSkillFiles(string skillName)
+    {
+        if (!SkillMap.TryGetValue(skillName, out var folder))
+            throw new ArgumentException($"Unknown skill: {skillName}. Available: {KnownSkillsList()}");
+        var prefix = $"skills/{folder}/";
+        return Assembly.GetExecutingAssembly().GetManifestResourceNames()
+            .Where(n => n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(n => n[prefix.Length..])
+            .Where(rel => !rel.Equals("SKILL.md", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(rel => rel, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Return the text content of one bundled reference file inside a skill
+    /// (e.g. "reference/decision-rules.md"). Shared by the CLI
+    /// `load_skill &lt;name&gt; --path &lt;rel&gt;` command and the MCP
+    /// `load_skill` tool's path= argument. Throws on unknown skill, path
+    /// traversal, a binary asset (cannot ride the text channel), or a missing
+    /// file.
+    /// </summary>
+    public static string LoadSkillFile(string skillName, string relativePath)
+    {
+        if (!SkillMap.TryGetValue(skillName, out var folder))
+            throw new ArgumentException($"Unknown skill: {skillName}. Available: {KnownSkillsList()}");
+        var rel = (relativePath ?? "").Replace('\\', '/').TrimStart('/');
+        if (rel.Length == 0)
+            throw new ArgumentException("path is empty — pass a relative skill file, e.g. reference/decision-rules.md");
+        // Contain to the skill folder: reject traversal and current-dir segments.
+        if (rel.Split('/').Any(seg => seg is ".." or "."))
+            throw new ArgumentException($"Invalid skill file path: {relativePath}");
+        if (BinarySkillExtensions.Contains(Path.GetExtension(rel)))
+            throw new ArgumentException(
+                $"'{rel}' is a binary asset and cannot be served over the text channel. " +
+                $"Install the skill to get it on disk: officecli skills install {skillName}");
+        var content = LoadEmbeddedResource($"skills/{folder}/{rel}");
+        if (content == null)
+            throw new ArgumentException(
+                $"Skill file not found: {rel}. List available files via the manifest at the end of: " +
+                $"officecli load_skill {skillName}");
+        return content;
+    }
+
+    /// <summary>
+    /// Build the "Reference files" manifest appended to a SKILL.md. Deep trees
+    /// (≥ 3 path segments, e.g. a 52-directory style library) collapse to one
+    /// line per second-level directory so the manifest stays compact; shallow
+    /// files (reference/foo.md) are listed individually. Empty string when the
+    /// skill bundles nothing beyond SKILL.md.
+    /// </summary>
+    private static string BuildReferenceManifest(string skillName)
+    {
+        var files = ListSkillFiles(skillName);
+        if (files.Count == 0) return "";
+        var shallow = new List<string>();
+        var deepGroups = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in files)
+        {
+            var segs = f.Split('/');
+            // List shallow files, plus any INDEX.md at any depth — an INDEX is
+            // the documented entry into a collapsed tree (e.g. the style
+            // library), so the agent shouldn't have to guess its path.
+            if (segs.Length <= 2 || segs[^1].Equals("INDEX.md", StringComparison.OrdinalIgnoreCase))
+                shallow.Add(f);
+            else
+            {
+                var key = segs[0] + "/" + segs[1] + "/";
+                deepGroups[key] = deepGroups.GetValueOrDefault(key) + 1;
+            }
+        }
+        var sb = new StringBuilder();
+        sb.Append("\n\n## Reference files (bundled with this skill)\n\n");
+        sb.Append("This skill defers detail to the files below. The body's `reference/…` ");
+        sb.Append("pointers refer to these. Fetch one with:\n");
+        sb.Append($"- `load_skill {skillName} --path <relpath>`\n");
+        sb.Append($"- or install the whole tree to disk: `officecli skills install {skillName}`\n\n");
+        foreach (var f in shallow) sb.Append($"- `{f}`\n");
+        foreach (var (g, n) in deepGroups)
+            sb.Append($"- `{g}` — {n} files (binary assets need `skills install`; browse an `INDEX.md` here if present)\n");
+        return sb.ToString();
+>>>>>>> upstream/main
     }
 
     /// <summary>
@@ -250,7 +430,11 @@ internal static class SkillInstaller
         if (tool.Aliases is null)
         {
             Console.Error.WriteLine($"Unknown agent: {agentKey}");
+<<<<<<< HEAD
             Console.Error.WriteLine("Supported: claude, copilot, codex, cursor, windsurf, minimax, opencode, openclaw, nanobot, zeroclaw, hermes");
+=======
+            Console.Error.WriteLine("Supported: claude, copilot, codex, cursor, pi, windsurf, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, dsh");
+>>>>>>> upstream/main
             return installed;
         }
 
@@ -311,7 +495,11 @@ internal static class SkillInstaller
         }
 
         Console.Error.WriteLine($"Unknown target: {agentKey}");
+<<<<<<< HEAD
         Console.Error.WriteLine("Supported agents: claude, copilot, codex, cursor, windsurf, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, all");
+=======
+        Console.Error.WriteLine("Supported agents: claude, copilot, codex, cursor, pi, windsurf, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, dsh, all");
+>>>>>>> upstream/main
         if (SkillMap.ContainsKey(agentKey))
         {
             Console.Error.WriteLine();

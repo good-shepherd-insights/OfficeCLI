@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "picture",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["image", "img"],
+>>>>>>> upstream/main
   "parent": "paragraph",
   "operations": {
     "add": true,
@@ -22,6 +26,21 @@
     "_shared/picture.docx-xlsx"
   ],
   "properties": {
+<<<<<<< HEAD
+=======
+    "decorative": {
+      "type": "bool",
+      "description": "Mark the picture as decorative for accessibility. Stored as an adec:decorative extension under <wp:docPr> (uri {C183D7F6-DF14-4A22-8298-3B9A5F5C6C3B}). Screen readers skip decorative images; Word treats their alt text as absent.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop decorative=true"
+      ],
+      "readback": "true (only when the decorative ext is present)",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "crop": {
       "type": "string",
       "description": "Crop rectangle in percent (0-100), 1 or 4 comma-separated values (left,top,right,bottom). Stored as <a:srcRect> inside <a:blipFill> (1000ths-of-a-percent). Get emits the canonical 4-value form (e.g. 12,6,18,9); the per-side keys (cropLeft/cropTop/cropRight/cropBottom) are accepted on add/set only.",
@@ -136,7 +155,11 @@
       "add": true,
       "set": true,
       "get": true,
+<<<<<<< HEAD
       "description": "absolute horizontal anchor position in cm (positionH/posOffset).",
+=======
+      "description": "absolute horizontal anchor position (positionH/posOffset). Always pass a unit (cm/in/pt) — a bare number is interpreted as raw EMU (914400 per inch), so hPosition=3 is a 3-EMU offset.",
+>>>>>>> upstream/main
       "examples": [
         "--prop hPosition=3cm"
       ],
@@ -148,7 +171,11 @@
       "add": true,
       "set": true,
       "get": true,
+<<<<<<< HEAD
       "description": "absolute vertical anchor position in cm (positionV/posOffset).",
+=======
+      "description": "absolute vertical anchor position (positionV/posOffset). Always pass a unit (cm/in/pt) — a bare number is interpreted as raw EMU (914400 per inch), so vPosition=4 is a 4-EMU offset.",
+>>>>>>> upstream/main
       "examples": [
         "--prop vPosition=4cm"
       ],
@@ -211,30 +238,50 @@
     },
     "width": {
       "type": "length",
+<<<<<<< HEAD
       "description": "width — cm length (extent.Cy/Cx in EMU formatted to cm).",
+=======
+      "description": "width (extent.Cx). Always pass a unit (cm/in/pt) — a bare number is interpreted as raw EMU (914400 per inch), so width=5 renders an effectively invisible 5-EMU image.",
+>>>>>>> upstream/main
       "aliases": ["w"],
       "add": true,
       "set": true,
       "get": true,
       "examples": [
+<<<<<<< HEAD
         "--prop width=5",
         "--prop width=3in",
         "--prop w=3in"
+=======
+        "--prop width=5cm",
+        "--prop width=3in",
+        "--prop w=120pt"
+>>>>>>> upstream/main
       ],
       "readback": "length string",
       "enforcement": "report"
     },
     "height": {
       "type": "length",
+<<<<<<< HEAD
       "description": "height — cm length (extent.Cy/Cx in EMU formatted to cm).",
+=======
+      "description": "height (extent.Cy). Always pass a unit (cm/in/pt) — a bare number is interpreted as raw EMU (914400 per inch), so height=5 renders an effectively invisible 5-EMU image.",
+>>>>>>> upstream/main
       "aliases": ["h"],
       "add": true,
       "set": true,
       "get": true,
       "examples": [
+<<<<<<< HEAD
         "--prop height=5",
         "--prop height=2in",
         "--prop h=2in"
+=======
+        "--prop height=4cm",
+        "--prop height=2in",
+        "--prop h=90pt"
+>>>>>>> upstream/main
       ],
       "readback": "length string",
       "enforcement": "report"

@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "zoom",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["slidezoom", "slide-zoom"],
+>>>>>>> upstream/main
   "parent": "slide",
   "operations": {
     "add": true,

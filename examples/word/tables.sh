@@ -3,8 +3,9 @@
 # Includes merged cells, multi-level headers, formulas, charts, and other complex scenarios
 # For testing officecli's table processing capabilities
 
-set -e
-
+# NOTE: intentionally NO `set -e`. Like the SDK twin's doc.batch, this script
+# tolerates forward-compat 'UNSUPPORTED props' warnings (officecli exit 2) and
+# keeps building so the full document is produced.
 echo "Using CLI: officecli"
 
 DIR="$(dirname "$0")"
@@ -395,9 +396,10 @@ rm -f "$PPTX"
 officecli create "$PPTX"
 officecli open "$PPTX"
 
-# Slide 1: Title Page
+# Slide 1: Title Page — HIGH-LEVEL (slide background + two text shapes)
 echo "  -> Slide 1: Title Page"
 officecli add "$PPTX" / --type slide
+<<<<<<< HEAD
 officecli raw-set "$PPTX" '/slide[1]' --xpath "/p:sld" --action replace --xml '<p:sld>
   <p:cSld>
     <p:bg><p:bgPr><a:solidFill><a:srgbClr val="1F3864"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>
@@ -417,10 +419,23 @@ officecli raw-set "$PPTX" '/slide[1]' --xpath "/p:sld" --action replace --xml '<
     </p:spTree>
   </p:cSld>
 </p:sld>'
+=======
+officecli set "$PPTX" '/slide[1]' --prop background=1F3864
+officecli add "$PPTX" '/slide[1]' --type shape --prop text="2025 Annual Data Analysis Report" \
+  --prop x=1500000 --prop y=2000000 --prop width=9192000 --prop height=1200000 \
+  --prop size=40 --prop bold=true --prop color=FFFFFF --prop align=center --prop valign=middle
+officecli add "$PPTX" '/slide[1]' --type shape --prop text="Dept Comparison | Performance Overview | Financial Summary" \
+  --prop x=2500000 --prop y=3500000 --prop width=7192000 --prop height=800000 \
+  --prop size=20 --prop color=BDD7EE --prop align=center --prop valign=middle
+>>>>>>> upstream/main
 
-# Slide 2: Data Table
+# Slide 2: Data Table — HIGH-LEVEL (title shape + styled table via add table + per-cell set).
+# Cell values carry thousands separators ("128,000"), so they can't go through the
+# comma-delimited `data=` seed — the table is created empty (rows/cols) and each cell
+# is set individually. headerFill styles row 0; first column gets a light-blue band.
 echo "  -> Slide 2: Data Table"
 officecli add "$PPTX" / --type slide
+<<<<<<< HEAD
 officecli raw-set "$PPTX" '/slide[2]' --xpath "/p:sld" --action replace --xml '<p:sld>
   <p:cSld>
     <p:spTree>
@@ -456,6 +471,39 @@ officecli raw-set "$PPTX" '/slide[2]' --xpath "/p:sld" --action replace --xml '<
     </p:spTree>
   </p:cSld>
 </p:sld>'
+=======
+officecli add "$PPTX" '/slide[2]' --type shape --prop text="Quarterly Sales by Department" \
+  --prop x=500000 --prop y=200000 --prop width=11192000 --prop height=600000 \
+  --prop size=28 --prop bold=true --prop color=1F3864
+officecli add "$PPTX" '/slide[2]' --type table --prop rows=6 --prop cols=5 \
+  --prop headerFill=2E75B6 --prop firstRow=true \
+  --prop x=500000 --prop y=1000000 --prop width=11192000 --prop height=4500000
+
+# Header row (white, bold, centered).
+c=1
+for h in Department Q1 Q2 Q3 Q4; do
+  officecli set "$PPTX" "/slide[2]/table[1]/cell[1,$c]" --prop text="$h" --prop bold=true --prop color=FFFFFF --prop align=center
+  c=$((c+1))
+done
+
+# Body rows: "label|Q1|Q2|Q3|Q4" ('|' avoids clashing with the values' commas).
+# First column carries a light-blue band fill; the rest are plain centered.
+r_idx=2
+for row in \
+  "Engineering|128,000|156,000|189,000|210,000" \
+  "Marketing|95,000|112,000|138,000|165,000" \
+  "Operations|76,000|89,000|102,000|118,000" \
+  "Sales|230,000|275,000|310,000|356,000" \
+  "HR|45,000|48,000|52,000|55,000"; do
+  IFS='|' read -r label q1 q2 q3 q4 <<< "$row"
+  officecli set "$PPTX" "/slide[2]/table[1]/cell[$r_idx,1]" --prop text="$label" --prop fill=DEEAF6 --prop align=center
+  officecli set "$PPTX" "/slide[2]/table[1]/cell[$r_idx,2]" --prop text="$q1" --prop align=center
+  officecli set "$PPTX" "/slide[2]/table[1]/cell[$r_idx,3]" --prop text="$q2" --prop align=center
+  officecli set "$PPTX" "/slide[2]/table[1]/cell[$r_idx,4]" --prop text="$q3" --prop align=center
+  officecli set "$PPTX" "/slide[2]/table[1]/cell[$r_idx,5]" --prop text="$q4" --prop align=center
+  r_idx=$((r_idx+1))
+done
+>>>>>>> upstream/main
 
 # Slide 3: Pie Chart Analysis
 echo "  -> Slide 3: Pie Chart Analysis"

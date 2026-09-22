@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -90,6 +94,22 @@ public partial class WordHandler
         // geometry forwards those keys and takes the normal path below.
         bool bareSection = properties.TryGetValue("empty", out var emptyFlag) && IsTruthy(emptyFlag);
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-SECT-TYPEINJECT: a source sectPr that OMITTED <w:type>
+        // (deferring to the OOXML default, nextPage) must round-trip WITHOUT
+        // one — fabricating <w:type w:val="nextPage"/> turns an implicit break
+        // into an EXPLICIT section page break that Word honors as a hard page
+        // boundary → +1 page (NAR1 27→28). The `empty` flag only covered a
+        // fully childless sectPr; a sectPr with geometry (pgSz/docGrid) but no
+        // <w:type> fell through to the default-stamp. The dump signals this with
+        // an explicit `notype=true` (emitted ONLY when the source sectPr had
+        // children but no <w:type>); on that signal we skip the stamp. An
+        // INTERACTIVE `add section` (no notype flag) keeps the default-stamp so
+        // the break renders — that path relies on the explicit <w:type>.
+        bool noType = properties.TryGetValue("notype", out var noTypeFlag) && IsTruthy(noTypeFlag);
+
+>>>>>>> upstream/main
         // Section break: adds SectionProperties to the last paragraph before the break point
         var breakType = properties.GetValueOrDefault("type", "nextPage").ToLowerInvariant();
         var sectType = breakType switch
@@ -118,7 +138,11 @@ public partial class WordHandler
         // section — the source had no <w:type> and fabricating one (the OOXML
         // default is nextPage, so omitting it is equivalent) breaks faithful
         // round-trip. A non-bare section always stamps the type.
+<<<<<<< HEAD
         if (!bareSection)
+=======
+        if (!bareSection && !noType)
+>>>>>>> upstream/main
             InsertSectPrChildInOrder(sectPr, new SectionType { Val = sectType });
 
         // Ensure body-level sectPr has pgSz/pgMar (fix for docs created by older versions)
@@ -153,29 +177,52 @@ public partial class WordHandler
         // produced a contradictory `<w:pgSz w:w="11906" w:h="16838"
         // w:orient="landscape"/>` on dump→batch replay. Orient is set below
         // (explicit prop) or derived from final W/H after all overrides land.
+<<<<<<< HEAD
         var srcPageSize = bodySectPr?.GetFirstChild<PageSize>();
         InsertSectPrChildInOrder(sectPr, new PageSize
         {
             Width = srcPageSize?.Width ?? WordPageDefaults.A4WidthTwips,
             Height = srcPageSize?.Height ?? WordPageDefaults.A4HeightTwips
+=======
+        // Copy values, not the UInt32Value references — sharing them would
+        // alias the new sectPr's dimensions onto the source body sectPr, so a
+        // later orientation swap on the new section mutates the body section
+        // simultaneously (and any subsequent section that inherits from body
+        // sees the corrupted dimensions).
+        var srcPageSize = bodySectPr?.GetFirstChild<PageSize>();
+        InsertSectPrChildInOrder(sectPr, new PageSize
+        {
+            Width = srcPageSize?.Width?.Value ?? WordPageDefaults.A4WidthTwips,
+            Height = srcPageSize?.Height?.Value ?? WordPageDefaults.A4HeightTwips
+>>>>>>> upstream/main
         });
         var srcMargin = bodySectPr?.GetFirstChild<PageMargin>();
         InsertSectPrChildInOrder(sectPr, new PageMargin
         {
-            Top = srcMargin?.Top ?? 1440,
-            Bottom = srcMargin?.Bottom ?? 1440,
-            Left = srcMargin?.Left ?? 1800,
-            Right = srcMargin?.Right ?? 1800
+            Top = srcMargin?.Top?.Value ?? 1440,
+            Bottom = srcMargin?.Bottom?.Value ?? 1440,
+            Left = srcMargin?.Left?.Value ?? 1800,
+            Right = srcMargin?.Right?.Value ?? 1800
         });
 
         // Allow per-section overrides
-        if (properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("pageWidth", out sw) || properties.TryGetValue("width", out sw))
+        bool explicitWidth = properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("pageWidth", out sw) || properties.TryGetValue("width", out sw);
+        if (explicitWidth)
         {
+<<<<<<< HEAD
             (EnsureSectPrChild<PageSize>(sectPr)).Width = ParseTwips(sw);
+=======
+            (EnsureSectPrChild<PageSize>(sectPr)).Width = ParseTwips(sw!);
+>>>>>>> upstream/main
         }
-        if (properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("pageHeight", out sh) || properties.TryGetValue("height", out sh))
+        bool explicitHeight = properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("pageHeight", out sh) || properties.TryGetValue("height", out sh);
+        if (explicitHeight)
         {
+<<<<<<< HEAD
             (EnsureSectPrChild<PageSize>(sectPr)).Height = ParseTwips(sh);
+=======
+            (EnsureSectPrChild<PageSize>(sectPr)).Height = ParseTwips(sh!);
+>>>>>>> upstream/main
         }
         if (properties.TryGetValue("orientation", out var orient))
         {
@@ -183,11 +230,36 @@ public partial class WordHandler
             ps.Orient = orient.ToLowerInvariant() == "landscape"
                 ? PageOrientationValues.Landscape
                 : PageOrientationValues.Portrait;
-            // Swap width/height if dimensions don't match orientation
-            if (ps.Orient == PageOrientationValues.Landscape && ps.Width < ps.Height)
-                (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
-            if (ps.Orient == PageOrientationValues.Portrait && ps.Width > ps.Height)
-                (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
+            // BUG-DUMP-SECT-ORIENT-SWAP: only auto-swap W/H to match the
+            // orientation flag when the caller did NOT supply both explicit
+            // dimensions. `add section --prop orientation=landscape` with
+            // inherited portrait dims wants the swap (a convenience); but on
+            // dump→batch replay the source's pgSz is authoritative — Word
+            // renders w:w/w:h literally and w:orient is only a printer/UI hint.
+            // A section legitimately carrying w<h with orient=landscape (e.g. an
+            // 11"-wide × 15.75"-tall page) must NOT be rotated, or it becomes
+            // 15.75"×11", shrinks the usable height, and reflows onto an extra
+            // page on round-trip.
+            bool dimsAuthoritative = explicitWidth && explicitHeight;
+            if (!dimsAuthoritative)
+            {
+                if (ps.Orient == PageOrientationValues.Landscape && ps.Width < ps.Height)
+                    (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
+                if (ps.Orient == PageOrientationValues.Portrait && ps.Width > ps.Height)
+                    (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
+            }
+        }
+        else
+        {
+            // BUG-DUMP-SECT-ORIENT: no explicit orientation prop. Derive the
+            // landscape flag from the section's own final W/H so the section
+            // never carries a contradictory orient inherited from another
+            // section. Width>Height ⇒ landscape; otherwise leave orient unset
+            // (portrait is the OOXML default; omitting w:orient matches how
+            // Word writes a portrait section, keeping the dump→batch byte shape).
+            var ps = sectPr.GetFirstChild<PageSize>();
+            if (ps?.Width?.Value is uint dw && ps.Height?.Value is uint dh && dw > dh)
+                ps.Orient = PageOrientationValues.Landscape;
         }
         else
         {
@@ -282,7 +354,16 @@ public partial class WordHandler
         // carrier that has only @distance round-trips.
         bool hasLnDist = properties.TryGetValue("lineNumberDistance", out var lnDistVal) ||
                          properties.TryGetValue("linenumberdistance", out lnDistVal);
+<<<<<<< HEAD
         if (hasLineNumbers || hasCountBy || hasLnDist)
+=======
+        // BUG-DUMP-SECT-LNSTART: lnNumType/@w:start — sibling attr to countBy/
+        // distance; mirror TrySetSectionLayout's lineNumberStart case so a
+        // mid-document carrier round-trips its first-line-number.
+        bool hasLnStart = properties.TryGetValue("lineNumberStart", out var lnStartVal) ||
+                          properties.TryGetValue("linenumberstart", out lnStartVal);
+        if (hasLineNumbers || hasCountBy || hasLnDist || hasLnStart)
+>>>>>>> upstream/main
         {
             // BUG-DUMP-SECT-LNDIST: only stamp @w:restart when the source
             // actually carried lineNumbers — fabricating restart="continuous" on
@@ -310,6 +391,16 @@ public partial class WordHandler
                         $"Invalid lineNumberDistance value: '{lnDistVal}'. Must be a non-negative integer (twips).");
                 lnType.Distance = lnDist.ToString();
             }
+<<<<<<< HEAD
+=======
+            if (hasLnStart)
+            {
+                if (!int.TryParse(lnStartVal, out var lnStart) || lnStart < 0)
+                    throw new ArgumentException(
+                        $"Invalid lineNumberStart value: '{lnStartVal}'. Must be a non-negative integer.");
+                lnType.Start = (short)lnStart;
+            }
+>>>>>>> upstream/main
             InsertSectPrChildInOrder(sectPr, lnType);
         }
 
@@ -383,6 +474,59 @@ public partial class WordHandler
             pgNum.Start = startN;
         }
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-SECT-CHAPNUM: chapter-number page numbering on a mid-document
+        // section carrier. CONSISTENCY(add-set-symmetry): mirror TrySetSectionLayout's
+        // chapStyle/chapSep cases so `add section` round-trips them (the carrier
+        // sectPr readback now forwards sectionBreak.chapStyle/chapSep).
+        if (properties.TryGetValue("chapStyle", out var chapStyleVal)
+            || properties.TryGetValue("chapstyle", out chapStyleVal))
+        {
+            if (!byte.TryParse(chapStyleVal, out var lvl) || lvl < 1 || lvl > 9)
+                throw new ArgumentException(
+                    $"Invalid chapStyle value: '{chapStyleVal}'. Must be 1-9 (heading level).");
+            var pgNum = sectPr.GetFirstChild<PageNumberType>();
+            if (pgNum == null)
+            {
+                pgNum = new PageNumberType();
+                InsertSectPrChildInOrder(sectPr, pgNum);
+            }
+            pgNum.ChapterStyle = lvl;
+        }
+        if (properties.TryGetValue("chapSep", out var chapSepVal)
+            || properties.TryGetValue("chapsep", out chapSepVal))
+        {
+            var pgNum = sectPr.GetFirstChild<PageNumberType>();
+            if (pgNum == null)
+            {
+                pgNum = new PageNumberType();
+                InsertSectPrChildInOrder(sectPr, pgNum);
+            }
+            pgNum.ChapterSeparator = chapSepVal.ToLowerInvariant() switch
+            {
+                "hyphen" or "-" => ChapterSeparatorValues.Hyphen,
+                "period" or "." => ChapterSeparatorValues.Period,
+                "colon" or ":" => ChapterSeparatorValues.Colon,
+                "emdash" or "—" => ChapterSeparatorValues.EmDash,
+                "endash" or "–" => ChapterSeparatorValues.EnDash,
+                _ => throw new ArgumentException(
+                    $"Invalid chapSep value: '{chapSepVal}'. Valid: hyphen, period, colon, emDash, enDash.")
+            };
+        }
+
+        // BUG-DUMP-SECT-NOENDNOTE: <w:noEndnote/> suppresses endnote collection for
+        // the section. CONSISTENCY(add-set-symmetry): mirror TrySetSectionLayout's
+        // noendnote case for a mid-document carrier.
+        if ((properties.TryGetValue("noEndnote", out var noEnVal)
+             || properties.TryGetValue("noendnote", out noEnVal))
+            && IsTruthy(noEnVal))
+        {
+            sectPr.RemoveAllChildren<NoEndnote>();
+            InsertSectPrChildInOrder(sectPr, new NoEndnote());
+        }
+
+>>>>>>> upstream/main
         // BUG-DUMP-SECT-VALIGN: vertical text alignment on the page
         // (top/center/bottom/both). CONSISTENCY(add-set-symmetry): mirror
         // TrySetSectionLayout's valign case so `add section --prop vAlign=center`
@@ -445,6 +589,70 @@ public partial class WordHandler
             }
         }
 
+<<<<<<< HEAD
+=======
+        // Page border on a mid-document section carrier. CONSISTENCY(add-set-symmetry):
+        // mirror TrySetSectionLayout's pgborders.<side> / .offsetFrom / .zOrder /
+        // .display cases so `add section --prop pgBorders.top=single;4;auto;24 ...`
+        // round-trips a carrier sectPr's <w:pgBorders> (e.g. a cover page boxing
+        // only its first page via display=firstPage). The dump folds the per-side
+        // sub-keys into the STYLE;SIZE;COLOR;SPACE value ParseBorderValue reads.
+        // Keys consumed here are tracked in sectionAlreadyConsumed below so the
+        // dotted fallback doesn't re-run TypedAttributeFallback against sectPr
+        // (the per-side attrs live on the nested <w:pgBorders>, not sectPr).
+        foreach (var (pk, pv) in properties)
+        {
+            var pkl = pk.ToLowerInvariant();
+            if (!pkl.StartsWith("pgborders.")) continue;
+            switch (pkl)
+            {
+                case "pgborders.top" or "pgborders.left"
+                    or "pgborders.bottom" or "pgborders.right":
+                {
+                    var pb = EnsurePageBorders(sectPr);
+                    var (style, size, color, space) = ParseBorderValue(pv);
+                    var sf = ParseBorderShadowFrame(pv);
+                    switch (pkl)
+                    {
+                        case "pgborders.top":    pb.TopBorder    = MakeBorder<TopBorder>(style, size, color, space, sf.shadow, sf.frame); break;
+                        case "pgborders.left":   pb.LeftBorder   = MakeBorder<LeftBorder>(style, size, color, space, sf.shadow, sf.frame); break;
+                        case "pgborders.bottom": pb.BottomBorder = MakeBorder<BottomBorder>(style, size, color, space, sf.shadow, sf.frame); break;
+                        case "pgborders.right":  pb.RightBorder  = MakeBorder<RightBorder>(style, size, color, space, sf.shadow, sf.frame); break;
+                    }
+                    break;
+                }
+                case "pgborders.offsetfrom":
+                    EnsurePageBorders(sectPr).OffsetFrom = pv.ToLowerInvariant().Trim() switch
+                    {
+                        "page" => PageBorderOffsetValues.Page,
+                        "text" => PageBorderOffsetValues.Text,
+                        _ => throw new ArgumentException(
+                            $"Invalid pgBorders.offsetFrom value: '{pv}'. Valid: page, text.")
+                    };
+                    break;
+                case "pgborders.zorder":
+                    EnsurePageBorders(sectPr).ZOrder = pv.ToLowerInvariant().Trim() switch
+                    {
+                        "front" => PageBorderZOrderValues.Front,
+                        "back" => PageBorderZOrderValues.Back,
+                        _ => throw new ArgumentException(
+                            $"Invalid pgBorders.zOrder value: '{pv}'. Valid: front, back.")
+                    };
+                    break;
+                case "pgborders.display":
+                    EnsurePageBorders(sectPr).Display = pv.ToLowerInvariant().Trim() switch
+                    {
+                        "allpages" => PageBorderDisplayValues.AllPages,
+                        "firstpage" => PageBorderDisplayValues.FirstPage,
+                        "notfirstpage" => PageBorderDisplayValues.NotFirstPage,
+                        _ => throw new ArgumentException(
+                            $"Invalid pgBorders.display value: '{pv}'. Valid: allPages, firstPage, notFirstPage.")
+                    };
+                    break;
+            }
+        }
+
+>>>>>>> upstream/main
         // Dotted-key fallback for sectPr-level attrs not modeled by the
         // hand-rolled blocks above (single-attr forms like docGrid.* or
         // future schema additions). CONSISTENCY(add-set-symmetry).
@@ -461,6 +669,14 @@ public partial class WordHandler
             // applied correctly).
             "columns.separator", "columns.equalwidth", "columns.equalWidth",
             "colwidths", "colWidths", "colspaces", "colSpaces",
+<<<<<<< HEAD
+=======
+            // pgBorders.* consumed by the dedicated block above; their per-side
+            // attrs live on the nested <w:pgBorders>, not sectPr, so the dotted
+            // fallback would falsely flag them unsupported.
+            "pgBorders.top", "pgBorders.left", "pgBorders.bottom", "pgBorders.right",
+            "pgBorders.offsetFrom", "pgBorders.zOrder", "pgBorders.display",
+>>>>>>> upstream/main
         };
         foreach (var (key, value) in properties)
         {
@@ -510,13 +726,61 @@ public partial class WordHandler
         return resultPath;
     }
 
+    // BUG-DUMP-NOTE-DEL: a footnote/endnote/comment whose seed content run carries
+    // track-change attribution (revision.type=del|ins on the `add <kind>` op) must
+    // have that run wrapped in <w:del>/<w:ins> — otherwise a tracked DELETION
+    // resurfaces as LIVE accepted text (a silent meaning change), the same way the
+    // body run path wraps via AddRun. Returns the wrapper (or the run unchanged when
+    // no revision attribution). For w:del the run's <w:t> become <w:delText>.
+    // Nested ins⊃del on a note seed is vanishingly rare and not handled here.
+    private OpenXmlElement ApplyNoteSeedRevision(Run run, Dictionary<string, string> properties)
+    {
+        if (!properties.TryGetValue("revision.type", out var rt)
+            || (rt != "del" && rt != "ins"))
+            return run;
+        OpenXmlElement wrapper = rt == "ins" ? new InsertedRun() : new DeletedRun();
+        string? author = properties.GetValueOrDefault("revision.author");
+        if (!string.IsNullOrEmpty(author))
+        {
+            if (wrapper is InsertedRun iw) iw.Author = author;
+            else if (wrapper is DeletedRun dw) dw.Author = author;
+        }
+        if (properties.TryGetValue("revision.date", out var dstr) && !string.IsNullOrEmpty(dstr)
+            && DateTime.TryParse(dstr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+        {
+            if (wrapper is InsertedRun iw2) iw2.Date = dt;
+            else if (wrapper is DeletedRun dw2) dw2.Date = dt;
+        }
+        var id = properties.GetValueOrDefault("revision.id");
+        if (string.IsNullOrEmpty(id)) id = GenerateRevisionId();
+        if (wrapper is InsertedRun iw3) iw3.Id = id;
+        else if (wrapper is DeletedRun dw3) dw3.Id = id;
+        if (rt == "del")
+            foreach (var t in run.Elements<Text>().ToList())
+                t.Parent?.ReplaceChild(new DeletedText(t.Text ?? "") { Space = t.Space }, t);
+        wrapper.AppendChild(run);
+        return wrapper;
+    }
+
     private string AddFootnote(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
         if (!properties.TryGetValue("text", out var fnText))
             throw new ArgumentException("'text' property is required for footnote type");
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(fnText, "text", allowSoftBreakChar: true);
 
         if (parent is not Paragraph fnPara)
             throw new ArgumentException("Footnotes must be added to a paragraph: /body/p[N]");
+
+        // OOXML: CT_HdrFtr has no footnoteReference content model. A footnote
+        // reference written into a header/footer part is silently ignored by
+        // Word (the note body in the global footnotes part becomes unreachable).
+        // Reject upfront — same silent-accept-bad-OOXML family as altChunk and
+        // nested-SDT.
+        if (parentPath.StartsWith("/header[", StringComparison.OrdinalIgnoreCase)
+            || parentPath.StartsWith("/footer[", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                $"Footnotes cannot be added inside a header or footer (path: {parentPath}). " +
+                "Add footnotes only to body paragraphs: /body/p[N].");
 
         var mainPart2 = _doc.MainDocumentPart!;
         var fnPart = mainPart2.FootnotesPart ?? mainPart2.AddNewPart<FootnotesPart>();
@@ -540,16 +804,73 @@ public partial class WordHandler
         // link instead of inlining a hardcoded vertAlign superscript (which
         // severs the style link). With no referenceStyle, keep the legacy
         // inline superscript.
+<<<<<<< HEAD
         var fnRefMarkRPr = properties.TryGetValue("referenceStyle", out var fnRefStyle)
+=======
+        var fnRefMarkRPr = properties.TryGetValue("referenceMarkRPr", out var fnMarkRPrXml)
+                && !string.IsNullOrEmpty(fnMarkRPrXml)
+            // Verbatim in-note mark rPr forwarded by the dump (rStyle PLUS any
+            // direct rFonts/sz the source put on the mark run).
+            ? new RunProperties(fnMarkRPrXml)
+            : properties.TryGetValue("referenceStyle", out var fnRefStyle)
+>>>>>>> upstream/main
                 && !string.IsNullOrEmpty(fnRefStyle)
             ? new RunProperties(new RunStyle { Val = fnRefStyle })
             : new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript });
         var footnote = new Footnote { Id = fnId };
+<<<<<<< HEAD
         var fnContentPara = new Paragraph(
             new ParagraphProperties(new ParagraphStyleId { Val = "FootnoteText" }),
             new Run(fnRefMarkRPr, new FootnoteReferenceMark()),
             new Run(new Text(" " + fnText) { Space = SpaceProcessingModeValues.Preserve })
         );
+=======
+        // BUG-DUMP-NOTEREF-CUSTOMMARK-BODY: a CUSTOM-mark footnote's body does NOT
+        // begin with the auto-number <w:footnoteRef> — its leading run is the
+        // literal custom glyph (*, †, …) in a run styled FootnoteReference, and
+        // the body reference in the document carries w:customMarkFollows="1" so
+        // Word suppresses the auto-number. Injecting <w:footnoteRef> here prepended
+        // the auto-number to the custom glyph on rebuild ("6*" instead of "*").
+        // When the dump signals a custom mark (referenceCustomMark[Follows]), the
+        // `text` prop already IS that glyph — emit it as a styled mark run and
+        // skip the auto-number FootnoteReferenceMark. Otherwise keep the standard
+        // auto-number mark + text run.
+        bool fnCustomMark =
+            IsTruthy(properties.GetValueOrDefault("referenceCustomMarkFollows"))
+            || (properties.TryGetValue("referenceCustomMark", out var fnBodyMark)
+                && !string.IsNullOrEmpty(fnBodyMark));
+        // The authored text run carries `text` VERBATIM — no synthetic leading
+        // space. Real Word footnotes place no space between the reference mark
+        // and the first content run (the mark's own glyph spacing handles the
+        // gap), so a dump→batch round-trip of a source note must reproduce its
+        // first <w:t> byte-for-byte. A previously prepended " " inflated every
+        // rebuilt footnote's first run by one U+0020; GetFootnoteText trimmed it
+        // back on readback (hiding it from get/view) while the on-disk XML drifted.
+        Paragraph fnContentPara;
+        if (fnCustomMark)
+            // Custom mark: the glyph (text) IS the mark run, styled like the
+            // source (fnRefMarkRPr carries the FootnoteReference rStyle when the
+            // dump forwarded it). No auto-number <w:footnoteRef>.
+            fnContentPara = new Paragraph(
+                new ParagraphProperties(new ParagraphStyleId { Val = "FootnoteText" }),
+                new Run(fnRefMarkRPr, new Text(fnText) { Space = SpaceProcessingModeValues.Preserve })
+            );
+        else
+        {
+            // BUG-DUMP-NOTE-TAB: build the content run via AppendTextWithBreaks so a
+            // tab/newline in the seed text becomes a structural <w:tab/> / <w:br/>
+            // (mirrors `add r`), not a literal U+0009/U+000A glyph. A footnote ref
+            // mark is commonly followed by a <w:tab/> separating the number from the
+            // text; the verbatim Text node dropped that structural tab.
+            var fnTextRun = new Run();
+            AppendTextWithBreaks(fnTextRun, fnText);
+            fnContentPara = new Paragraph(
+                new ParagraphProperties(new ParagraphStyleId { Val = "FootnoteText" }),
+                new Run(fnRefMarkRPr, new FootnoteReferenceMark()),
+                ApplyNoteSeedRevision(fnTextRun, properties)   // BUG-DUMP-NOTE-DEL
+            );
+        }
+>>>>>>> upstream/main
         footnote.AppendChild(fnContentPara);
         // i18n: route remaining keys (direction, font.cs, bold.cs, etc.)
         // through the same paragraph + run helpers SetFootnotePath uses.
@@ -565,11 +886,34 @@ public partial class WordHandler
         // CONSISTENCY(rtl-cascade): if the host paragraph is RTL, stamp
         // <w:rtl/> on the reference run's rPr so the superscript number
         // renders on the correct side of an Arabic / Hebrew paragraph.
+<<<<<<< HEAD
         var fnRefRPr = new RunProperties(new RunStyle { Val = "FootnoteReference" });
         if (fnPara.ParagraphProperties?.BiDi != null)
             ApplyRunFormatting(fnRefRPr, "rtl", "true");
         var fnRefRun = new Run(fnRefRPr, new FootnoteReference { Id = fnId });
         InsertIntoParagraph(fnPara, fnRefRun, index);
+=======
+        // The body reference run can carry direct formatting beyond the char
+        // style (run-level rFonts/sz shrinking the superscript mark). When the
+        // dump forwards the verbatim <w:rPr> (referenceRPr), restore it; else
+        // keep the bare style link.
+        var fnRefRPr = properties.TryGetValue("referenceRPr", out var fnRefRPrXml)
+                && !string.IsNullOrEmpty(fnRefRPrXml)
+            ? new RunProperties(fnRefRPrXml)
+            : new RunProperties(new RunStyle { Val = "FootnoteReference" });
+        if (fnPara.ParagraphProperties?.BiDi != null)
+            ApplyRunFormatting(fnRefRPr, "rtl", "true");
+        // BUG-DUMP-NOTEREF-CUSTOMMARK: a custom-mark reference carries
+        // w:customMarkFollows="1" and the literal mark glyph in a sibling <w:t>
+        // inside the SAME body run. Restore both so the asterisk/dagger survives.
+        var fnRef = new FootnoteReference { Id = fnId };
+        if (IsTruthy(properties.GetValueOrDefault("referenceCustomMarkFollows")))
+            fnRef.CustomMarkFollows = true;
+        var fnRefRun = new Run(fnRefRPr, fnRef);
+        properties.TryGetValue("referenceCustomMark", out var fnMark);
+        var fnToInsert = ApplyNoteRefMarkAndRevision(fnRefRun, fnMark, properties);
+        InsertIntoParagraph(fnPara, fnToInsert, index);
+>>>>>>> upstream/main
 
         var resultPath = $"/footnote[@footnoteId={fnId}]";
         return resultPath;
@@ -579,9 +923,18 @@ public partial class WordHandler
     {
         if (!properties.TryGetValue("text", out var enText))
             throw new ArgumentException("'text' property is required for endnote type");
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(enText, "text", allowSoftBreakChar: true);
 
         if (parent is not Paragraph enPara)
             throw new ArgumentException("Endnotes must be added to a paragraph: /body/p[N]");
+
+        // OOXML: CT_HdrFtr has no endnoteReference content model. Same
+        // silent-accept-bad-OOXML family as footnotes; reject upfront.
+        if (parentPath.StartsWith("/header[", StringComparison.OrdinalIgnoreCase)
+            || parentPath.StartsWith("/footer[", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                $"Endnotes cannot be added inside a header or footer (path: {parentPath}). " +
+                "Add endnotes only to body paragraphs: /body/p[N].");
 
         var mainPart3 = _doc.MainDocumentPart!;
         var enPart = mainPart3.EndnotesPart ?? mainPart3.AddNewPart<EndnotesPart>();
@@ -600,16 +953,53 @@ public partial class WordHandler
         // BUG-DUMP-R42-1: mirror AddFootnote — restore the EndnoteReference
         // char-style link from the carried `referenceStyle` prop, else fall
         // back to the inline vertAlign superscript.
+<<<<<<< HEAD
         var enRefMarkRPr = properties.TryGetValue("referenceStyle", out var enRefStyle)
+=======
+        var enRefMarkRPr = properties.TryGetValue("referenceMarkRPr", out var enMarkRPrXml)
+                && !string.IsNullOrEmpty(enMarkRPrXml)
+            ? new RunProperties(enMarkRPrXml)
+            : properties.TryGetValue("referenceStyle", out var enRefStyle)
+>>>>>>> upstream/main
                 && !string.IsNullOrEmpty(enRefStyle)
             ? new RunProperties(new RunStyle { Val = enRefStyle })
             : new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript });
         var endnote = new Endnote { Id = enId };
+<<<<<<< HEAD
         var enContentPara = new Paragraph(
             new ParagraphProperties(new ParagraphStyleId { Val = "EndnoteText" }),
             new Run(enRefMarkRPr, new EndnoteReferenceMark()),
             new Run(new Text(" " + enText) { Space = SpaceProcessingModeValues.Preserve })
         );
+=======
+        // BUG-DUMP-NOTEREF-CUSTOMMARK-BODY: mirror AddFootnote — a custom-mark
+        // endnote's body leads with the literal glyph (styled EndnoteReference),
+        // not the auto-number <w:endnoteRef>. Injecting the auto-number prepended
+        // it to the glyph ("6*"). Suppress it when the dump signals a custom mark.
+        bool enCustomMark =
+            IsTruthy(properties.GetValueOrDefault("referenceCustomMarkFollows"))
+            || (properties.TryGetValue("referenceCustomMark", out var enBodyMark)
+                && !string.IsNullOrEmpty(enBodyMark));
+        // Verbatim text run — no synthetic leading space (mirrors AddFootnote).
+        Paragraph enContentPara;
+        if (enCustomMark)
+            enContentPara = new Paragraph(
+                new ParagraphProperties(new ParagraphStyleId { Val = "EndnoteText" }),
+                new Run(enRefMarkRPr, new Text(enText) { Space = SpaceProcessingModeValues.Preserve })
+            );
+        else
+        {
+            // BUG-DUMP-NOTE-TAB: see AddFootnote — split tab/newline in the seed
+            // text into structural <w:tab/> / <w:br/> instead of a literal glyph.
+            var enTextRun = new Run();
+            AppendTextWithBreaks(enTextRun, enText);
+            enContentPara = new Paragraph(
+                new ParagraphProperties(new ParagraphStyleId { Val = "EndnoteText" }),
+                new Run(enRefMarkRPr, new EndnoteReferenceMark()),
+                ApplyNoteSeedRevision(enTextRun, properties)   // BUG-DUMP-NOTE-DEL
+            );
+        }
+>>>>>>> upstream/main
         endnote.AppendChild(enContentPara);
         // i18n: route remaining keys through the same helper as footnote.
         var enUnsupported = new List<string>();
@@ -622,14 +1012,89 @@ public partial class WordHandler
         // pPr as first child (InsertIntoParagraph clamps forward past pPr).
         // CONSISTENCY(rtl-cascade): mirror the footnote case — RTL host
         // paragraphs stamp <w:rtl/> on the reference run's rPr.
+<<<<<<< HEAD
         var enRefRPr = new RunProperties(new RunStyle { Val = "EndnoteReference" });
         if (enPara.ParagraphProperties?.BiDi != null)
             ApplyRunFormatting(enRefRPr, "rtl", "true");
         var enRefRun = new Run(enRefRPr, new EndnoteReference { Id = enId });
         InsertIntoParagraph(enPara, enRefRun, index);
+=======
+        // Mirror AddFootnote: restore the body reference run's verbatim rPr
+        // when the dump forwards it (referenceRPr).
+        var enRefRPr = properties.TryGetValue("referenceRPr", out var enRefRPrXml)
+                && !string.IsNullOrEmpty(enRefRPrXml)
+            ? new RunProperties(enRefRPrXml)
+            : new RunProperties(new RunStyle { Val = "EndnoteReference" });
+        if (enPara.ParagraphProperties?.BiDi != null)
+            ApplyRunFormatting(enRefRPr, "rtl", "true");
+        // BUG-DUMP-NOTEREF-CUSTOMMARK: mirror AddFootnote — restore a custom
+        // mark (w:customMarkFollows + sibling <w:t> glyph) in the body ref run.
+        var enRef = new EndnoteReference { Id = enId };
+        if (IsTruthy(properties.GetValueOrDefault("referenceCustomMarkFollows")))
+            enRef.CustomMarkFollows = true;
+        var enRefRun = new Run(enRefRPr, enRef);
+        properties.TryGetValue("referenceCustomMark", out var enMark);
+        var enToInsert = ApplyNoteRefMarkAndRevision(enRefRun, enMark, properties);
+        InsertIntoParagraph(enPara, enToInsert, index);
+>>>>>>> upstream/main
 
         var resultPath = $"/endnote[@endnoteId={enId}]";
         return resultPath;
+    }
+
+    // BUG-DUMP-NOTEREF-CUSTOMMARK-DEL: append a note reference's custom mark glyph
+    // and, when the source reference run was a tracked revision (reference.revision.*
+    // — most commonly a <w:del> wrapping a deleted reference), re-wrap the rebuilt
+    // run so the deletion/insertion/move survives instead of resurfacing as live,
+    // accepted content. In a deletion the mark glyph must ride in <w:delText>.
+    private OpenXmlElement ApplyNoteRefMarkAndRevision(
+        Run refRun, string? customMark, Dictionary<string, string> properties)
+    {
+        var revType = properties.GetValueOrDefault("reference.revision.type");
+        bool isDel = string.Equals(revType, "del", StringComparison.OrdinalIgnoreCase);
+        // BUG-DUMP-H97: a SYMBOL-glyph custom mark (<w:sym w:font=… w:char=…/>)
+        // round-trips via referenceCustomMarkSym ("font:char"); rebuild the <w:sym>
+        // element rather than a <w:t>. Takes precedence over the text mark (a sym
+        // mark carries no <w:t>, so customMark is empty for it).
+        if (properties.TryGetValue("referenceCustomMarkSym", out var symMark)
+            && !string.IsNullOrEmpty(symMark))
+        {
+            var sp = symMark.Split(':', 2);
+            refRun.AppendChild(new SymbolChar
+            {
+                Font = sp[0],
+                Char = sp.Length > 1 ? sp[1] : ""
+            });
+        }
+        else if (!string.IsNullOrEmpty(customMark))
+            refRun.AppendChild(isDel
+                ? new DeletedText(customMark) { Space = SpaceProcessingModeValues.Preserve }
+                : (OpenXmlElement)new Text(customMark) { Space = SpaceProcessingModeValues.Preserve });
+
+        if (string.IsNullOrEmpty(revType))
+            return refRun;
+
+        RunTrackChangeType? wrapper = revType.ToLowerInvariant() switch
+        {
+            "del" => new DeletedRun(),
+            "ins" => new InsertedRun(),
+            "movefrom" => new MoveFromRun(),
+            "moveto" => new MoveToRun(),
+            _ => null
+        };
+        if (wrapper == null)
+            return refRun;
+
+        if (properties.TryGetValue("reference.revision.author", out var au) && !string.IsNullOrEmpty(au))
+            wrapper.Author = au;
+        if (properties.TryGetValue("reference.revision.date", out var dt) && !string.IsNullOrEmpty(dt)
+            && DateTime.TryParse(dt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d))
+            wrapper.Date = d;
+        wrapper.Id = properties.TryGetValue("reference.revision.id", out var rid) && !string.IsNullOrEmpty(rid)
+            ? rid
+            : GenerateRevisionId();
+        wrapper.AppendChild(refRun);
+        return wrapper;
     }
 
     private string AddToc(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
@@ -793,9 +1258,20 @@ public partial class WordHandler
         var explicitName = properties.ContainsKey("name")
             || properties.ContainsKey("styleName")
             || properties.ContainsKey("stylename");
+<<<<<<< HEAD
         var styleName = properties.GetValueOrDefault("name")
                      ?? properties.GetValueOrDefault("styleName")
                      ?? properties.GetValueOrDefault("stylename")
+=======
+        // A built-in id without an explicit name gets Word's display name for
+        // it: Word keys built-ins by name, so `add --type style id=Heading2`
+        // with an empty <w:name> is a nameless custom style to Word (body
+        // text) even though this tool's outline resolves it (issue #407).
+        var styleName = properties.GetValueOrDefault("name")
+                     ?? properties.GetValueOrDefault("styleName")
+                     ?? properties.GetValueOrDefault("stylename")
+                     ?? BuiltInStyleName(styleId)
+>>>>>>> upstream/main
                      ?? (explicitName ? styleId : "");
         var styleType = properties.GetValueOrDefault("type", "paragraph").ToLowerInvariant() switch
         {
@@ -902,7 +1378,11 @@ public partial class WordHandler
             {
                 // Two distinct styles (the styleId collision is already caught
                 // above, so this explicit styleId is unique) sharing a display
+<<<<<<< HEAD
                 // name is a real-world artifact — LibreOffice / document merges
+=======
+                // name is a real-world artifact — third-party editors / document merges
+>>>>>>> upstream/main
                 // produce e.g. styleId "Subtitle1" + "Subtitle10" both named
                 // "Subtitle1". Word keys its Styles pane by name, so the
                 // duplicate collides in the UI, but NOTHING in the document
@@ -965,7 +1445,26 @@ public partial class WordHandler
         // different default and render at the wrong size/alignment.
         if (properties.TryGetValue("default", out var sDefault) && IsTruthy(sDefault))
             newStyle.Default = true;
+<<<<<<< HEAD
         newStyle.AppendChild(new StyleName { Val = styleName });
+=======
+        // BUG-DUMP-STYLE-EMPTY-NAME: append <w:name> only when the caller actually
+        // gave a name. A style added with an id but no name key must round-trip
+        // WITHOUT a <w:name> child — auto table sub-styles (Table1/2/3, …) carry no
+        // <w:name> in the source, and the recursive style-decomposition emit drops
+        // an empty name from the shell props, so explicitName is false here for
+        // them. The old unconditional append injected a spurious <w:name w:val=""/>
+        // the source never had (validate-clean and render-identical, but it broke
+        // the decomposition's exact-element-multiset guarantee). BUG-R7-08
+        // (never default the name to the id) is still honored: no name in, no name
+        // out. An explicit empty name (name="" passed) still emits <w:name w:val=""/>.
+        // Exception (issue #407): a built-in id (Heading1, Title, …) always
+        // gets its Word display name — Word keys built-ins by name, so a
+        // nameless "Heading2" is a custom body-text style to it. A source
+        // document's built-ins carry their names, so dump→batch is unaffected.
+        if (explicitName || BuiltInStyleName(styleId) != null)
+            newStyle.AppendChild(new StyleName { Val = styleName });
+>>>>>>> upstream/main
 
         if ((properties.TryGetValue("basedon", out var basedOn) || properties.TryGetValue("basedOn", out basedOn)) && !string.IsNullOrEmpty(basedOn))
             newStyle.AppendChild(new BasedOn { Val = basedOn });
@@ -1030,7 +1529,11 @@ public partial class WordHandler
         // Style paragraph properties
         var stylePPr = new StyleParagraphProperties();
         bool hasPPr = false;
+<<<<<<< HEAD
         if (properties.TryGetValue("align", out var sAlign) || properties.TryGetValue("alignment", out sAlign))
+=======
+        if (properties.TryGetValue("align", out var sAlign) || properties.TryGetValue("alignment", out sAlign) || properties.TryGetValue("jc", out sAlign))
+>>>>>>> upstream/main
         {
             stylePPr.Justification = new Justification { Val = ParseJustification(sAlign) };
             hasPPr = true;
@@ -1234,15 +1737,27 @@ public partial class WordHandler
             styleRPr.FontSize = new FontSize { Val = ((int)Math.Round(ParseFontSize(sSize) * 2, MidpointRounding.AwayFromZero)).ToString() };
             hasRPr = true;
         }
-        if (properties.TryGetValue("bold", out var sBold) && IsTruthy(sBold))
+        // CONSISTENCY(toggle-explicit-false): a style whose rPr declares
+        // <w:b w:val="0"/> overrides an inherited bold (TOC2 un-bolding
+        // TOC1). Truthy-only handling dropped the explicit-off and the
+        // inherited bold bled through on replay.
+        if (properties.TryGetValue("bold", out var sBold))
         {
-            styleRPr.Bold = new Bold();
-            hasRPr = true;
+            if (IsTruthy(sBold)) { styleRPr.Bold = new Bold(); hasRPr = true; }
+            else if (IsExplicitFalseAddOverride(sBold))
+            {
+                styleRPr.Bold = new Bold { Val = OnOffValue.FromBoolean(false) };
+                hasRPr = true;
+            }
         }
-        if (properties.TryGetValue("italic", out var sItalic) && IsTruthy(sItalic))
+        if (properties.TryGetValue("italic", out var sItalic))
         {
-            styleRPr.Italic = new Italic();
-            hasRPr = true;
+            if (IsTruthy(sItalic)) { styleRPr.Italic = new Italic(); hasRPr = true; }
+            else if (IsExplicitFalseAddOverride(sItalic))
+            {
+                styleRPr.Italic = new Italic { Val = OnOffValue.FromBoolean(false) };
+                hasRPr = true;
+            }
         }
         if (properties.TryGetValue("color", out var sColor))
         {
@@ -1258,6 +1773,34 @@ public partial class WordHandler
             ApplyColorTheme(styleColor, colorTheme);
             styleRPr.Color = styleColor;
             hasRPr = true;
+        }
+        // BUG-DUMP-STYLE-W14LIG: OpenType typographic toggles (ligatures /
+        // numForm / numSpacing) on a STYLE's rPr were dropped on round-trip —
+        // AddStyle's typed setters don't cover the w14 extension elements and the
+        // generic per-key fallback (ApplyRunFormatting / GenericXmlQuery) can't
+        // write a w14-namespaced element. A body style that disables ligatures
+        // (`<w14:ligatures w14:val="none"/>` on Normal) then inherited
+        // docDefaults' `standardContextual`, so the whole document re-rendered
+        // with ligatures ON — different glyph shaping/line-wrapping that drifted
+        // the layout across pages. Mirror the run-level ApplyW14ValEffect: "none"
+        // is a real ST_ enum value (explicit disable), never a strip sentinel.
+        foreach (var (w14Key, w14Aliases) in new[]
+        {
+            ("ligatures", new[] { "ligatures" }),
+            ("numForm", new[] { "numForm", "numform" }),
+            ("numSpacing", new[] { "numSpacing", "numspacing" }),
+        })
+        {
+            string? w14Val = null;
+            foreach (var alias in w14Aliases)
+                if (properties.TryGetValue(alias, out w14Val)) break;
+            if (string.IsNullOrEmpty(w14Val)) continue;
+            var w14Child = WordHandler.BuildW14ValElement(w14Key, w14Val);
+            if (w14Child != null)
+            {
+                InsertRunPropInSchemaOrder(styleRPr, w14Child);
+                hasRPr = true;
+            }
         }
         if (hasRPr) newStyle.AppendChild(styleRPr);
 
@@ -1334,6 +1877,15 @@ public partial class WordHandler
             // loop would route `hidden` to ApplyRunFormatting (vanish alias)
             // and double-stamp it on rPr.
             "autoRedefine", "autoredefine", "hidden",
+<<<<<<< HEAD
+=======
+            // customStyle / customstyle consumed in the explicit dispatch above
+            // (sets Style.CustomStyle, BUG-DUMP-R30-1). The dump emits it on
+            // every style entry (Normal included), so without listing it here
+            // the per-key sweep flags every styled docx's round-trip with a
+            // spurious customStyle "(not supported)" warning.
+            "customStyle", "customstyle",
+>>>>>>> upstream/main
             // BUG-DUMP-STYLE-LATENT: latent-style flags consumed in the explicit
             // dispatch above (uiPriority/semiHidden/unhideWhenUsed/qFormat/
             // locked). Without listing them here the per-key fallback loop would
@@ -1350,12 +1902,29 @@ public partial class WordHandler
             "align", "alignment", "spacebefore", "spaceBefore",
             "spaceafter", "spaceAfter", "linespacing", "lineSpacing",
             "spacebeforelines", "spaceBeforeLines", "spaceafterlines", "spaceAfterLines",
+<<<<<<< HEAD
+=======
+            // auto-spacing toggles consumed in the explicit dispatch above; the
+            // dump emits them on styles whose pPr carries <w:spacing
+            // w:beforeAutospacing/@w:afterAutospacing>, so without listing them
+            // the per-key sweep flagged every such style's round-trip.
+            "spacebeforeauto", "spaceBeforeAuto", "beforeautospacing",
+            "spaceafterauto", "spaceAfterAuto", "afterautospacing",
+>>>>>>> upstream/main
             "lineRule", "linerule",
             "font", "size", "bold", "italic", "color",
             "direction", "dir", "bidi",
             "font.ascii", "font.hAnsi", "font.eastAsia", "font.cs",
             "numId", "numid", "ilvl", "numLevel", "numlevel",
             "tabs", "tabstops",
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-STYLE-W14LIG: w14 OpenType toggles consumed by the
+            // explicit StyleRunProperties block above; without listing them the
+            // per-key fallback would route them to GenericXmlQuery (which can't
+            // write a w14-namespaced element) and surface a misleading UNSUPPORTED.
+            "ligatures", "numForm", "numform", "numSpacing", "numspacing",
+>>>>>>> upstream/main
         };
         foreach (var (key, value) in properties)
         {
@@ -1389,6 +1958,26 @@ public partial class WordHandler
                 pPrShd.Shading = ParseShadingValue(value);
                 continue;
             }
+<<<<<<< HEAD
+=======
+            // CONSISTENCY(style-snaptogrid-pPr): <w:snapToGrid> is dual-valid —
+            // legal in BOTH CT_PPr and CT_RPr. On a docGrid document a paragraph
+            // style's pPr-level <w:snapToGrid w:val="0"/> turns OFF grid-snapping
+            // for the whole paragraph (lines keep their natural height); the dump
+            // reader flattens that to the bare `snapToGrid` key. ApplyRunFormatting
+            // (step 1) handles snapToGrid as an rPr toggle, so without this branch
+            // the property round-tripped into rPr (character-level) and the
+            // paragraph re-snapped to the grid — taller lines, cumulative drift
+            // (BUG-DUMP-STYLE-SNAPGRID). Route it to pPr for paragraph/table
+            // styles; character styles fall through to the rPr path below.
+            if (string.Equals(key, "snapToGrid", StringComparison.OrdinalIgnoreCase)
+                && (styleType == StyleValues.Paragraph || styleType == StyleValues.Table))
+            {
+                var pPrSnap = newStyle.StyleParagraphProperties ?? EnsureStyleParagraphProperties(newStyle);
+                pPrSnap.SnapToGrid = new SnapToGrid { Val = OnOffValue.FromBoolean(IsTruthy(value)) };
+                continue;
+            }
+>>>>>>> upstream/main
             // 1) Run-formatting helper (covers underline/strike/highlight/caps/
             //    smallCaps/dstrike/vanish/shadow/emboss/imprint/noProof/rtl/
             //    superscript/subscript/charSpacing/shading/...).
@@ -1531,14 +2120,63 @@ public partial class WordHandler
             LastAddUnsupportedProps.Add(key);
         }
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-STYLE-RPR-ORDER: the rPr is built in two passes — the explicit
+        // dispatch (rFonts/sz/color via SDK typed setters + ligatures via
+        // InsertRunPropInSchemaOrder) then the per-key sweep (size.cs→szCs,
+        // lang.*→lang, … via TypedAttributeFallback/GenericXmlQuery). The sweep
+        // paths call SchemaOrder.Place directly, which lacks the w14-extension
+        // hoist InsertRunPropInSchemaOrder has: when a <w14:ligatures> already
+        // sits in the rPr, the SDK comparator sorts that unknown element to the
+        // front, so Place strands a later standard child (szCs/lang) AFTER the
+        // w14 block — schema-invalid (CT_RPr requires every standard child to
+        // precede the w14 extension) and cascading into a fully scrambled rPr.
+        // Re-seat every standard (non-w14) child through InsertRunPropInSchemaOrder
+        // once at the end: its Place + w14-hoist converge on the correct CT_RPr
+        // order regardless of the pre-existing (scrambled) sibling order.
+        if (newStyle.StyleRunProperties is { } finalRPr)
+        {
+            foreach (var child in finalRPr.ChildElements
+                         .Where(c => c.NamespaceUri != W14Ns).ToList())
+            {
+                child.Remove();
+                InsertRunPropInSchemaOrder(finalRPr, child);
+            }
+        }
+
+>>>>>>> upstream/main
         stylesPart.Styles.AppendChild(newStyle);
         stylesPart.Styles.Save();
+        InvalidateStyleIndex(); // new StyleId must be visible to FindStyleById
 
         var resultPath = $"/styles/{styleId}";
         return resultPath;
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// The abstractNumId / numId values currently defined in the numbering
+    /// part. Used by the batch pre-pass (BatchCompat.RemapNumberingIds) to
+    /// detect collisions when a dump of another document's numbering is
+    /// replayed into this one.
+    /// </summary>
+    internal (HashSet<int> AbstractNumIds, HashSet<int> NumIds) GetNumberingDefinitionIds()
+    {
+        var abs = new HashSet<int>();
+        var nums = new HashSet<int>();
+        var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+        if (numbering == null) return (abs, nums);
+        foreach (var a in numbering.Elements<AbstractNum>())
+            if (a.AbstractNumberId?.Value is int aid) abs.Add(aid);
+        foreach (var n in numbering.Elements<NumberingInstance>())
+            if (n.NumberID?.Value is int nid) nums.Add(nid);
+        return (abs, nums);
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// BUG-R4F-02: true when a &lt;w:num w:numId=N&gt; instance is defined in the
     /// numbering part. The dump emitter consults this to avoid emitting an
     /// `add p {numId:N}` for a paragraph whose numId is dangling (no matching
@@ -1648,7 +2286,11 @@ public partial class WordHandler
         // Read each candidate startOverride.N (levels 0..8) via TryGetValue so
         // the TrackingPropertyDictionary marks consumed keys accessed — a plain
         // `foreach (var kvp in properties)` goes through the Dictionary<,>
+<<<<<<< HEAD
         // enumerator and bypasses access tracking (CLAUDE.md handler-as-truth).
+=======
+        // enumerator and bypasses access tracking (the project conventions handler-as-truth).
+>>>>>>> upstream/main
         for (int lvl = 0; lvl <= 8; lvl++)
         {
             var key = $"startOverride.{lvl}";
@@ -1694,7 +2336,20 @@ public partial class WordHandler
             newNum.AppendChild(lvlOverride);
         }
 
+<<<<<<< HEAD
         numbering.AppendChild(newNum);
+=======
+        // CT_Numbering order: abstractNum*, num*, numIdMacAtCleanup? — a new
+        // <w:num> must precede a trailing <w:numIdMacAtCleanup> (appending after
+        // it is schema-invalid "unexpected w:num child"). Insert before it when
+        // present; else append. CONSISTENCY(numbering-num-before-maccleanup):
+        // mirrors WordHandler.StyleList.cs.
+        var newNumMacCleanup = numbering.GetFirstChild<NumberingIdMacAtCleanup>();
+        if (newNumMacCleanup != null)
+            numbering.InsertBefore(newNum, newNumMacCleanup);
+        else
+            numbering.AppendChild(newNum);
+>>>>>>> upstream/main
         numbering.Save();
         return $"/numbering/num[@id={numId}]";
     }
@@ -2215,7 +2870,11 @@ public partial class WordHandler
         AssignParaId(hPara);
         var hPProps = new ParagraphProperties();
 
+<<<<<<< HEAD
         if (properties.TryGetValue("align", out var hAlign) || properties.TryGetValue("alignment", out hAlign))
+=======
+        if (properties.TryGetValue("align", out var hAlign) || properties.TryGetValue("alignment", out hAlign) || properties.TryGetValue("jc", out hAlign))
+>>>>>>> upstream/main
             hPProps.Justification = new Justification { Val = ParseJustification(hAlign) };
         // Reading direction (Arabic / Hebrew). Parsed here, applied at the
         // end of paragraph build via ApplyDirectionCascade (cascades to all
@@ -2249,6 +2908,7 @@ public partial class WordHandler
 
         if (properties.TryGetValue("text", out var hText))
         {
+            OfficeCli.Core.ParseHelpers.ValidateXmlText(hText, "text");
             var hRun = new Run();
             if (hSharedRProps != null) hRun.AppendChild((RunProperties)hSharedRProps.CloneNode(true));
             hRun.AppendChild(new Text(hText) { Space = SpaceProcessingModeValues.Preserve });
@@ -2411,7 +3071,11 @@ public partial class WordHandler
         AssignParaId(fPara);
         var fPProps = new ParagraphProperties();
 
+<<<<<<< HEAD
         if (properties.TryGetValue("align", out var fAlign) || properties.TryGetValue("alignment", out fAlign))
+=======
+        if (properties.TryGetValue("align", out var fAlign) || properties.TryGetValue("alignment", out fAlign) || properties.TryGetValue("jc", out fAlign))
+>>>>>>> upstream/main
             fPProps.Justification = new Justification { Val = ParseJustification(fAlign) };
         // Reading direction (Arabic / Hebrew) — mirrors AddHeader. Applied
         // at end of paragraph build via ApplyDirectionCascade.
@@ -2444,6 +3108,7 @@ public partial class WordHandler
 
         if (properties.TryGetValue("text", out var fText))
         {
+            OfficeCli.Core.ParseHelpers.ValidateXmlText(fText, "text");
             var fRun = new Run();
             if (sharedRProps != null) fRun.AppendChild((RunProperties)sharedRProps.CloneNode(true));
             fRun.AppendChild(new Text(fText) { Space = SpaceProcessingModeValues.Preserve });

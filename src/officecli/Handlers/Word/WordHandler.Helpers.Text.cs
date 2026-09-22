@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -21,11 +25,22 @@ public partial class WordHandler
     /// </summary>
     private static string GetFootnoteText(OpenXmlElement fnOrEn)
     {
+<<<<<<< HEAD
+=======
+        // No TrimStart: AddFootnote/AddEndnote no longer prepend a synthetic
+        // leading space, so the stored first run is the authored text verbatim
+        // and readback must reflect it byte-faithfully (a genuinely authored
+        // leading space now survives get/view and the dump round-trip).
+>>>>>>> upstream/main
         return string.Join("", fnOrEn.Descendants<Run>()
             .Where(r => r.GetFirstChild<FootnoteReferenceMark>() == null
                      && r.GetFirstChild<EndnoteReferenceMark>() == null)
             .SelectMany(r => r.Elements<Text>())
+<<<<<<< HEAD
             .Select(t => t.Text)).TrimStart();
+=======
+            .Select(t => t.Text));
+>>>>>>> upstream/main
     }
 
     private static string GetParagraphText(Paragraph para)
@@ -65,10 +80,45 @@ public partial class WordHandler
             // surfaces. Read-side only. Mirrors AppendHyperlinkText.
             else if (IsRunContainerWrapper(child))
                 AppendWrapperRunText(sb, child);
+<<<<<<< HEAD
+=======
+            // Tracked-change run containers: <w:ins>/<w:moveTo> wrap runs that
+            // ARE part of the visible text (an insertion, or a move's
+            // destination), so — like a hyperlink/smartTag wrapper — their
+            // inner runs must contribute. The old loop only saw the
+            // paragraph's direct Run children, so a run wrapped in <w:ins>
+            // vanished from readback (get .text / view text returned ""),
+            // leaving a numbered insertion showing its marker with no text.
+            // <w:del>/<w:moveFrom> wrap REMOVED text and are intentionally not
+            // handled — view text reflects how the document reads once pending
+            // changes show through.
+            else if (child is InsertedRun || child is MoveToRun)
+                AppendRevisionRunText(sb, child);
+>>>>>>> upstream/main
         }
         return sb.ToString();
     }
 
+<<<<<<< HEAD
+=======
+    // Walk a <w:ins>/<w:moveTo> run container, recursing into nested runs /
+    // hyperlinks / smartTag wrappers / further tracked-change containers so the
+    // inserted (or moved-in) text surfaces. Mirrors AppendHyperlinkText.
+    private static void AppendRevisionRunText(StringBuilder sb, OpenXmlElement revision)
+    {
+        foreach (var rChild in revision.ChildElements)
+        {
+            if (rChild is Run rRun) sb.Append(GetRunText(rRun));
+            else if (rChild is Hyperlink rHl) AppendHyperlinkText(sb, rHl);
+            else if (rChild is InsertedRun || rChild is MoveToRun) AppendRevisionRunText(sb, rChild);
+            else if (IsRunContainerWrapper(rChild)) AppendWrapperRunText(sb, rChild);
+            else if (rChild.LocalName == "oMath" || rChild is M.OfficeMath)
+                sb.Append(string.Concat(rChild.Descendants<Text>().Select(t => t.Text))
+                    + string.Concat(rChild.Descendants<M.Text>().Select(t => t.Text)));
+        }
+    }
+
+>>>>>>> upstream/main
     // BUG-DUMP-R35-2: a <w:smartTag>/<w:customXml> inline wrapper. These parse
     // as OpenXmlUnknownElement in the schema set we load (the strongly-typed
     // SmartTagRun/CustomXmlRun classes aren't present in this SDK build — same
@@ -91,6 +141,10 @@ public partial class WordHandler
         {
             if (wChild is Run wRun) sb.Append(GetRunText(wRun));
             else if (wChild is Hyperlink wHl) AppendHyperlinkText(sb, wHl);
+<<<<<<< HEAD
+=======
+            else if (wChild is InsertedRun || wChild is MoveToRun) AppendRevisionRunText(sb, wChild);
+>>>>>>> upstream/main
             else if (IsRunContainerWrapper(wChild)) AppendWrapperRunText(sb, wChild);
             else if (wChild.LocalName == "oMath" || wChild is M.OfficeMath)
                 sb.Append(string.Concat(wChild.Descendants<Text>().Select(t => t.Text))
@@ -139,6 +193,10 @@ public partial class WordHandler
         {
             if (hChild is Run hRun) sb.Append(GetRunText(hRun));
             else if (hChild is Hyperlink nested) AppendHyperlinkText(sb, nested);
+<<<<<<< HEAD
+=======
+            else if (hChild is InsertedRun || hChild is MoveToRun) AppendRevisionRunText(sb, hChild);
+>>>>>>> upstream/main
             else if (hChild.LocalName == "oMath" || hChild is M.OfficeMath)
                 sb.Append(string.Concat(hChild.Descendants<Text>().Select(t => t.Text))
                     + string.Concat(hChild.Descendants<M.Text>().Select(t => t.Text)));
@@ -159,6 +217,20 @@ public partial class WordHandler
                 sb.Append(FormulaParser.ToReadableText(child));
             else if (child is Hyperlink hyperlink)
                 sb.Append(string.Concat(hyperlink.Descendants<Text>().Select(t => t.Text)));
+<<<<<<< HEAD
+=======
+            // <w:ins>/<w:moveTo> inserted/moved-in runs are visible text; render
+            // their content (math included) like the direct-child branches above.
+            else if (child is InsertedRun || child is MoveToRun)
+                foreach (var rc in child.ChildElements)
+                {
+                    if (rc is Run rr) sb.Append(GetRunText(rr));
+                    else if (rc.LocalName == "oMath" || rc is M.OfficeMath)
+                        sb.Append(FormulaParser.ToReadableText(rc));
+                    else if (rc is Hyperlink rh)
+                        sb.Append(string.Concat(rh.Descendants<Text>().Select(t => t.Text)));
+                }
+>>>>>>> upstream/main
         }
         return sb.ToString();
     }
@@ -304,6 +376,33 @@ public partial class WordHandler
                 }
                 return true;
             })
+<<<<<<< HEAD
+=======
+            // BUG-DUMP-ALTCONTENT-DOUBLE: a run inside an <mc:AlternateContent>
+            // (a WPS/DrawingML shape with a VML <mc:Fallback>) is NOT caught by
+            // the typed TextBoxContent skip above — the SDK parses the
+            // AlternateContent subtree as OpenXmlUnknownElement, so its inner
+            // <w:txbxContent> is not a typed TextBoxContent and Ancestors<>()
+            // misses it. The drawing run itself is round-tripped VERBATIM via a
+            // raw-set (textbox/drawing emit), so surfacing its inner runs as
+            // plain runs duplicated the text — and BOTH the mc:Choice and the
+            // mc:Fallback branch hold the SAME text, so a single shape's text
+            // ("Australia – Indonesia…") appeared up to FOUR times in the body.
+            // Drop every run whose ancestor chain (below `para`) crosses an
+            // AlternateContent wrapper; the verbatim raw-set carries it.
+            .Where(r =>
+            {
+                foreach (var anc in r.Ancestors())
+                {
+                    if (ReferenceEquals(anc, para)) break; // reached host para
+                    if (anc.LocalName == "AlternateContent"
+                        || anc.LocalName == "Choice"
+                        || anc.LocalName == "Fallback")
+                        return false;
+                }
+                return true;
+            })
+>>>>>>> upstream/main
             .ToList();
     }
 
@@ -339,13 +438,27 @@ public partial class WordHandler
                 // with embedded \n loses the break on dump readback. Skip
                 // page/column breaks — they have no \n source representation
                 // and a paragraph-level `break` property already captures them.
+<<<<<<< HEAD
                 case Break br when br.Type == null || br.Type.Value == BreakValues.TextWrapping:
                     sb.Append('\n'); break;
+=======
+                // NEWLINE-SEMANTICS-V2: soft line breaks read back as '\v'
+                // (Word object model Chr(11)); '\n' now denotes a paragraph
+                // boundary at block level, so a break must not masquerade as
+                // one. AppendTextWithBreaks accepts '\v' (and legacy '\n' in
+                // run scope) back into <w:br/> for the dump round-trip.
+                case Break br when br.Type == null || br.Type.Value == BreakValues.TextWrapping:
+                    sb.Append('\v'); break;
+>>>>>>> upstream/main
                 // BUG-R10A(BUG1): <w:cr/> (CarriageReturn) is a line break too —
                 // same visual effect as a textWrapping <w:br/>. Without this case
                 // GetRunText dropped it and adjacent text merged ("A"+"B" → "AB")
                 // on dump readback. Map to \n so it round-trips through a <w:br/>.
+<<<<<<< HEAD
                 case CarriageReturn: sb.Append('\n'); break;
+=======
+                case CarriageReturn: sb.Append('\v'); break;
+>>>>>>> upstream/main
                 // BUG-DUMP7-01: <w:sym w:font="Wingdings" w:char="F0E0"/> is a
                 // glyph substitution — the run carries no <w:t>. Without a case
                 // here, GetRunText returned empty and WordBatchEmitter's run-emit
@@ -410,6 +523,32 @@ public partial class WordHandler
     // REF/PAGEREF/TOC anchor pointing at it resolves to nothing. A zero-length
     // bookmark (End is the immediate document-order successor of Start) is NOT
     // a span and keeps the single combined `add bookmark` op so it stays empty.
+<<<<<<< HEAD
+=======
+    // Document-order (pre-order) successors of `start` that stay within `root`.
+    // Replaces `root.Descendants()` + skip-until-started: that re-walked the whole
+    // subtree from the top on every call just to REACH bkStart, so classifying N
+    // bookmarks was O(N * position) = O(N²). Walking forward from bkStart is
+    // O(span) — bounded by the first content element / matching end, which for a
+    // typical span is the very next node.
+    private static IEnumerable<OpenXmlElement> ForwardWithin(OpenXmlElement start, OpenXmlElement root)
+    {
+        var n = start;
+        while (true)
+        {
+            OpenXmlElement? next = n.FirstChild ?? n.NextSibling();
+            while (next == null)
+            {
+                n = n.Parent;
+                if (n == null || ReferenceEquals(n, root)) yield break;
+                next = n.NextSibling();
+            }
+            yield return next;
+            n = next;
+        }
+    }
+
+>>>>>>> upstream/main
     private static bool IsContentSpanBookmark(BookmarkStart bkStart)
     {
         var id = bkStart.Id?.Value;
@@ -418,6 +557,7 @@ public partial class WordHandler
             ?? bkStart.Ancestors<TableCell>().FirstOrDefault() as OpenXmlElement
             ?? bkStart.Ancestors().LastOrDefault();
         if (root == null) return false;
+<<<<<<< HEAD
         bool started = false;
         foreach (var el in root.Descendants())
         {
@@ -427,6 +567,39 @@ public partial class WordHandler
                 continue;
             }
             if (el is BookmarkEnd be && be.Id?.Value == id) return false; // adjacent → empty
+=======
+        foreach (var el in ForwardWithin(bkStart, root))
+        {
+            if (el is BookmarkEnd be && be.Id?.Value == id)
+            {
+                // BUG-DUMP-BMSDT-DUP: the matching end lives INSIDE an SDT (raw-set
+                // verbatim, so it carries the end) while the start is OUTSIDE that
+                // SDT. Treat it as a span so the emitter emits an open=true start
+                // (reusing the id) that pairs with the SDT's verbatim end — instead
+                // of a self-contained `add bookmark` that auto-creates a SECOND,
+                // orphan bookmarkEnd (duplicate marker + REB-validate>SRC). A
+                // genuinely adjacent end (not separated into an SDT) stays empty.
+                var endSdt = be.Ancestors().FirstOrDefault(a => a is SdtBlock || a is SdtRun);
+                if (endSdt != null
+                    && !bkStart.Ancestors().Any(a => ReferenceEquals(a, endSdt)))
+                    return true;
+                // BUG-DUMP-BMCELL-DUP: the matching end lives OUTSIDE the start's
+                // table cell — a zero-length bookmark straddling a cell/row boundary
+                // (start the last child of a cell paragraph, end a <w:tr>-level child
+                // between cells, raw-injected verbatim by GetTableStructuralBookmarks
+                // which carries the end). Same shape as the SDT case above: treat it
+                // as a span so the emitter emits an open=true start (reusing the id)
+                // that pairs with the verbatim structural end — NOT a self-contained
+                // `add bookmark` that auto-creates a SECOND, orphan bookmarkEnd
+                // (duplicate/unbalanced marker, silent: the validator does not flag
+                // it). A genuinely adjacent end in the SAME cell stays empty.
+                var startCell = bkStart.Ancestors<TableCell>().FirstOrDefault();
+                if (startCell != null
+                    && !be.Ancestors().Any(a => ReferenceEquals(a, startCell)))
+                    return true;
+                return false; // adjacent → empty
+            }
+>>>>>>> upstream/main
             // Content between Start and End → this is a wrapping span.
             if (el is Run || el is M.OfficeMath || el is M.Paragraph
                 || el is SimpleField || el is Hyperlink)
@@ -435,14 +608,41 @@ public partial class WordHandler
         return false;
     }
 
+<<<<<<< HEAD
+=======
+    // Cached w:id → BookmarkStart lookup within a scope root (per-Body). Replaces
+    // body.Descendants<BookmarkStart>().FirstOrDefault(id), which is O(bookmarks)
+    // per call; dump resolves one per bookmarkEnd, so the scan made dump O(N²) on
+    // bookmark-dense documents. First-wins on duplicate ids, matching the old
+    // FirstOrDefault. Invalidated with the other body caches on any structural
+    // mutation (ClearBodyChildIndex → _bookmarkStartByIdCache = null).
+    private BookmarkStart? FindBookmarkStartById(OpenXmlElement scopeRoot, string id)
+    {
+        _bookmarkStartByIdCache ??= new();
+        if (!_bookmarkStartByIdCache.TryGetValue(scopeRoot, out var map))
+        {
+            map = new(StringComparer.Ordinal);
+            foreach (var bs in scopeRoot.Descendants<BookmarkStart>())
+                if (bs.Id?.Value is { } bid && !map.ContainsKey(bid))
+                    map[bid] = bs;
+            _bookmarkStartByIdCache[scopeRoot] = map;
+        }
+        return map.TryGetValue(id, out var found) ? found : null;
+    }
+
+>>>>>>> upstream/main
     // Overload: classify by the BookmarkEnd half (resolve its paired Start).
     private bool IsContentSpanBookmark(BookmarkEnd bkEnd)
     {
         var id = bkEnd.Id?.Value;
         if (string.IsNullOrEmpty(id)) return false;
         var body = _doc.MainDocumentPart?.Document?.Body;
+<<<<<<< HEAD
         var start = body?.Descendants<BookmarkStart>()
             .FirstOrDefault(bs => bs.Id?.Value == id);
+=======
+        var start = body == null ? null : FindBookmarkStartById(body, id);
+>>>>>>> upstream/main
         return start != null && IsContentSpanBookmark(start);
     }
 
@@ -453,8 +653,12 @@ public partial class WordHandler
         var id = bkEnd.Id?.Value;
         if (string.IsNullOrEmpty(id)) return null;
         var body = _doc.MainDocumentPart?.Document?.Body;
+<<<<<<< HEAD
         var start = body?.Descendants<BookmarkStart>()
             .FirstOrDefault(bs => bs.Id?.Value == id);
+=======
+        var start = body == null ? null : FindBookmarkStartById(body, id);
+>>>>>>> upstream/main
         return start?.Name?.Value;
     }
 

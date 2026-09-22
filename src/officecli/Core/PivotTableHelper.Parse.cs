@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -19,11 +23,30 @@ internal static partial class PivotTableHelper
         if (result.Count == 0 && props.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
         {
             var available = string.Join(", ", headers.Where(h => !string.IsNullOrEmpty(h)));
+<<<<<<< HEAD
             Console.Error.WriteLine($"WARNING: No matching fields for {key}={value}. Available: {available}");
+=======
+            WarnNoMatchingFields(key, value, available);
+>>>>>>> upstream/main
         }
         return result;
     }
 
+<<<<<<< HEAD
+=======
+    // CONSISTENCY(numfmt-warning): JSON mode queues the advisory for the
+    // envelope's warnings[]; plain mode keeps the stderr line (which the
+    // resident server lifts via BuildWarnings).
+    private static void WarnNoMatchingFields(string key, string value, string available)
+    {
+        var message = $"No matching fields for {key}={value}. Available: {available}";
+        if (WarningContext.IsActive)
+            WarningContext.Add(message, "no_matching_fields", $"Available: {available}");
+        else
+            Console.Error.WriteLine($"WARNING: {message}");
+    }
+
+>>>>>>> upstream/main
     private static List<(int idx, string func, string showAs, string name)> ParseValueFieldsWithWarning(
         Dictionary<string, string> props, string key, string[] headers)
     {
@@ -31,7 +54,11 @@ internal static partial class PivotTableHelper
         if (result.Count == 0 && props.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
         {
             var available = string.Join(", ", headers.Where(h => !string.IsNullOrEmpty(h)));
+<<<<<<< HEAD
             Console.Error.WriteLine($"WARNING: No matching fields for {key}={value}. Available: {available}");
+=======
+            WarnNoMatchingFields(key, value, available);
+>>>>>>> upstream/main
         }
         return result;
     }
@@ -174,11 +201,25 @@ internal static partial class PivotTableHelper
                 var trimmed = parts[p].Trim();
                 if (trimmed.StartsWith("name=", StringComparison.OrdinalIgnoreCase))
                 {
+<<<<<<< HEAD
                     customName = trimmed.Substring("name=".Length).Trim();
                     var next = new string[parts.Length - 1];
                     Array.Copy(parts, 0, next, 0, p);
                     if (p < parts.Length - 1)
                         Array.Copy(parts, p + 1, next, p, parts.Length - p - 1);
+=======
+                    // The name consumes EVERYTHING from this segment to the end
+                    // of the spec, re-joined with ':' — display names routinely
+                    // contain literal colons (Excel's CJK default is
+                    // "求和项:<field>"), and dump always emits name= as the
+                    // final segment. Consuming only parts[p] left the name's
+                    // own colon tail behind as a bogus showAs token, making
+                    // every CJK-default-named data field unreplayable.
+                    var joined = string.Join(":", parts.Skip(p)).Trim();
+                    customName = joined.Substring("name=".Length).Trim();
+                    var next = new string[p];
+                    Array.Copy(parts, 0, next, 0, p);
+>>>>>>> upstream/main
                     parts = next;
                     break;
                 }
@@ -379,7 +420,11 @@ internal static partial class PivotTableHelper
     // as distinct values; XML "percent" deserializes to .Percent, and
     // EnumValue<T>.ToString() yields garbage like "showdataasvalues { }"
     // (same class of bug as LineSpacingRuleValues.Auto.ToString() documented
+<<<<<<< HEAD
     // in CLAUDE.md "Known API Quirks"). Reading InnerText sidesteps both
+=======
+    // in the project conventions "Known API Quirks"). Reading InnerText sidesteps both
+>>>>>>> upstream/main
     // traps — no silent enum-fall-through, no SDK ToString() footguns.
     private static string ShowDataAsToCanonicalToken(EnumValue<ShowDataAsValues>? showDataAs)
     {

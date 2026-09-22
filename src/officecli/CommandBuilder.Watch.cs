@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -61,12 +65,21 @@ static partial class CommandBuilder
                     try
                     {
                         using var handler = DocumentHandlerFactory.Open(file.FullName, editable: false);
+<<<<<<< HEAD
                         if (handler is OfficeCli.Handlers.PowerPointHandler ppt)
                             initialHtml = ppt.ViewAsHtml();
                         else if (handler is OfficeCli.Handlers.ExcelHandler excel)
                             initialHtml = excel.ViewAsHtml();
                         else if (handler is OfficeCli.Handlers.WordHandler word)
                             initialHtml = word.ViewAsHtml();
+=======
+                        if (handler is OfficeCli.Handlers.PowerPointHandler)
+                            initialHtml = RenderViaRegistry(handler, "pptx", new OfficeCli.Core.Rendering.RenderOptions());
+                        else if (handler is OfficeCli.Handlers.ExcelHandler)
+                            initialHtml = RenderViaRegistry(handler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions());
+                        else if (handler is OfficeCli.Handlers.WordHandler)
+                            initialHtml = RenderViaRegistry(handler, "docx", new OfficeCli.Core.Rendering.RenderOptions());
+>>>>>>> upstream/main
                     }
                     catch (Exception ex)
                     {

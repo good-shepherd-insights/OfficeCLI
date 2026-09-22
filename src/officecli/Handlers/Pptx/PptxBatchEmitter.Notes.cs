@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using OfficeCli.Core;
@@ -95,6 +99,35 @@ public static partial class PptxBatchEmitter
             resolvedRids.Add(imageInfo.RelId);
         }
 
+<<<<<<< HEAD
+=======
+        // Phase 2a' — external hyperlink relationships in the speaker notes. The
+        // notes raw XML carries <a:hlinkClick r:id="rIdN"> (a URL inserted into a
+        // notes run), but the external relationship is not an embedded part, so
+        // the ImagePart carrier above never re-creates it — the rebuilt notesSlide
+        // kept a dangling rId and PowerPoint refused the whole deck (OPC corrupt).
+        // Pin each id via add-part hyperlink BEFORE the raw-set replace. Mirrors
+        // the slideLayout external-hyperlink carrier (EmitLayoutRawOne).
+        IReadOnlyList<(string RelId, string Target)> noteLinks;
+        try { noteLinks = ppt.GetNoteSlideExternalHyperlinks(slideIdx); }
+        catch { noteLinks = System.Array.Empty<(string, string)>(); }
+        foreach (var (relId, target) in noteLinks)
+        {
+            items.Add(new BatchItem
+            {
+                Command = "add-part",
+                Parent = $"/noteSlide[{slideIdx}]",
+                Type = "hyperlink",
+                Props = new Dictionary<string, string>
+                {
+                    ["rid"] = relId,
+                    ["target"] = target,
+                },
+            });
+            resolvedRids.Add(relId);
+        }
+
+>>>>>>> upstream/main
         // Phase 2b — raw-set replace with the verbatim source /p:notes XML.
         // Mirrors EmitNoteSlideRawOne in PptxBatchEmitter.Resources.cs but
         // is called per-slide here so it lands AFTER the typed add has

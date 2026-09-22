@@ -236,13 +236,21 @@ officecli validate shapes-connectors.pptx
 
 ```bash
 # List all elements on slide 1 (shapes + connectors)
+<<<<<<< HEAD
 officecli query shapes-connectors.pptx '/slide[1]' shape
+=======
+officecli query shapes-connectors.pptx '/slide[1]/shape'
+>>>>>>> upstream/main
 
 # Get the straight connector details
 officecli get shapes-connectors.pptx '/slide[1]/connector[1]'
 
 # Inspect flowchart connectors on slide 2
+<<<<<<< HEAD
 officecli query shapes-connectors.pptx '/slide[2]' connector
+=======
+officecli query shapes-connectors.pptx '/slide[2]/connector'
+>>>>>>> upstream/main
 
 # Get the group on slide 3
 officecli get shapes-connectors.pptx '/slide[3]/group[1]'

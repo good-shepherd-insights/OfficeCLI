@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -45,7 +49,32 @@ internal static partial class ChartHelper
         // matching what a freshly-built N-series chart would use for slot N —
         // not the cloned neighbor's color.
         newSer.GetFirstChild<C.ShapeProperties>()?.Remove();
+<<<<<<< HEAD
         ApplySeriesColor(newSer, DefaultSeriesColors[(int)(newIdx % (uint)DefaultSeriesColors.Length)]);
+=======
+        // color=… (same lenient vocabulary as `set series color=`) overrides
+        // the palette default — the schema declares color add:true, so
+        // silently dropping it violated the help contract.
+        // Palette default: index-based pick collided after remove + re-add: a
+        // chart whose surviving series already hold accent1+accent3 got
+        // accent3 again for the new slot-3 series (two gray bars). Prefer the
+        // first palette entry no surviving series explicitly uses; fall back
+        // to the index rule only when every entry is taken.
+        var color = properties.GetValueOrDefault("color");
+        if (string.IsNullOrEmpty(color))
+        {
+            var usedFills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ser in existing)
+            {
+                var serSpPr = ser.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
+                var fill = serSpPr?.Descendants<Drawing.RgbColorModelHex>().FirstOrDefault()?.Val?.Value;
+                if (!string.IsNullOrEmpty(fill)) usedFills.Add(fill);
+            }
+            color = DefaultSeriesColors.FirstOrDefault(c => !usedFills.Contains(c))
+                ?? DefaultSeriesColors[(int)(newIdx % (uint)DefaultSeriesColors.Length)];
+        }
+        ApplySeriesColor(newSer, color);
+>>>>>>> upstream/main
 
         // Renumber c:idx / c:order on the clone.
         if (newSer.GetFirstChild<C.Index>() is { } ix) ix.Val = newIdx;
@@ -76,12 +105,102 @@ internal static partial class ChartHelper
             else newSer.AppendChild(new C.Values(numLit));
         }
 
+<<<<<<< HEAD
         chartTypeEl.AppendChild(newSer);
+=======
+        // BUG-002: insert directly after the last existing <c:ser>, not at the
+        // end of the chart-type element — CT_*Chart is an ordered sequence and
+        // a ser appended after <c:marker>/<c:axId> fails OOXML validation.
+        chartTypeEl.InsertAfter(newSer, existing[^1]);
+>>>>>>> upstream/main
         chartPart.ChartSpace!.Save();
         return (int)newIdx + 1;
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// BUG-002: rewrite the literal values/categories of series[seriesIdx]
+    /// (1-based) into range references (c:numRef / c:strRef), preserving the
+    /// literal data as the cached snapshot — the same shape
+    /// ApplySeriesReferences emits at chart-Add time. Used by xlsx
+    /// `add --type chart-series` where series data is normally supplied as
+    /// cell ranges. cachedCategories seeds the strCache when the cloned
+    /// series carried no literal categories to convert.
+    /// </summary>
+    internal static void ApplySeriesRangeRefs(
+        ChartPart chartPart, int seriesIdx, string? valuesRef, string? categoriesRef,
+        IReadOnlyList<string>? cachedCategories = null)
+    {
+        if (string.IsNullOrEmpty(valuesRef) && string.IsNullOrEmpty(categoriesRef)) return;
+        var plotArea = chartPart.ChartSpace?.GetFirstChild<C.Chart>()?.GetFirstChild<C.PlotArea>();
+        if (plotArea == null) return;
+        var sers = plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser").ToList();
+        if (seriesIdx < 1 || seriesIdx > sers.Count) return;
+        var ser = sers[seriesIdx - 1];
+
+        if (!string.IsNullOrEmpty(valuesRef))
+        {
+            OpenXmlCompositeElement? valEl = ser.GetFirstChild<C.Values>()
+                ?? (OpenXmlCompositeElement?)ser.GetFirstChild<C.YValues>();
+            if (valEl != null)
+            {
+                var numCache = BuildNumberingCacheFromLiteral(valEl.GetFirstChild<C.NumberLiteral>());
+                valEl.RemoveAllChildren();
+                var numRef = new C.NumberReference(new C.Formula(valuesRef));
+                if (numCache != null) numRef.AppendChild(numCache);
+                valEl.AppendChild(numRef);
+            }
+        }
+
+        // CONSISTENCY(scatter-bubble-no-cat): scatter/bubble series carry
+        // x-data in <c:xVal>, not <c:cat>; skip the cat rewrite for them.
+        if (!string.IsNullOrEmpty(categoriesRef)
+            && ser is not (C.ScatterChartSeries or C.BubbleChartSeries))
+        {
+            C.StringCache? BuildCacheFromLabels() =>
+                cachedCategories is { Count: > 0 }
+                    ? BuildStringCacheFromLabels(cachedCategories)
+                    : null;
+
+            var catEl = ser.GetFirstChild<C.CategoryAxisData>();
+            if (catEl != null)
+            {
+                // The clone may carry a strLit, or a strRef copied from the
+                // source series (whose cache is still valid category text).
+                var strCache = BuildStringCacheFromLiteral(catEl.GetFirstChild<C.StringLiteral>())
+                    ?? catEl.GetFirstChild<C.StringReference>()?.GetFirstChild<C.StringCache>()?.CloneNode(true) as C.StringCache
+                    ?? BuildCacheFromLabels();
+                catEl.RemoveAllChildren();
+                var strRef = new C.StringReference(new C.Formula(categoriesRef));
+                if (strCache != null) strRef.AppendChild(strCache);
+                catEl.AppendChild(strRef);
+            }
+            else
+            {
+                var strRef = new C.StringReference(new C.Formula(categoriesRef));
+                var strCache = BuildCacheFromLabels();
+                if (strCache != null) strRef.AppendChild(strCache);
+                var newCat = new C.CategoryAxisData(strRef);
+                var valAnchor = ser.GetFirstChild<C.Values>();
+                if (valAnchor != null) valAnchor.InsertBeforeSelf(newCat);
+                else ser.AppendChild(newCat);
+            }
+        }
+        chartPart.ChartSpace!.Save();
+    }
+
+    private static C.StringCache BuildStringCacheFromLabels(IReadOnlyList<string> labels)
+    {
+        var cache = new C.StringCache(new C.PointCount { Val = (uint)labels.Count });
+        for (int i = 0; i < labels.Count; i++)
+            cache.AppendChild(new C.StringPoint(new C.NumericValue(labels[i])) { Index = (uint)i });
+        return cache;
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// R22-1: remove the 1-based series[seriesIdx] from a chart. Returns true
     /// when a series was removed. Renumbers the surviving series' idx/order so
     /// they stay contiguous (0-based) — matching how a fresh chart numbers them.
@@ -119,6 +238,16 @@ internal static partial class ChartHelper
         var chart = chartSpace?.GetFirstChild<C.Chart>();
         if (chart == null) { unsupported.AddRange(properties.Keys); return unsupported; }
 
+<<<<<<< HEAD
+=======
+        // CONSISTENCY(series-name-alias): rewrite flat `series{N}Name=` to the
+        // dotted `series{N}.name=` form so Set accepts the same surface as
+        // Add (ParseSeriesData calls this for Add). Without this, series2Name
+        // falls through to the legacy `series{N}=` parser and is reported as
+        // unsupported (int.TryParse("2Name") fails).
+        NormalizeFlatSeriesNameAliases(properties);
+
+>>>>>>> upstream/main
         // R24-3: expand combined "legend.layout=x:N,y:N,w:N,h:N" (and the same
         // form for plotArea/title/trendlineLabel/displayUnitsLabel) into the
         // individual {prefix}.x/y/w/h keys consumed by the dispatch table
@@ -138,7 +267,19 @@ internal static partial class ChartHelper
             // rebuild wipes the secondary axis (R26: combo + secondaryAxis +
             // combotypes left every series on the primary axis).
             if (lower is "combotypes" or "combo.types") return 0;
+<<<<<<< HEAD
             if (lower is "title" or "legend" or "datalabels" or "labels") return 1;
+=======
+            // secondaryaxis hides the secondary category axis (delete=1 +
+            // majorTickMark/tickLblPos=none). It must run BEFORE the chart-level
+            // majortickmark/ticklabelpos setters so those can skip the now-hidden
+            // axis; otherwise the hidden secondary catAx reappears after replay.
+            if (lower is "secondaryaxis" or "secondary") return 1;
+            if (lower is "title" or "legend" or "datalabels" or "labels") return 1;
+            // axis-title TEXT must build the <c:title> element before axistitle.pPr
+            // (order 2) replaces its paragraph properties.
+            if (lower is "axistitle" or "vtitle" or "cattitle" or "htitle") return 1;
+>>>>>>> upstream/main
             return 2;
         }
         var ordered = properties.OrderBy(kv => PropOrder(kv.Key));
@@ -174,6 +315,10 @@ internal static partial class ChartHelper
                         // the new title element is present but suppressed at render.
                         chart.RemoveAllChildren<C.AutoTitleDeleted>();
                         properties.TryGetValue("title.lang", out var setterTitleLang);
+<<<<<<< HEAD
+=======
+                        OfficeCli.Core.ParseHelpers.ValidateXmlText(value, "title");
+>>>>>>> upstream/main
                         chart.PrependChild(BuildChartTitle(value, setterTitleLang));
                     }
                     break;
@@ -213,9 +358,19 @@ internal static partial class ChartHelper
                             case "color":
                             {
                                 rPr.RemoveAllChildren<Drawing.SolidFill>();
+<<<<<<< HEAD
                                 var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
                                 DrawingEffectsHelper.InsertFillInRunProperties(rPr,
                                     new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = rgb }));
+=======
+                                // Chart title text legitimately uses theme colors
+                                // (schemeClr tx1/accent1/…); BuildChartColorElement
+                                // accepts both scheme names and hex, where the bare
+                                // SanitizeColorForOoxml rejected scheme names and
+                                // aborted the whole chart add.
+                                DrawingEffectsHelper.InsertFillInRunProperties(rPr,
+                                    new Drawing.SolidFill(BuildChartColorElement(value)));
+>>>>>>> upstream/main
                                 break;
                             }
                             case "bold":
@@ -251,7 +406,24 @@ internal static partial class ChartHelper
                     if (legend == null) { unsupported.Add(key); break; }
                     legend.RemoveAllChildren<C.TextProperties>();
                     var parts = value.Split(':');
+<<<<<<< HEAD
                     var fontSize = parts.Length > 0 && int.TryParse(parts[0], out var fs) ? fs * 100 : 1000;
+=======
+                    // Strip "pt" suffix and accept fractional sizes (e.g.
+                    // "10.5pt") — without this, int.TryParse("14pt") fails and
+                    // silently falls back to the 10pt default, ignoring the
+                    // user's intended size.
+                    int fontSize = 1000;
+                    if (parts.Length > 0)
+                    {
+                        var fsStr = parts[0].Trim();
+                        if (fsStr.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
+                            fsStr = fsStr[..^2].Trim();
+                        if (double.TryParse(fsStr, System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out var fsD))
+                            fontSize = (int)Math.Round(fsD * 100);
+                    }
+>>>>>>> upstream/main
                     var color = parts.Length > 1 ? parts[1] : null;
                     var fontName = parts.Length > 2 ? parts[2] : null;
                     var defRp = new Drawing.DefaultRunProperties { FontSize = fontSize };
@@ -275,6 +447,7 @@ internal static partial class ChartHelper
                 }
 
                 case "legend":
+<<<<<<< HEAD
                     chart.RemoveAllChildren<C.Legend>();
                     if (!value.Equals("false", StringComparison.OrdinalIgnoreCase) &&
                         !value.Equals("none", StringComparison.OrdinalIgnoreCase))
@@ -292,6 +465,50 @@ internal static partial class ChartHelper
                             new C.LegendPosition { Val = pos },
                             new C.Overlay { Val = false }
                         ), insertBefore);
+=======
+                    if (value.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                        value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Turn the legend off entirely.
+                        chart.RemoveAllChildren<C.Legend>();
+                    }
+                    else
+                    {
+                        // CONSISTENCY(strict-enums / R34-1): validate the position
+                        // BEFORE mutating, so an unknown value (typo) is rejected
+                        // without disturbing the existing legend.
+                        // BUGFIX (EnumExhaustivenessScanTests): the schema lists
+                        // `true` as a valid legend value (mirror of `false`=hide), so
+                        // `legend=true` must show the legend at the default position
+                        // (right) rather than erroring as an invalid position.
+                        var pos = value.Equals("true", StringComparison.OrdinalIgnoreCase)
+                            ? C.LegendPositionValues.Right
+                            : ParseLegendPosition(value);
+                        var legend = chart.GetFirstChild<C.Legend>();
+                        if (legend == null)
+                        {
+                            var plotVisOnly = chart.GetFirstChild<C.PlotVisibleOnly>();
+                            var insertBefore = plotVisOnly as OpenXmlElement ?? chart.LastChild;
+                            chart.InsertBefore(new C.Legend(
+                                new C.LegendPosition { Val = pos },
+                                new C.Overlay { Val = false }
+                            ), insertBefore);
+                        }
+                        else
+                        {
+                            // BUGFIX (CompanionInterferenceScanTests): the legend
+                            // already exists — only change its POSITION, preserving
+                            // txPr (legend font), overlay, legendEntry, layout, spPr,
+                            // etc. The previous RemoveAllChildren<Legend> + rebuild
+                            // wiped legendFont whenever the user only changed the
+                            // legend position. CT_Legend order: legendPos is first.
+                            var posEl = legend.GetFirstChild<C.LegendPosition>();
+                            if (posEl != null)
+                                posEl.Val = pos;
+                            else
+                                legend.InsertAt(new C.LegendPosition { Val = pos }, 0);
+                        }
+>>>>>>> upstream/main
                     }
                     break;
 
@@ -303,7 +520,15 @@ internal static partial class ChartHelper
                     // implicitly enable showVal when used as the dataLabels value. Declared up-front
                     // for the pre-validation step below.
                     var positionValues = new HashSet<string> { "outsideend", "center", "insideend", "insidebase",
+<<<<<<< HEAD
                         "top", "bottom", "left", "right", "bestfit", "t", "b", "l", "r", "outend", "ctr" };
+=======
+                        "top", "bottom", "left", "right", "bestfit", "t", "b", "l", "r", "outend", "ctr",
+                        // Raw schema tokens the Reader emits + remaining friendly
+                        // aliases, so every ParseDataLabelPosition spelling is
+                        // recognized as a position token on this path too.
+                        "inend", "inbase", "inside", "outside", "base", "best" };
+>>>>>>> upstream/main
                     // CONSISTENCY(datalabels-validate-first): the original code called
                     // RemoveAllChildren<C.DataLabels>() BEFORE inspecting tokens, so an unknown
                     // value (e.g. "categoryAndValue") silently wiped the existing dLbls element
@@ -329,6 +554,18 @@ internal static partial class ChartHelper
                     foreach (var chartTypeEl in plotArea2.ChildElements
                         .Where(e => e.LocalName.Contains("Chart") || e.LocalName.Contains("chart")))
                     {
+<<<<<<< HEAD
+=======
+                        // BUGFIX (CompanionInterferenceScanTests): capture an
+                        // existing dLblPos before the rebuild. `dataLabels=value`
+                        // (content only, no position token) used to wipe a
+                        // previously-set `labelPos` because RemoveAllChildren +
+                        // rebuild produced a fresh dLbls with no position. If the
+                        // new value carries no position token, carry the old one
+                        // over (it was already valid for this chart type).
+                        var preservedDLblPos = chartTypeEl.GetFirstChild<C.DataLabels>()
+                            ?.GetFirstChild<C.DataLabelPosition>()?.Val;
+>>>>>>> upstream/main
                         chartTypeEl.RemoveAllChildren<C.DataLabels>();
                         if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
@@ -352,11 +589,19 @@ internal static partial class ChartHelper
                             // positionValues is declared above the validation block.
                             var isPositionValue = parts.Any(p => positionValues.Contains(p));
                             var showVal = parts.Contains("value") || parts.Contains("true") || parts.Contains("all") || isPositionValue;
+<<<<<<< HEAD
                             dl.AppendChild(new C.ShowLegendKey { Val = false });
                             dl.AppendChild(new C.ShowValue { Val = showVal });
                             dl.AppendChild(new C.ShowCategoryName { Val = parts.Contains("category") || parts.Contains("all") });
                             dl.AppendChild(new C.ShowSeriesName { Val = parts.Contains("series") || parts.Contains("all") });
                             dl.AppendChild(new C.ShowPercent { Val = parts.Contains("percent") || parts.Contains("all") });
+=======
+                            // Per CT_DLbls (EG_DLblShared) schema order, dLblPos
+                            // MUST precede showLegendKey/showVal/... Build the
+                            // position element first and append it before the
+                            // show* group; otherwise the validator reports
+                            // "unexpected child element 'c:dLblPos'".
+>>>>>>> upstream/main
                             // If a position value was given, apply it as dLblPos —
                             // but ONLY when the chartType's CT_DLbls accepts the
                             // requested value per ST_DLblPos*. Otherwise the
@@ -380,10 +625,17 @@ internal static partial class ChartHelper
 
                                 bool allowed = !isAreaRadar && posVal switch
                                 {
+<<<<<<< HEAD
                                     "bestfit" => isPieLike,
                                     "outsideend" or "outend" => isBarLike || isPieLike,
                                     "insideend" => isBarLike || isPieLike,
                                     "insidebase" => isBarLike,
+=======
+                                    "bestfit" or "best" => isPieLike,
+                                    "outsideend" or "outside" or "outend" => isBarLike || isPieLike,
+                                    "insideend" or "inside" or "inend" => isBarLike || isPieLike,
+                                    "insidebase" or "inbase" or "base" => isBarLike,
+>>>>>>> upstream/main
                                     "center" or "ctr" => isBarLike || isLineLike || isPieLike,
                                     "top" or "t" => isLineLike,
                                     "bottom" or "b" => isLineLike,
@@ -394,6 +646,7 @@ internal static partial class ChartHelper
 
                                 if (allowed)
                                 {
+<<<<<<< HEAD
                                     var dLblPos = posVal switch
                                     {
                                         "outsideend" or "outend" => C.DataLabelPositionValues.OutsideEnd,
@@ -410,6 +663,24 @@ internal static partial class ChartHelper
                                     dl.AppendChild(new C.DataLabelPosition { Val = dLblPos });
                                 }
                             }
+=======
+                                    dl.AppendChild(new C.DataLabelPosition { Val = ParseDataLabelPosition(posVal) });
+                                }
+                            }
+                            else if (preservedDLblPos != null)
+                            {
+                                // No position token in the new value — preserve the
+                                // pre-existing dLblPos so content-only updates don't
+                                // drop the label position.
+                                dl.AppendChild(new C.DataLabelPosition { Val = preservedDLblPos });
+                            }
+                            // show* group follows dLblPos per schema order.
+                            dl.AppendChild(new C.ShowLegendKey { Val = false });
+                            dl.AppendChild(new C.ShowValue { Val = showVal });
+                            dl.AppendChild(new C.ShowCategoryName { Val = parts.Contains("category") || parts.Contains("all") });
+                            dl.AppendChild(new C.ShowSeriesName { Val = parts.Contains("series") || parts.Contains("all") });
+                            dl.AppendChild(new C.ShowPercent { Val = parts.Contains("percent") || parts.Contains("all") });
+>>>>>>> upstream/main
                             // Insert dLbls before dropLines/hiLowLines/upDownBars/gapWidth/overlap/
                             // showMarker/holeSize/firstSliceAngle/axId per schema order. CT_StockChart
                             // and CT_LineChart both place dLbls before dropLines/hiLowLines/upDownBars;
@@ -421,7 +692,12 @@ internal static partial class ChartHelper
                     break;
                 }
 
+<<<<<<< HEAD
                 case "labelpos" or "labelposition":
+=======
+                case "labelpos" or "labelposition"
+                    or "datalabels.position" or "datalabels.pos" or "datalabels.labelpos":
+>>>>>>> upstream/main
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -640,6 +916,7 @@ internal static partial class ChartHelper
                         ? new C.DateAxis()
                         : new C.CategoryAxis();
                     // CONSISTENCY(catax-dateax-stripcatonly): CT_CatAx defines
+<<<<<<< HEAD
                     // <auto>, <lblAlgn>, <lblOffset>, <noMultiLvlLbl> that
                     // CT_DateAxis does NOT accept. BuildCategoryAxis emits
                     // <lblAlgn> + <lblOffset> by default, so a fresh cat→date
@@ -650,12 +927,30 @@ internal static partial class ChartHelper
                     var catOnlyLocalNames = new System.Collections.Generic.HashSet<string>(
                         System.StringComparer.Ordinal)
                     { "auto", "lblAlgn", "lblOffset", "noMultiLvlLbl" };
+=======
+                    // <lblAlgn> and <noMultiLvlLbl> that CT_DateAx does NOT
+                    // accept (per ECMA-376 CT_DateAx keeps <auto> and
+                    // <lblOffset> — real date axes carry both). Strip only
+                    // the truly cat-only pair on the cat→date path; date→cat
+                    // preserves everything (no incompatible elements in the
+                    // reverse direction).
+                    var catOnlyLocalNames = new System.Collections.Generic.HashSet<string>(
+                        System.StringComparer.Ordinal)
+                    { "lblAlgn", "noMultiLvlLbl" };
+>>>>>>> upstream/main
                     foreach (var child in existing.ChildElements.ToList())
                     {
                         child.Remove();
                         if (wantDate && catOnlyLocalNames.Contains(child.LocalName)) continue;
                         replacement.AppendChild(child);
                     }
+<<<<<<< HEAD
+=======
+                    // baseTimeUnit is NOT hardcoded here: PowerPoint auto-
+                    // selects one when absent, and the axis-level Set surface
+                    // (`set axis[@role=category] baseTimeUnit=…`) carries the
+                    // source's explicit value on dump→replay.
+>>>>>>> upstream/main
                     plotArea2.InsertBefore(replacement, existing);
                     existing.Remove();
                     break;
@@ -792,6 +1087,10 @@ internal static partial class ChartHelper
                     valAxis.RemoveAllChildren<C.Title>();
                     if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
+<<<<<<< HEAD
+=======
+                        OfficeCli.Core.ParseHelpers.ValidateXmlText(value, "axisTitle");
+>>>>>>> upstream/main
                         var insertAfter = (OpenXmlElement?)valAxis.GetFirstChild<C.MinorGridlines>()
                             ?? (OpenXmlElement?)valAxis.GetFirstChild<C.MajorGridlines>()
                             ?? valAxis.GetFirstChild<C.AxisPosition>();
@@ -808,6 +1107,10 @@ internal static partial class ChartHelper
                     catAxis.RemoveAllChildren<C.Title>();
                     if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
+<<<<<<< HEAD
+=======
+                        OfficeCli.Core.ParseHelpers.ValidateXmlText(value, "catTitle");
+>>>>>>> upstream/main
                         var insertAfter = (OpenXmlElement?)catAxis.GetFirstChild<C.MinorGridlines>()
                             ?? (OpenXmlElement?)catAxis.GetFirstChild<C.MajorGridlines>()
                             ?? catAxis.GetFirstChild<C.AxisPosition>();
@@ -822,8 +1125,20 @@ internal static partial class ChartHelper
                     var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
                     var scaling = valAxis?.GetFirstChild<C.Scaling>();
                     if (scaling == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     scaling.RemoveAllChildren<C.MinAxisValue>();
                     scaling.AppendChild(new C.MinAxisValue { Val = ParseHelpers.SafeParseDouble(value, "axismin") });
+=======
+                    var minVal = ParseHelpers.SafeParseDouble(value, "axismin");
+                    // A log-scaled axis cannot have min <= 0 — real Excel refuses
+                    // the file (0x800A03EC). Validate the combined state before
+                    // mutating.
+                    if (minVal <= 0 && scaling.GetFirstChild<C.LogBase>() != null)
+                        throw new ArgumentException(
+                            $"axisMin={value} is invalid on a log-scaled axis: a logarithmic axis minimum must be greater than 0.");
+                    scaling.RemoveAllChildren<C.MinAxisValue>();
+                    scaling.AppendChild(new C.MinAxisValue { Val = minVal });
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -1033,7 +1348,16 @@ internal static partial class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     var widthEmu = (int)(ParseHelpers.SafeParseDouble(value, "linewidth") * EmuConverter.EmuPerPoint);
+=======
+                    if (!TryParseLineWidthEmu(value, out var widthEmu))
+                    {
+                        // Preserve the structured invalid_value error for garbage input.
+                        ParseHelpers.SafeParseDouble(value, "linewidth");
+                        break;
+                    }
+>>>>>>> upstream/main
                     foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
                         ApplySeriesLineWidth(ser, widthEmu);
                     break;
@@ -1138,6 +1462,14 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
                     var alphaPercent = ParseHelpers.SafeParseDouble(value, key);
+<<<<<<< HEAD
+=======
+                    // BUGFIX (NumericBoundaryScanTests): transparency/opacity/alpha
+                    // are 0-100 percent. Out-of-range input drove the computed
+                    // <a:alpha val> outside [0,100000] → schema-invalid file.
+                    if (double.IsNaN(alphaPercent) || double.IsInfinity(alphaPercent) || alphaPercent < 0 || alphaPercent > 100)
+                        throw new ArgumentException($"Invalid {key}: '{value}'. Expected a percentage 0-100.");
+>>>>>>> upstream/main
                     // If key is "transparency", convert to opacity (e.g. 30% transparency = 70% opacity)
                     if (key.Equals("transparency", StringComparison.OrdinalIgnoreCase))
                         alphaPercent = 100.0 - alphaPercent;
@@ -1246,7 +1578,14 @@ internal static partial class ChartHelper
                         break;
                     }
                     var v3dParts = value.Split(',');
+<<<<<<< HEAD
                     chart.RemoveAllChildren<C.View3D>();
+=======
+                    // Build+validate the new element BEFORE removing the old one:
+                    // a range throw mid-build used to leave the prior valid
+                    // <c:view3D> already deleted (atomicity bug). Same rule as
+                    // gapWidth/overlap/holeSize.
+>>>>>>> upstream/main
                     var view3d = new C.View3D();
                     if (v3dParts.Length == 1)
                     {
@@ -1256,6 +1595,11 @@ internal static partial class ChartHelper
                             unsupported.Add(key);
                             break;
                         }
+<<<<<<< HEAD
+=======
+                        if (p < 0 || p > 240)
+                            throw new ArgumentException($"view3d perspective must be between 0 and 240 (OOXML ST_Perspective MaxInclusive=240), got {p}.");
+>>>>>>> upstream/main
                         view3d.AppendChild(new C.Perspective { Val = (byte)p });
                     }
                     else
@@ -1278,8 +1622,19 @@ internal static partial class ChartHelper
                         }
                         if (v3dParts.Length >= 3 && !string.IsNullOrWhiteSpace(v3dParts[2])
                             && int.TryParse(v3dParts[2], out var persp))
+<<<<<<< HEAD
                             view3d.AppendChild(new C.Perspective { Val = (byte)persp });
                     }
+=======
+                        {
+                            if (persp < 0 || persp > 240)
+                                throw new ArgumentException($"view3d perspective must be between 0 and 240 (OOXML ST_Perspective MaxInclusive=240), got {persp}.");
+                            view3d.AppendChild(new C.Perspective { Val = (byte)persp });
+                        }
+                    }
+                    // All fields validated — now safe to swap the old element.
+                    chart.RemoveAllChildren<C.View3D>();
+>>>>>>> upstream/main
                     // Schema order: title, autoTitleDeleted, pivotFmts, view3D, ..., plotArea
                     var v3dPlotArea = chart.GetFirstChild<C.PlotArea>();
                     if (v3dPlotArea != null) chart.InsertBefore(view3d, v3dPlotArea);
@@ -1287,6 +1642,36 @@ internal static partial class ChartHelper
                     break;
                 }
 
+<<<<<<< HEAD
+=======
+                case "floorraw" or "sidewallraw" or "backwallraw":
+                {
+                    // Verbatim 3D wall/floor elements (<c:floor>/<c:sideWall>/
+                    // <c:backWall>) — sources hide the wall grid with
+                    // <a:ln><a:noFill/> spPr; without them the rebuilt 3D
+                    // chart shows PowerPoint's default wall outlines.
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    OpenXmlCompositeElement wallEl = key.ToLowerInvariant() switch
+                    {
+                        "floorraw" => new C.Floor(),
+                        "sidewallraw" => new C.SideWall(),
+                        _ => new C.BackWall(),
+                    };
+                    wallEl.InnerXml = value;
+                    switch (wallEl)
+                    {
+                        case C.Floor: chart.RemoveAllChildren<C.Floor>(); break;
+                        case C.SideWall: chart.RemoveAllChildren<C.SideWall>(); break;
+                        default: chart.RemoveAllChildren<C.BackWall>(); break;
+                    }
+                    // Schema: view3D?, floor?, sideWall?, backWall?, plotArea.
+                    var wallPlotArea = chart.GetFirstChild<C.PlotArea>();
+                    if (wallPlotArea != null) chart.InsertBefore(wallEl, wallPlotArea);
+                    else chart.AppendChild(wallEl);
+                    break;
+                }
+
+>>>>>>> upstream/main
                 case "areafill" or "area.fill":
                 {
                     // Apply gradient fill to area chart series. Format: "color1-color2[:angle]"
@@ -1344,8 +1729,14 @@ internal static partial class ChartHelper
                         spPr.RemoveAllChildren<Drawing.Outline>();
                         if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
+<<<<<<< HEAD
                             var widthPt = outParts.Length > 1 && double.TryParse(outParts[1], System.Globalization.CultureInfo.InvariantCulture, out var w) ? w : 0.5;
                             var outline = new Drawing.Outline { Width = (int)(widthPt * EmuConverter.EmuPerPoint) };
+=======
+                            var widthEmu = outParts.Length > 1 && TryParseLineWidthEmu(outParts[1], out var w)
+                                ? w : (int)(0.5 * EmuConverter.EmuPerPoint);
+                            var outline = new Drawing.Outline { Width = widthEmu };
+>>>>>>> upstream/main
                             var sf = new Drawing.SolidFill();
                             sf.AppendChild(BuildChartColorElement(outParts[0]));
                             outline.AppendChild(sf);
@@ -1365,6 +1756,14 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
                     if (!int.TryParse(value, out var gw)) throw new ArgumentException($"Invalid gapWidth: '{value}'. Expected integer (0-500).");
+<<<<<<< HEAD
+=======
+                    // BUGFIX (NumericBoundaryScanTests): enforce the stated 0-500
+                    // range. CT_GapAmount is ST_GapAmountUShort (0-500); out-of-range
+                    // (incl. negatives wrapping via (ushort) cast) produced a
+                    // schema-invalid c:gapWidth PowerPoint refuses to open.
+                    if (gw < 0 || gw > 500) throw new ArgumentException($"Invalid gapWidth: '{value}'. Expected integer 0-500.");
+>>>>>>> upstream/main
                     bool gapUpdated = false;
                     foreach (var gapEl in plotArea2.Descendants<C.GapWidth>())
                     {
@@ -1442,9 +1841,19 @@ internal static partial class ChartHelper
                             .Count(e => e.LocalName == "ser");
                         secondaryIndices = new HashSet<int>(Enumerable.Range(2, Math.Max(0, totalSeries - 1)));
                     }
+<<<<<<< HEAD
                     else if (value.Equals("false", StringComparison.OrdinalIgnoreCase)
                           || value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
+=======
+                    else if (string.IsNullOrWhiteSpace(value)
+                          || value.Equals("false", StringComparison.OrdinalIgnoreCase)
+                          || value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // R16-9: empty/blank is a no-op. Without this, "" fell to
+                        // the else-branch → SeriesIndicesForChartType(.., "") →
+                        // StartsWith("") matched every series → silent combo rebuild.
+>>>>>>> upstream/main
                         // No-op: a "no secondary axis" state is the default;
                         // demoting an already-split chart back to single-axis
                         // would require a full rebuild path that doesn't yet
@@ -1454,8 +1863,22 @@ internal static partial class ChartHelper
                     else
                     {
                         // value = series indices on secondary axis, e.g. "2,3" (1-based)
+<<<<<<< HEAD
                         secondaryIndices = value.Split(',')
                             .Select(s => int.TryParse(s.Trim(), out var v) ? v : -1)
+=======
+                        // or "series2"/"series2,series3" alias forms (R47).
+                        secondaryIndices = value.Split(',')
+                            .Select(s =>
+                            {
+                                var trimmed = s.Trim();
+                                if (int.TryParse(trimmed, out var v)) return v;
+                                var m = System.Text.RegularExpressions.Regex.Match(
+                                    trimmed, @"^series(\d+)$",
+                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                return m.Success && int.TryParse(m.Groups[1].Value, out var sv) ? sv : -1;
+                            })
+>>>>>>> upstream/main
                             .Where(v => v > 0).ToHashSet();
                         // Type-name form, e.g. "line" on a combo chart — route every
                         // series whose parent CT_*Chart element matches that type to
@@ -1464,6 +1887,16 @@ internal static partial class ChartHelper
                         // to the primary axId (the R26 combo bug).
                         if (secondaryIndices.Count == 0)
                             secondaryIndices = SeriesIndicesForChartType(plotArea2, value);
+<<<<<<< HEAD
+=======
+                        // R47: still empty → value was not a valid index, type name,
+                        // or seriesN alias. Throw instead of silent no-op.
+                        if (secondaryIndices.Count == 0)
+                            throw new ArgumentException(
+                                $"Invalid 'secondaryAxis' value: '{value}'. Valid forms: " +
+                                "index ('2'), comma index list ('2,3'), 'true', 'false'/'none', " +
+                                "seriesN alias ('series2'), or a chart-type name on a combo chart ('line').");
+>>>>>>> upstream/main
                     }
                     ApplySecondaryAxis(plotArea2, secondaryIndices);
                     break;
@@ -1571,9 +2004,19 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
                     var tickVal = ParseTickMark(value);
+<<<<<<< HEAD
                     foreach (var ax in plotArea2.Elements<C.ValueAxis>())
                     { ax.RemoveAllChildren<C.MajorTickMark>(); InsertAxisChildInOrder(ax, new C.MajorTickMark { Val = tickVal }); }
                     foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+=======
+                    // Skip hidden axes (delete=1). A combo chart's secondary
+                    // category axis is intentionally hidden with majorTickMark/
+                    // tickLblPos=none; applying the chart-level primary-axis value
+                    // to it would make it reappear (out/nextTo) after replay.
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>().Where(a => !IsDeletedAxis(a)))
+                    { ax.RemoveAllChildren<C.MajorTickMark>(); InsertAxisChildInOrder(ax, new C.MajorTickMark { Val = tickVal }); }
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>().Where(a => !IsDeletedAxis(a)))
+>>>>>>> upstream/main
                     { ax.RemoveAllChildren<C.MajorTickMark>(); InsertAxisChildInOrder(ax, new C.MajorTickMark { Val = tickVal }); }
                     break;
                 }
@@ -1583,9 +2026,15 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
                     var tickVal = ParseTickMark(value);
+<<<<<<< HEAD
                     foreach (var ax in plotArea2.Elements<C.ValueAxis>())
                     { ax.RemoveAllChildren<C.MinorTickMark>(); InsertAxisChildInOrder(ax, new C.MinorTickMark { Val = tickVal }); }
                     foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+=======
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>().Where(a => !IsDeletedAxis(a)))
+                    { ax.RemoveAllChildren<C.MinorTickMark>(); InsertAxisChildInOrder(ax, new C.MinorTickMark { Val = tickVal }); }
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>().Where(a => !IsDeletedAxis(a)))
+>>>>>>> upstream/main
                     { ax.RemoveAllChildren<C.MinorTickMark>(); InsertAxisChildInOrder(ax, new C.MinorTickMark { Val = tickVal }); }
                     break;
                 }
@@ -1599,11 +2048,20 @@ internal static partial class ChartHelper
                         "none" => C.TickLabelPositionValues.None,
                         "high" or "top" => C.TickLabelPositionValues.High,
                         "low" or "bottom" => C.TickLabelPositionValues.Low,
+<<<<<<< HEAD
                         _ => C.TickLabelPositionValues.NextTo
                     };
                     foreach (var ax in plotArea2.Elements<C.ValueAxis>())
                     { ax.RemoveAllChildren<C.TickLabelPosition>(); InsertAxisChildInOrder(ax, new C.TickLabelPosition { Val = tlPos }); }
                     foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+=======
+                        "nextto" => C.TickLabelPositionValues.NextTo,
+                        _ => throw new ArgumentException($"Invalid 'tickLabelPos' value: '{value}'. Valid: none, high, low, nextTo.")
+                    };
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>().Where(a => !IsDeletedAxis(a)))
+                    { ax.RemoveAllChildren<C.TickLabelPosition>(); InsertAxisChildInOrder(ax, new C.TickLabelPosition { Val = tlPos }); }
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>().Where(a => !IsDeletedAxis(a)))
+>>>>>>> upstream/main
                     { ax.RemoveAllChildren<C.TickLabelPosition>(); InsertAxisChildInOrder(ax, new C.TickLabelPosition { Val = tlPos }); }
                     break;
                 }
@@ -1618,7 +2076,11 @@ internal static partial class ChartHelper
                         "bottom" or "b" => C.AxisPositionValues.Bottom,
                         "left" or "l" => C.AxisPositionValues.Left,
                         "right" or "r" => C.AxisPositionValues.Right,
+<<<<<<< HEAD
                         _ => C.AxisPositionValues.Bottom
+=======
+                        _ => throw new ArgumentException($"Invalid 'axisPos' value: '{value}'. Valid: top, bottom, left, right.")
+>>>>>>> upstream/main
                     };
                     foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
                     {
@@ -1644,13 +2106,25 @@ internal static partial class ChartHelper
                     // call (e.g. crosses + crossesAt + crossBetween together):
                     // the second branch reset both children and the first
                     // branch's write disappeared.
+<<<<<<< HEAD
                     valAx.RemoveAllChildren<C.Crosses>();
+=======
+                    // Validate BEFORE mutating — a throw after RemoveAllChildren
+                    // would wipe the prior valid crosses value on bad input.
+>>>>>>> upstream/main
                     var crossVal = value.ToLowerInvariant() switch
                     {
                         "max" => C.CrossesValues.Maximum,
                         "min" => C.CrossesValues.Minimum,
+<<<<<<< HEAD
                         _ => C.CrossesValues.AutoZero
                     };
+=======
+                        "autozero" => C.CrossesValues.AutoZero,
+                        _ => throw new ArgumentException($"Invalid 'crosses' value: '{value}'. Valid: autoZero, max, min.")
+                    };
+                    valAx.RemoveAllChildren<C.Crosses>();
+>>>>>>> upstream/main
                     // CONSISTENCY(chart/crosses-schema-order): CT_ValAx requires
                     // crossAx → crosses → crossesAt → crossBetween. Insert
                     // before whichever later sibling exists.
@@ -1667,9 +2141,17 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAx == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     // Same-type only — see comment on the crosses branch above.
                     valAx.RemoveAllChildren<C.CrossesAt>();
                     var newCrossesAt = new C.CrossesAt { Val = ParseHelpers.SafeParseDouble(value, "crossesAt") };
+=======
+                    // Validate BEFORE mutating (SafeParseDouble can throw).
+                    var crossesAtVal = ParseHelpers.SafeParseDouble(value, "crossesAt");
+                    // Same-type only — see comment on the crosses branch above.
+                    valAx.RemoveAllChildren<C.CrossesAt>();
+                    var newCrossesAt = new C.CrossesAt { Val = crossesAtVal };
+>>>>>>> upstream/main
                     // CONSISTENCY(chart/crosses-schema-order): crossesAt sits
                     // between crosses and crossBetween. Insert before
                     // crossBetween if present; otherwise append.
@@ -1692,12 +2174,23 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAx == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     valAx.RemoveAllChildren<C.CrossBetween>();
                     var cbVal = value.ToLowerInvariant() switch
                     {
                         "midcat" or "midpoint" => C.CrossBetweenValues.MidpointCategory,
                         _ => C.CrossBetweenValues.Between
                     };
+=======
+                    // Validate BEFORE mutating.
+                    var cbVal = value.ToLowerInvariant() switch
+                    {
+                        "midcat" or "midpoint" => C.CrossBetweenValues.MidpointCategory,
+                        "between" => C.CrossBetweenValues.Between,
+                        _ => throw new ArgumentException($"Invalid 'crossBetween' value: '{value}'. Valid: midCat, between.")
+                    };
+                    valAx.RemoveAllChildren<C.CrossBetween>();
+>>>>>>> upstream/main
                     // CT_ValAx schema: crossAx, crosses?, crossesAt?, crossBetween?,
                     // majorUnit?, minorUnit?, dispUnits?, extLst?. AppendChild lands
                     // it after majorUnit / minorUnit which the validator rejects.
@@ -1719,7 +2212,17 @@ internal static partial class ChartHelper
                     scaling.RemoveAllChildren<C.Orientation>();
                     var orient = (ParseHelpers.IsValidBooleanString(value) && ParseHelpers.IsTruthy(value)) || value.Equals("maxmin", StringComparison.OrdinalIgnoreCase)
                         ? C.OrientationValues.MaxMin : C.OrientationValues.MinMax;
+<<<<<<< HEAD
                     scaling.PrependChild(new C.Orientation { Val = orient });
+=======
+                    // CT_Scaling order is logBase, orientation, max, min — orientation
+                    // must follow logBase, so insert after it when a log scale exists
+                    // (a bare PrependChild would push orientation ahead of logBase).
+                    var orientEl = new C.Orientation { Val = orient };
+                    var existingLogBase = scaling.GetFirstChild<C.LogBase>();
+                    if (existingLogBase != null) scaling.InsertAfter(orientEl, existingLogBase);
+                    else scaling.PrependChild(orientEl);
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -1729,7 +2232,10 @@ internal static partial class ChartHelper
                     var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
                     var scaling = valAx?.GetFirstChild<C.Scaling>();
                     if (scaling == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     scaling.RemoveAllChildren<C.LogBase>();
+=======
+>>>>>>> upstream/main
                     // DEFERRED(xlsx/chart-logscale) CL23: accept `logScale=true`
                     // as shorthand for logBase=10 (Excel's default log base).
                     // `false`/`none` removes the log scale. `logBase=<n>` still
@@ -1737,6 +2243,7 @@ internal static partial class ChartHelper
                     // R19-2: also accept `yAxisScale=log` / `yAxisScale=linear`
                     // as a verb-style alias. `log` == shorthand for logBase=10,
                     // `linear`/`none` removes the log scale.
+<<<<<<< HEAD
                     if (value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
                         value.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
                         value.Equals("log", StringComparison.OrdinalIgnoreCase) ||
@@ -1749,6 +2256,35 @@ internal static partial class ChartHelper
                              !value.Equals("false", StringComparison.OrdinalIgnoreCase) &&
                              !value.Equals("no", StringComparison.OrdinalIgnoreCase) &&
                              value != "0")
+=======
+                    // Resolve+validate the target BEFORE mutating so a bad
+                    // numeric base doesn't wipe the prior valid log scale.
+                    double? newLogBase;
+                    if (value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                        value.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+                        value.Equals("log", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // "1" was historically treated as truthy shorthand too,
+                        // but ST_LogBase has minInclusive=2.0 — letting "1"
+                        // mean logBase=10 silently masked out-of-range input.
+                        // Numeric "1" now falls through to the range-check below.
+                        newLogBase = 10d;
+                    }
+                    else if (value.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+                             value.Equals("linear", StringComparison.OrdinalIgnoreCase) ||
+                             value.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                             value.Equals("no", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Falsy shorthand: remove the log scale (linear).
+                        newLogBase = null;
+                    }
+                    else
+                    // "0" was historically treated as the falsy shorthand for
+                    // "no log scale" alongside false/no/none/linear, but the
+                    // resulting silent accept hid out-of-range numeric input.
+                    // Drop the "0" guard so numeric 0 falls into the range
+                    // check below and throws (matches the "1" treatment from R33).
+>>>>>>> upstream/main
                     {
                         var logVal = ParseHelpers.SafeParseDouble(value, "logBase");
                         // OOXML ST_LogBase: numeric range [2.0, 1000.0]. Values
@@ -1756,6 +2292,7 @@ internal static partial class ChartHelper
                         // rewrites the chart back to linear on open and drops
                         // the user's intent silently). Reject up front so the
                         // caller sees the clamp rather than ghost-rewriting.
+<<<<<<< HEAD
                         // Truthy/falsy shorthands (true/yes/log/1, false/no/
                         // none/linear/0) are intercepted earlier and don't
                         // reach this branch.
@@ -1765,6 +2302,23 @@ internal static partial class ChartHelper
                             throw new ArgumentException($"Invalid logBase '{value}': must be in the OOXML range [2, 1000) (ST_LogBase).");
                         scaling.PrependChild(new C.LogBase { Val = logVal });
                     }
+=======
+                        // ST_LogBase: minInclusive=2.0, maxInclusive=1000.0.
+                        if (logVal < 2.0 || logVal > 1000.0)
+                            throw new ArgumentException($"Invalid logBase '{value}': must be in the OOXML range [2, 1000] (ST_LogBase).");
+                        newLogBase = logVal;
+                    }
+                    // Enabling a log scale on an axis whose min is <= 0 makes
+                    // real Excel refuse the file (0x800A03EC). Validate before
+                    // mutating (the reverse of the axisMin guard above).
+                    if (newLogBase != null
+                        && scaling.GetFirstChild<C.MinAxisValue>()?.Val?.Value is { } curMin && curMin <= 0)
+                        throw new ArgumentException(
+                            $"logBase cannot be enabled while the axis minimum ({curMin}) is <= 0: a logarithmic axis minimum must be greater than 0.");
+                    scaling.RemoveAllChildren<C.LogBase>();
+                    if (newLogBase != null)
+                        scaling.PrependChild(new C.LogBase { Val = newLogBase.Value });
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -1811,14 +2365,27 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var catAx = plotArea2?.GetFirstChild<C.CategoryAxis>();
                     if (catAx == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
+=======
+                    var loVal = ParseHelpers.SafeParseInt(value, "labelOffset");
+                    // OOXML ST_LabelOffset: MinInclusive=0, MaxInclusive=1000.
+                    // Without this guard a value > 65535 wrapped via the ushort
+                    // cast and 1001..65535 stored above the documented max.
+                    if (loVal < 0 || loVal > 1000)
+                        throw new ArgumentException($"Invalid 'labelOffset' value: '{value}'. Must be 0..1000 (OOXML ST_LabelOffset MaxInclusive=1000).");
+>>>>>>> upstream/main
                     // CONSISTENCY(catax-schema-order): bare AppendChild lands
                     // lblOffset after any later-order siblings already present
                     // (e.g. tickLblSkip from a prior Set), producing an invalid
                     // file. InsertAxisChildInOrder anchors on the schema-order
                     // list shared across catAx setters.
                     catAx.RemoveAllChildren<C.LabelOffset>();
+<<<<<<< HEAD
                     InsertAxisChildInOrder(catAx,
                         new C.LabelOffset { Val = (ushort)ParseHelpers.SafeParseInt(value, "labelOffset") });
+=======
+                    InsertAxisChildInOrder(catAx, new C.LabelOffset { Val = (ushort)loVal });
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -1827,10 +2394,21 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var catAx = plotArea2?.GetFirstChild<C.CategoryAxis>();
                     if (catAx == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     // Same schema-order rationale as labelOffset above.
                     catAx.RemoveAllChildren<C.TickLabelSkip>();
                     InsertAxisChildInOrder(catAx,
                         new C.TickLabelSkip { Val = ParseHelpers.SafeParseInt(value, "tickLabelSkip") });
+=======
+                    var tlsVal = ParseHelpers.SafeParseInt(value, "tickLabelSkip");
+                    // OOXML ST_Skip: Min=1, Max=65535 (xsd:unsignedShort).
+                    // SafeParseInt accepts the full Int32 range, so 65536+ has
+                    // to be rejected explicitly.
+                    if (tlsVal < 1 || tlsVal > 65535)
+                        throw new ArgumentException($"Invalid 'tickLabelSkip' value: '{value}'. Must be an integer 1..65535 (OOXML ST_Skip).");
+                    catAx.RemoveAllChildren<C.TickLabelSkip>();
+                    InsertAxisChildInOrder(catAx, new C.TickLabelSkip { Val = tlsVal });
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -1963,7 +2541,16 @@ internal static partial class ChartHelper
                 case "roundedcorners":
                 {
                     chartSpace!.RemoveAllChildren<C.RoundedCorners>();
+<<<<<<< HEAD
                     chartSpace.PrependChild(new C.RoundedCorners { Val = ParseHelpers.IsTruthy(value) });
+=======
+                    var rcEl = new C.RoundedCorners { Val = ParseHelpers.IsTruthy(value) };
+                    // CT_ChartSpace order: date1904, lang, roundedCorners, …
+                    var rcAfter = (OpenXmlElement?)chartSpace.GetFirstChild<C.EditingLanguage>()
+                        ?? chartSpace.GetFirstChild<C.Date1904>();
+                    if (rcAfter != null) rcAfter.InsertAfterSelf(rcEl);
+                    else chartSpace.PrependChild(rcEl);
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -2388,10 +2975,23 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var doughnut = plotArea2?.GetFirstChild<C.DoughnutChart>();
                     if (doughnut == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     doughnut.RemoveAllChildren<C.HoleSize>();
                     var holeSizeInt = ParseHelpers.SafeParseInt(value, "holeSize");
                     if (holeSizeInt < 0) holeSizeInt = 0;
                     else if (holeSizeInt > 90) holeSizeInt = 90;
+=======
+                    // Validate BEFORE mutating — a throw after RemoveAllChildren
+                    // used to strip the mandatory <c:holeSize> and leave a
+                    // schema-invalid doughnutChart persisted on disk despite the
+                    // reported error (atomicity bug).
+                    var holeSizeInt = ParseHelpers.SafeParseInt(value, "holeSize");
+                    // OOXML ST_HoleSize: MinInclusive=1, MaxInclusive=90. Pre-fix
+                    // code silently clamped, masking out-of-range input.
+                    if (holeSizeInt < 1 || holeSizeInt > 90)
+                        throw new ArgumentException($"Invalid 'holeSize' value: '{value}'. Must be between 1 and 90 (OOXML ST_HoleSize).");
+                    doughnut.RemoveAllChildren<C.HoleSize>();
+>>>>>>> upstream/main
                     doughnut.AppendChild(new C.HoleSize { Val = (byte)holeSizeInt });
                     break;
                 }
@@ -2401,7 +3001,11 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var radar = plotArea2?.GetFirstChild<C.RadarChart>();
                     if (radar == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     radar.RemoveAllChildren<C.RadarStyle>();
+=======
+                    // Validate BEFORE mutating.
+>>>>>>> upstream/main
                     var rsVal = value.ToLowerInvariant() switch
                     {
                         "filled" or "fill" => C.RadarStyleValues.Filled,
@@ -2410,6 +3014,10 @@ internal static partial class ChartHelper
                         _ => throw new ArgumentException(
                             $"Invalid radarStyle '{value}'. Valid values: standard, filled, marker.")
                     };
+<<<<<<< HEAD
+=======
+                    radar.RemoveAllChildren<C.RadarStyle>();
+>>>>>>> upstream/main
                     radar.PrependChild(new C.RadarStyle { Val = rsVal });
                     break;
                 }
@@ -2419,8 +3027,14 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var bubble = plotArea2?.GetFirstChild<C.BubbleChart>();
                     if (bubble == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     bubble.RemoveAllChildren<C.BubbleScale>();
                     InsertBubbleChartChildInOrder(bubble, new C.BubbleScale { Val = (uint)ParseHelpers.SafeParseInt(value, "bubbleScale") });
+=======
+                    var bubbleScaleVal = (uint)ParseHelpers.SafeParseInt(value, "bubbleScale");
+                    bubble.RemoveAllChildren<C.BubbleScale>();
+                    InsertBubbleChartChildInOrder(bubble, new C.BubbleScale { Val = bubbleScaleVal });
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -2439,12 +3053,23 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var bubble = plotArea2?.GetFirstChild<C.BubbleChart>();
                     if (bubble == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     bubble.RemoveAllChildren<C.SizeRepresents>();
                     var srVal = value.ToLowerInvariant() switch
                     {
                         "width" or "w" => C.SizeRepresentsValues.Width,
                         _ => C.SizeRepresentsValues.Area
                     };
+=======
+                    var srVal = value.ToLowerInvariant() switch
+                    {
+                        "width" or "w" => C.SizeRepresentsValues.Width,
+                        "area" or "a" => C.SizeRepresentsValues.Area,
+                        _ => throw new ArgumentException(
+                            $"Unknown sizeRepresents value '{value}'. Valid: area, width.")
+                    };
+                    bubble.RemoveAllChildren<C.SizeRepresents>();
+>>>>>>> upstream/main
                     InsertBubbleChartChildInOrder(bubble, new C.SizeRepresents { Val = srVal });
                     break;
                 }
@@ -2456,8 +3081,14 @@ internal static partial class ChartHelper
                         ?? plotArea2?.GetFirstChild<C.Line3DChart>() as OpenXmlCompositeElement
                         ?? plotArea2?.GetFirstChild<C.Area3DChart>() as OpenXmlCompositeElement;
                     if (target3d == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     target3d.RemoveAllChildren<C.GapDepth>();
                     InsertBar3DChartChildInOrder(target3d, new C.GapDepth { Val = (ushort)ParseHelpers.SafeParseInt(value, "gapDepth") });
+=======
+                    var gapDepthVal = (ushort)ParseHelpers.SafeParseInt(value, "gapDepth");
+                    target3d.RemoveAllChildren<C.GapDepth>();
+                    InsertBar3DChartChildInOrder(target3d, new C.GapDepth { Val = gapDepthVal });
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -2466,7 +3097,10 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     var bar3d = plotArea2?.GetFirstChild<C.Bar3DChart>();
                     if (bar3d == null) { unsupported.Add(key); break; }
+<<<<<<< HEAD
                     bar3d.RemoveAllChildren<C.Shape>();
+=======
+>>>>>>> upstream/main
                     var shapeVal = value.ToLowerInvariant() switch
                     {
                         "box" or "cuboid" => C.ShapeValues.Box,
@@ -2478,6 +3112,10 @@ internal static partial class ChartHelper
                         _ => throw new ArgumentException(
                             $"Invalid bar shape '{value}'. Valid values: box, cone, coneToMax, cylinder, pyramid, pyramidToMax.")
                     };
+<<<<<<< HEAD
+=======
+                    bar3d.RemoveAllChildren<C.Shape>();
+>>>>>>> upstream/main
                     InsertBar3DChartChildInOrder(bar3d, new C.Shape { Val = shapeVal });
                     break;
                 }
@@ -2485,7 +3123,15 @@ internal static partial class ChartHelper
                 case "droplines":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+<<<<<<< HEAD
                     var lc = plotArea2?.GetFirstChild<C.LineChart>();
+=======
+                    // CT_StockChart carries the same dropLines/hiLowLines/upDownBars
+                    // tail as CT_LineChart; Add builds them for stock charts but Set
+                    // used to reject the keys there as unsupported.
+                    var lc = plotArea2?.GetFirstChild<C.LineChart>() as OpenXmlCompositeElement
+                        ?? plotArea2?.GetFirstChild<C.StockChart>();
+>>>>>>> upstream/main
                     if (lc == null) { unsupported.Add(key); break; }
                     lc.RemoveAllChildren<C.DropLines>();
                     // "false"/"none" remove the overlay; both must skip the
@@ -2508,7 +3154,15 @@ internal static partial class ChartHelper
                 case "hilowlines":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+<<<<<<< HEAD
                     var lc = plotArea2?.GetFirstChild<C.LineChart>();
+=======
+                    // CT_StockChart carries the same dropLines/hiLowLines/upDownBars
+                    // tail as CT_LineChart; Add builds them for stock charts but Set
+                    // used to reject the keys there as unsupported.
+                    var lc = plotArea2?.GetFirstChild<C.LineChart>() as OpenXmlCompositeElement
+                        ?? plotArea2?.GetFirstChild<C.StockChart>();
+>>>>>>> upstream/main
                     if (lc == null) { unsupported.Add(key); break; }
                     lc.RemoveAllChildren<C.HighLowLines>();
                     if (value.Equals("none", StringComparison.OrdinalIgnoreCase)
@@ -2526,7 +3180,15 @@ internal static partial class ChartHelper
                 case "updownbars":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+<<<<<<< HEAD
                     var lc = plotArea2?.GetFirstChild<C.LineChart>();
+=======
+                    // CT_StockChart carries the same dropLines/hiLowLines/upDownBars
+                    // tail as CT_LineChart; Add builds them for stock charts but Set
+                    // used to reject the keys there as unsupported.
+                    var lc = plotArea2?.GetFirstChild<C.LineChart>() as OpenXmlCompositeElement
+                        ?? plotArea2?.GetFirstChild<C.StockChart>();
+>>>>>>> upstream/main
                     if (lc == null) { unsupported.Add(key); break; }
                     lc.RemoveAllChildren<C.UpDownBars>();
                     if (value.Equals("none", StringComparison.OrdinalIgnoreCase)
@@ -2711,6 +3373,37 @@ internal static partial class ChartHelper
                     SetPlotAreaSpPr(plotArea2, new C.ShapeProperties(value));
                     break;
                 }
+<<<<<<< HEAD
+=======
+                case "chartarea.sppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var csParent = chart.Parent;
+                    if (csParent == null) { unsupported.Add(key); break; }
+                    csParent.RemoveAllChildren<C.ShapeProperties>();
+                    csParent.RemoveAllChildren<C.ChartShapeProperties>();
+                    // CT_ChartSpace: spPr sits directly after c:chart.
+                    var newSp = new C.ShapeProperties(value);
+                    var afterChart = csParent.GetFirstChild<C.Chart>();
+                    if (afterChart != null) csParent.InsertAfter(newSp, afterChart);
+                    else csParent.AppendChild(newSp);
+                    break;
+                }
+                case "gridline.sppr" or "minorgridline.sppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var valAxG = chart.GetFirstChild<C.PlotArea>()?.GetFirstChild<C.ValueAxis>();
+                    OpenXmlCompositeElement? gl = key.ToLowerInvariant() == "gridline.sppr"
+                        ? valAxG?.GetFirstChild<C.MajorGridlines>()
+                        : valAxG?.GetFirstChild<C.MinorGridlines>();
+                    if (gl == null) { unsupported.Add(key); break; }
+                    // c:spPr is the gridlines element's only child — replace it
+                    // wholesale with the captured verbatim fragment.
+                    gl.RemoveAllChildren<C.ChartShapeProperties>();
+                    gl.AppendChild(new C.ChartShapeProperties(value));
+                    break;
+                }
+>>>>>>> upstream/main
 
                 // BUG-DUMP-R35-1: inject the Reader's verbatim per-axis <c:txPr>
                 // and title <a:pPr> fragments. value is the captured OuterXml;
@@ -2742,6 +3435,7 @@ internal static partial class ChartHelper
                     if (string.IsNullOrWhiteSpace(value)) break;
                     // The title font lives in c:title/c:tx/c:rich/a:p/a:pPr.
                     // Replace the builder's default pPr with the captured one so
+<<<<<<< HEAD
                     // the source's defRPr colour / typeface / paragraph
                     // alignment are restored. The run-level a:rPr (which renders
                     // and is patched by the title.* fan-out) is left untouched.
@@ -2757,6 +3451,38 @@ internal static partial class ChartHelper
                     if (oldPPr != null) oldPPr.InsertAfterSelf(newPPr);
                     else richPara.PrependChild(newPPr);
                     oldPPr?.Remove();
+=======
+                    // the source's defRPr colour / typeface / paragraph alignment
+                    // are restored, and sync the rendering run rPr to it (see
+                    // ApplyTitlePPr). An explicit title.size/title.bold (source DID
+                    // carry a run rPr) is applied by the title.* fan-out and must
+                    // win, so it is skipped here.
+                    var ctitle = chart.GetFirstChild<C.Title>();
+                    if (!ApplyTitlePPr(ctitle, value,
+                            skipSize: properties.ContainsKey("title.size") || properties.ContainsKey("titlesize"),
+                            skipBold: properties.ContainsKey("title.bold") || properties.ContainsKey("titlebold")))
+                        unsupported.Add(key);
+                    break;
+                }
+
+                case "axistitle.ppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var vAxisTitle = chart.GetFirstChild<C.PlotArea>()
+                        ?.GetFirstChild<C.ValueAxis>()?.GetFirstChild<C.Title>();
+                    if (!ApplyTitlePPr(vAxisTitle, value, skipSize: false, skipBold: false))
+                        unsupported.Add(key);
+                    break;
+                }
+
+                case "cattitle.ppr":
+                {
+                    if (string.IsNullOrWhiteSpace(value)) break;
+                    var cAxisTitle = chart.GetFirstChild<C.PlotArea>()
+                        ?.GetFirstChild<C.CategoryAxis>()?.GetFirstChild<C.Title>();
+                    if (!ApplyTitlePPr(cAxisTitle, value, skipSize: false, skipBold: false))
+                        unsupported.Add(key);
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -2810,7 +3536,24 @@ internal static partial class ChartHelper
                     var legendEl = chart.GetFirstChild<C.Legend>();
                     if (legendEl == null) { unsupported.Add(key); break; }
                     legendEl.RemoveAllChildren<C.Overlay>();
+<<<<<<< HEAD
                     legendEl.AppendChild(new C.Overlay { Val = ParseHelpers.IsTruthy(value) });
+=======
+                    // CT_Legend order: legendPos, legendEntry*, layout,
+                    // overlay, spPr, txPr, extLst. Insert overlay BEFORE the
+                    // first spPr/txPr/extLst so the validator doesn't report
+                    // "unexpected child element 'c:overlay'".
+                    var newLegendOverlay = new C.Overlay { Val = ParseHelpers.IsTruthy(value) };
+                    OpenXmlElement? legendInsertBefore =
+                        (OpenXmlElement?)legendEl.GetFirstChild<C.ShapeProperties>()
+                        ?? legendEl.GetFirstChild<C.ChartShapeProperties>()
+                        ?? (OpenXmlElement?)legendEl.GetFirstChild<C.TextProperties>()
+                        ?? (OpenXmlElement?)legendEl.GetFirstChild<C.ExtensionList>();
+                    if (legendInsertBefore != null)
+                        legendEl.InsertBefore(newLegendOverlay, legendInsertBefore);
+                    else
+                        legendEl.AppendChild(newLegendOverlay);
+>>>>>>> upstream/main
                     break;
                 }
 
@@ -3027,11 +3770,25 @@ internal static partial class ChartHelper
                         if (seriesIdx < 1 || seriesIdx > allSer.Count) { unsupported.Add(key); break; }
                         var ser = allSer[seriesIdx - 1];
 
+<<<<<<< HEAD
                         var colonIdx = value.IndexOf(':');
+=======
+                        // Split the trailing "Name:v1,v2,..." form on the LAST
+                        // colon: the value list is colon-free (comma-separated
+                        // finite numbers), so the rightmost colon is always the
+                        // name/value separator. A series name that itself
+                        // contains a colon (e.g. "Persons (Data year: 2021)")
+                        // round-trips intact instead of splitting inside the name.
+                        var colonIdx = value.LastIndexOf(':');
+>>>>>>> upstream/main
                         double[] vals;
                         if (colonIdx >= 0)
                         {
                             var sName = value[..colonIdx].Trim();
+<<<<<<< HEAD
+=======
+                            OfficeCli.Core.ParseHelpers.ValidateXmlText(sName, "series name");
+>>>>>>> upstream/main
                             vals = ParseSeriesValues(value[(colonIdx + 1)..], value[..colonIdx].Trim());
                             var serText = ser.GetFirstChild<C.SeriesText>();
                             if (serText != null)
@@ -3224,6 +3981,46 @@ internal static partial class ChartHelper
         }
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Replace a chart/axis title's paragraph properties (c:title/c:tx/c:rich/a:p/
+    /// a:pPr) with the captured <paramref name="pPrXml"/>, then sync the rendering
+    /// run-level rPr's FontSize/Bold to the new defRPr. BuildChartTitle hard-codes
+    /// the run to 14pt bold; when the source styled the title only on its defRPr,
+    /// that hard-coded run would override the restored defRPr — so the run is
+    /// reconciled to the defRPr (cleared when the defRPr is silent so it governs).
+    /// <paramref name="skipSize"/> / <paramref name="skipBold"/> leave the run's
+    /// size / weight to an explicit title.size / title.bold fan-out. Returns false
+    /// when the title has no rich paragraph to patch.
+    /// </summary>
+    private static bool ApplyTitlePPr(C.Title? titleEl, string pPrXml, bool skipSize, bool skipBold)
+    {
+        var richPara = titleEl?.GetFirstChild<C.ChartText>()
+            ?.GetFirstChild<C.RichText>()
+            ?.GetFirstChild<Drawing.Paragraph>();
+        if (richPara == null) return false;
+
+        var newPPr = new Drawing.ParagraphProperties(pPrXml);
+        var oldPPr = richPara.GetFirstChild<Drawing.ParagraphProperties>();
+        // CT_TextParagraph: pPr is always the first child (before a:r / a:endParaRPr).
+        if (oldPPr != null) oldPPr.InsertAfterSelf(newPPr);
+        else richPara.PrependChild(newPPr);
+        oldPPr?.Remove();
+
+        var newDefRp = newPPr.GetFirstChild<Drawing.DefaultRunProperties>();
+        var runRp = richPara.GetFirstChild<Drawing.Run>()?.RunProperties;
+        if (newDefRp != null && runRp != null)
+        {
+            if (!skipSize)
+                runRp.FontSize = newDefRp.FontSize?.HasValue == true ? newDefRp.FontSize.Value : null;
+            if (!skipBold)
+                runRp.Bold = newDefRp.Bold?.HasValue == true ? newDefRp.Bold.Value : (DocumentFormat.OpenXml.BooleanValue?)null;
+        }
+        return true;
+    }
+
+>>>>>>> upstream/main
     private static C.TextProperties BuildLabelTextProperties(string spec)
     {
         // Format: size[:color[:bold-or-fontname[:fontname]]]
@@ -3320,10 +4117,18 @@ internal static partial class ChartHelper
     {
         var parts = spec.Split(':');
         var color = parts[0].Trim();
+<<<<<<< HEAD
         var widthPt = parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var w) ? w : 0.5;
         var dash = parts.Length > 2 ? parts[2].Trim() : null;
 
         var outline = new Drawing.Outline { Width = (int)(widthPt * EmuConverter.EmuPerPoint) };
+=======
+        var widthEmu = parts.Length > 1 && TryParseLineWidthEmu(parts[1], out var w)
+            ? w : (int)(0.5 * EmuConverter.EmuPerPoint);
+        var dash = parts.Length > 2 ? parts[2].Trim() : null;
+
+        var outline = new Drawing.Outline { Width = widthEmu };
+>>>>>>> upstream/main
         var solidFill = new Drawing.SolidFill();
         solidFill.AppendChild(BuildChartColorElement(color));
         outline.AppendChild(solidFill);
@@ -3376,11 +4181,18 @@ internal static partial class ChartHelper
 
     private static bool SetGridlineWidth(OpenXmlCompositeElement gridlines, string value)
     {
+<<<<<<< HEAD
         if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var widthPt))
             return false;
         var outline = GetOrCreateGridlineOutline(gridlines);
         outline.Width = (int)(widthPt * EmuConverter.EmuPerPoint);
+=======
+        if (!TryParseLineWidthEmu(value, out var widthEmu))
+            return false;
+        var outline = GetOrCreateGridlineOutline(gridlines);
+        outline.Width = widthEmu;
+>>>>>>> upstream/main
         return true;
     }
 
@@ -3437,10 +4249,16 @@ internal static partial class ChartHelper
             }
             case "width":
             {
+<<<<<<< HEAD
                 if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out var widthPt))
                     return false;
                 outline.Width = (int)(widthPt * EmuConverter.EmuPerPoint);
+=======
+                if (!TryParseLineWidthEmu(value, out var widthEmu))
+                    return false;
+                outline.Width = widthEmu;
+>>>>>>> upstream/main
                 return true;
             }
             case "dash":
@@ -3488,7 +4306,11 @@ internal static partial class ChartHelper
             "longdash" or "lgdash" => Drawing.PresetLineDashValues.LargeDash,
             "longdashdot" or "lgdashdot" => Drawing.PresetLineDashValues.LargeDashDot,
             "longdashdotdot" or "lgdashdotdot" => Drawing.PresetLineDashValues.LargeDashDotDot,
+<<<<<<< HEAD
             _ => Drawing.PresetLineDashValues.Solid
+=======
+            _ => throw new ArgumentException($"Unknown lineDash value '{dash}'. Valid: solid, dot/sysDot, dash/sysDash, dashDot/sysDashDot, dashDotDot/sysDashDotDot, longDash/lgDash, longDashDot/lgDashDot, longDashDotDot/lgDashDotDot.")
+>>>>>>> upstream/main
         };
     }
 
@@ -3589,7 +4411,11 @@ internal static partial class ChartHelper
         // after datalabels= appended after them and produced an invalid
         // CT_LineSer. The helper's marker arm already lists the full
         // schema-after set: [dPt, dLbls, trendline, errBars, cat, val,
+<<<<<<< HEAD
         // xVal, yVal, bubbleSize, smooth, extLst]. Per CLAUDE.md
+=======
+        // xVal, yVal, bubbleSize, smooth, extLst]. Per the project conventions
+>>>>>>> upstream/main
         // "Consistency > Robustness" — the hand-rolled list was the lone
         // outlier; every other series-child writer already routes through
         // InsertSeriesChildInOrder.
@@ -3674,7 +4500,11 @@ internal static partial class ChartHelper
         gradFill.AppendChild(gsLst);
         gradFill.AppendChild(new Drawing.LinearGradientFill
         {
+<<<<<<< HEAD
             Angle = anglePart * 60000, // degrees to 60000ths
+=======
+            Angle = ParseHelpers.GradientAngleToOoxmlUnits(anglePart), // degrees to 60000ths, normalized mod 360 (overflow-proof)
+>>>>>>> upstream/main
             Scaled = scaledFlag
         });
 
@@ -3739,6 +4569,20 @@ internal static partial class ChartHelper
         return result;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// True when an axis is hidden via &lt;c:delete val="1"/&gt;. Chart-level tick
+    /// mark / tick-label-position setters skip these so a combo chart's
+    /// intentionally hidden secondary category axis doesn't reappear on replay.
+    /// </summary>
+    private static bool IsDeletedAxis(OpenXmlCompositeElement axis)
+    {
+        var del = axis.GetFirstChild<C.Delete>();
+        return del != null && (del.Val?.Value ?? false);
+    }
+
+>>>>>>> upstream/main
     internal static void ApplySecondaryAxis(C.PlotArea plotArea, HashSet<int> secondarySeriesIndices)
     {
         // Find existing axis IDs
@@ -4169,6 +5013,7 @@ internal static partial class ChartHelper
             bool allowed = (isBarLike && barOk) || (isLineLike && lineOk);
             if (!allowed) continue;
 
+<<<<<<< HEAD
             var pos = lc switch
             {
                 "center" or "ctr" => C.DataLabelPositionValues.Center,
@@ -4181,6 +5026,9 @@ internal static partial class ChartHelper
                 "right" or "r" => C.DataLabelPositionValues.Right,
                 _ => C.DataLabelPositionValues.OutsideEnd,
             };
+=======
+            var pos = ParseDataLabelPosition(lc);
+>>>>>>> upstream/main
 
             var dl = grp.GetFirstChild<C.DataLabels>();
             if (dl == null)

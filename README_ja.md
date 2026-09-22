@@ -6,7 +6,11 @@
 
 オープンソース。単一バイナリ。Office のインストール不要。依存関係ゼロ。全プラットフォーム対応。
 
+<<<<<<< HEAD
 **エージェントフレンドリーなレンダリングエンジンを内蔵** — エージェントは自分が作ったものを "見る" ことができ、Office 不要。`.docx` / `.xlsx` / `.pptx` を HTML または PNG にレンダリングし、"レンダリング → 見る → 修正" のループはバイナリが動くあらゆる場所で完結します。
+=======
+**OfficeCLI の内蔵 HTML レンダリングエンジンは、ドキュメントを高忠実度で再現 — これが AI に「目」を与えます。** `.docx` / `.xlsx` / `.pptx` を HTML または PNG にレンダリングし、"レンダリング → 見る → 修正" のループを完結させます。
+>>>>>>> upstream/main
 
 [![GitHub Release](https://img.shields.io/github/v/release/iOfficeAI/OfficeCLI)](https://github.com/iOfficeAI/OfficeCLI/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -14,7 +18,11 @@
 [English](README.md) | [中文](README_zh.md) | **日本語** | [한국어](README_ko.md)
 
 <p align="center">
+<<<<<<< HEAD
   <strong>💬 コミュニティ:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord</a>
+=======
+  <strong>🌐 公式サイト:</strong> <a href="https://officecli.ai" target="_blank">officecli.ai</a> &nbsp;|&nbsp; <strong>💬 コミュニティ:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord</a>
+>>>>>>> upstream/main
 </p>
 
 <p align="center">
@@ -87,7 +95,7 @@ officecli install
 ## 開発者向け — 30秒でライブ体験
 
 ```bash
-# 1. インストール（macOS / Linux）
+# 1. インストール（macOS / Linux）— または: brew install officecli / npm install -g @officecli/officecli
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 # Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 
@@ -210,6 +218,19 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 ```
 
+**またはパッケージマネージャーで：**
+
+```bash
+# Homebrew（macOS / Linux）
+brew install officecli
+
+# Scoop（Windows）
+scoop install officecli
+
+# npm（全プラットフォーム — インストール時にプラットフォームに合ったネイティブバイナリを取得）
+npm install -g @officecli/officecli
+```
+
 **または手動ダウンロード** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases)：
 
 | プラットフォーム | バイナリ |
@@ -238,9 +259,15 @@ officecli            # 直接実行でもインストールがトリガー
 
 OfficeCLI は自己完結型です。以下の機能はすべてバイナリ内蔵 — **Office 不要**。
 
+<<<<<<< HEAD
 #### レンダリングエンジン
 
 ゼロから実装したエージェントフレンドリーなレンダリングエンジンがバイナリ内に同梱され、シェイプ、チャート (トレンドライン、エラーバー、ウォーターフォール、ローソク足、スパークライン)、数式 (OMML → MathJax 互換)、Three.js による 3D `.glb` モデル、モーフトランジション、スライドズーム、シェイプエフェクトをカバー。ページごとの PNG スクリーンショットは、レンダリングされた HTML をヘッドレスブラウザに渡して生成されます。3 つのモード:
+=======
+#### レンダリングエンジン — 高忠実度・内蔵
+
+OfficeCLI の要 (キーストーン): ゼロから実装した高忠実度の HTML レンダリングエンジンが、AI エージェントに DOM から推測させるのではなく、レンダリングされたドキュメントを "見せ" ます。シェイプ、チャート (トレンドライン、エラーバー、ウォーターフォール、ローソク足、スパークライン)、数式 (OMML → LaTeX、KaTeX でレンダリング)、Three.js による 3D `.glb` モデル、モーフトランジション、スライドズーム、シェイプエフェクトをカバー。ページごとの PNG スクリーンショットは、レンダリングされた HTML をヘッドレスブラウザに渡して生成されます。3 つのモード:
+>>>>>>> upstream/main
 
 - **`view html`** — スタンドアロン HTML ファイル、アセットインライン。任意のブラウザで開けます。
 - **`view screenshot`** — ページごとの PNG、マルチモーダルエージェント向け。
@@ -256,7 +283,11 @@ officecli watch deck.pptx                            # http://localhost:26315
 
 #### 数式 & ピボットエンジン
 
+<<<<<<< HEAD
 150+ の Excel 関数が書き込み時に自動評価 — `=SUM(A1:A2)` を書いて、セルを `get` する、値はすでにそこに。Office で再計算するラウンドトリップは不要。動的配列関数 (`FILTER` / `UNIQUE` / `SORT` / `SEQUENCE`、`_xlfn.` 自動プレフィックス)、`VLOOKUP` / `INDEX` / `MATCH`、日付・テキスト関数など 140+ の関数をカバー。
+=======
+350+ の Excel 関数が書き込み時に自動評価 — `=SUM(A1:A2)` を書いて、セルを `get` する、値はすでにそこに。Office で再計算するラウンドトリップは不要。スピルする動的配列 (`FILTER` / `SORT` / `UNIQUE` / `SEQUENCE` / `LET` / `LAMBDA`、`_xlfn.` 自動プレフィックス)、`VLOOKUP` / `XLOOKUP` / `INDEX` / `MATCH`、財務・債券関数、統計分布・検定・回帰、日付・テキスト関数などをカバー。
+>>>>>>> upstream/main
 
 加えて、ソース範囲から 1 コマンドでネイティブな OOXML ピボットテーブル — マルチフィールドの行/列/フィルター、10 種類の集計、`showDataAs` モード、日付グループ化、計算フィールド、Top-N、レイアウト。ピボットキャッシュ + 定義は OOXML に書き込まれ、Excel で開くと集計済みの状態で表示されます:
 
@@ -272,17 +303,30 @@ officecli add sales.xlsx '/Sheet1' --type pivottable \
 `merge` は任意の `.docx` / `.xlsx` / `.pptx` の `{{key}}` プレースホルダーを JSON データで置換 — 段落、表セル、シェイプ、ヘッダー/フッター、チャートタイトル全体で動作。エージェントが一度レイアウトを設計 (高コスト)、本番コードが N 回入力 (低コスト、決定論的、トークンコストゼロ)。エージェントが各レポートを毎回ゼロから再生成し、N 個の一貫性のないレイアウトを生み出す失敗モードを回避します。
 
 ```bash
+<<<<<<< HEAD
 officecli merge invoice-template.docx out-001.docx '{"client":"Acme","total":"$5,200"}'
 officecli merge q4-template.pptx q4-acme.pptx data.json
+=======
+officecli merge invoice-template.docx out-001.docx --data '{"client":"Acme","total":"$5,200"}'
+officecli merge q4-template.pptx q4-acme.pptx --data data.json
+>>>>>>> upstream/main
 ```
 
 #### Dump によるラウンドトリップ — 既存ドキュメントから学ぶ
 
+<<<<<<< HEAD
 `dump` は任意の `.docx` — ドキュメント全体**または任意のサブツリー**（単一の段落、表、styles、numbering、theme、settings）— を再生可能なバッチ JSON にシリアライズし、`batch` で再生。ユーザーが模倣したいサンプルから、エージェントは生の OOXML XML ではなく構造化された仕様を読み、変更して再生します。"既存テンプレートがある" と "100 個のバリエーションを生成して" を繋ぎます。
+=======
+`dump` は任意の `.docx`・`.pptx`・`.xlsx` — ドキュメント全体**または任意のサブツリー**（単一の段落、表、スライド、ワークシート、styles、numbering、theme、settings）— を再生可能なバッチ JSON にシリアライズし、`batch` で再生。ユーザーが模倣したいサンプルから、エージェントは生の OOXML XML ではなく構造化された仕様を読み、変更して再生します。"既存テンプレートがある" と "100 個のバリエーションを生成して" を繋ぎます。
+>>>>>>> upstream/main
 
 ```bash
 officecli dump existing.docx -o blueprint.json                  # ドキュメント全体
 officecli dump existing.docx /body/tbl[1] -o table.json         # 任意のサブツリー
+<<<<<<< HEAD
+=======
+officecli dump existing.xlsx /Sheet1 -o sheet.json              # 単一ワークシート
+>>>>>>> upstream/main
 officecli batch new.docx --input blueprint.json
 ```
 
@@ -387,9 +431,15 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 - **段階的複雑度 (L1 → L2 → L3)** — エージェントは読み取り専用ビューから始め、DOM 操作にエスカレート、必要な時のみ raw XML にフォールバック。トークン消費を最小化。
 - **自己修復ワークフロー** — `validate`、`view issues`、構造化エラーコード (`not_found`、`invalid_value`、`unsupported_property`) は suggestion と有効範囲を返します。エージェントは人間の介入なしに自己修正します。
 - **内蔵エージェントフレンドリーレンダリングエンジン** — `view html` / `view screenshot` / `watch` がネイティブに HTML と PNG を出力。Office 不要。エージェントは CI / Docker / ヘッドレス環境でも自分の出力を "見て" レイアウトの問題を修正できます。
+<<<<<<< HEAD
 - **内蔵数式 & ピボットエンジン** — 150+ の Excel 関数が書き込み時に自動評価; ソース範囲から 1 コマンドでネイティブ OOXML ピボットテーブル。エージェントは Office で再計算せずに、計算値と集計結果を即座に読み取れます。
 - **テンプレートマージ** — エージェントがレイアウトを一度設計し、下流コードが `{{key}}` プレースホルダーを N 回入力。各レポートを再生成してトークンを焼くことを避けます。
 - **ラウンドトリップ Dump** — `dump` が任意の `.docx` を再生可能なバッチ JSON に変換。エージェントは生の OOXML XML ではなく構造化された仕様を読んで、人間が作成したサンプルから学習。
+=======
+- **内蔵数式 & ピボットエンジン** — 350+ の Excel 関数が書き込み時に自動評価 (スピルする動的配列、財務・債券・統計関数群を含む); ソース範囲から 1 コマンドでネイティブ OOXML ピボットテーブル。エージェントは Office で再計算せずに、計算値と集計結果を即座に読み取れます。
+- **テンプレートマージ** — エージェントがレイアウトを一度設計し、下流コードが `{{key}}` プレースホルダーを N 回入力。各レポートを再生成してトークンを焼くことを避けます。
+- **ラウンドトリップ Dump** — `dump` が任意の `.docx`・`.pptx`・`.xlsx` を再生可能なバッチ JSON に変換。エージェントは生の OOXML XML ではなく構造化された仕様を読んで、人間が作成したサンプルから学習。
+>>>>>>> upstream/main
 - **内蔵ヘルプ** — プロパティ名や値形式に迷ったら、エージェントは推測せず `officecli <format> set <element>` を実行。
 - **自動インストール** — OfficeCLI は使っているツール (Claude Code、Cursor、VS Code…) を検出して自己構成します。手動の skill ファイルセットアップ不要。
 
@@ -398,10 +448,9 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 プロパティ名がわからない時は、階層型ヘルプで確認：
 
 ```bash
-officecli pptx set              # 全設定可能な要素とプロパティ
-officecli pptx set shape        # 特定の要素タイプの詳細
-officecli pptx set shape.fill   # 単一プロパティのフォーマットと例
-officecli docx query            # セレクタリファレンス：属性、:contains、:has() など
+officecli help pptx set              # 全設定可能な要素とプロパティ
+officecli help pptx set shape        # 特定の要素タイプの詳細
+officecli help docx query            # セレクタリファレンス：属性、:contains、:has() など
 ```
 
 `pptx` を `docx` や `xlsx` に置き換え可能。動詞は `view`、`get`、`query`、`set`、`add`、`raw`。
@@ -506,7 +555,7 @@ officecli get report.docx /body --depth 1 --json
 | `close` | 保存してレジデントモードを終了 |
 | [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | バイナリ + スキル + MCP をインストール（`all`、`claude`、`cursor` など） |
 | `config` | 設定の取得または変更 |
-| `<format> <command>` | [組み込みヘルプ](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（例：`officecli pptx set shape`） |
+| `help <format> <command>` | [組み込みヘルプ](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（例：`officecli help pptx set shape`） |
 
 ## エンドツーエンドワークフロー例
 
@@ -559,10 +608,11 @@ officecli get deck.pptx / --depth 2 --json
 officecli batch budget.xlsx --input updates.json --json
 
 # CSV データを Excel シートにインポート
-officecli add budget.xlsx / --type sheet --prop name="Q1 Data" --prop csv=sales.csv
+officecli add budget.xlsx / --type sheet --prop name="Q1 Data"
+officecli import budget.xlsx "/Q1 Data" sales.csv --header
 
 # テンプレートマージでレポートを一括生成
-officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total":"$5,200"}'
+officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme","total":"$5,200"}'
 
 # 納品前にドキュメント品質をチェック
 officecli validate report.docx && officecli view report.docx issues --json

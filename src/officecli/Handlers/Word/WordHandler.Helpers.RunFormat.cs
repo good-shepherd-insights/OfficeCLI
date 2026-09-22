@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -359,6 +363,19 @@ public partial class WordHandler
         "effective.underline", "effective.underline.src",
     };
 
+<<<<<<< HEAD
+=======
+    // BUG-DUMP-R46-FFSIZE: typography keys a FORM-FIELD begin fieldChar keeps
+    // (instead of shedding as noise) so the field-run face/size round-trips into
+    // `add formfield` and a <w:sizeAuto/> checkbox renders at its source size.
+    // Mirrors the keys AddFormField's field-run formatting honors.
+    private static readonly HashSet<string> FieldRunFormatKeepKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "size", "bold", "italic", "color", "underline", "strike",
+        "font.ascii", "font.hAnsi", "font.eastAsia", "font.cs",
+    };
+
+>>>>>>> upstream/main
     // CONSISTENCY(run-special-content): canonical parsers for the run-internal
     // structural types (ptab / fldChar / break) shared by Add and Set.
     // Lowercase XML attribute values are the canonical input; legacy
@@ -492,6 +509,24 @@ public partial class WordHandler
     /// Parse a w:shd value string ("fill", "val;fill", "val;fill;color") into a Shading element.
     /// Shared by paragraph-level, run-level, and pmrp shading handlers.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // OOXML ST_Shd enum values. Kept as a static set so ParseShadingValue can
+    // reject anything else before the SDK's opaque EnumValue ctor leaks at
+    // save time.
+    private static readonly HashSet<string> s_knownShadingPatternValues = new(StringComparer.Ordinal)
+    {
+        "clear", "solid", "nil",
+        "pct5", "pct10", "pct12", "pct15", "pct20", "pct25", "pct30", "pct35",
+        "pct37", "pct40", "pct45", "pct50", "pct55", "pct60", "pct62", "pct65",
+        "pct70", "pct75", "pct80", "pct85", "pct87", "pct90", "pct95",
+        "diagStripe", "reverseDiagStripe", "thinDiagStripe", "thinReverseDiagStripe",
+        "horzStripe", "vertStripe", "thinHorzStripe", "thinVertStripe",
+        "diagCross", "thinDiagCross", "horzCross", "thinHorzCross",
+    };
+    private static bool IsKnownShadingPatternValue(string v) => s_knownShadingPatternValues.Contains(v);
+
+>>>>>>> upstream/main
     private static Shading ParseShadingValue(string value)
     {
         // BUG-DUMP-R41-4: peel off any theme key=val tail
@@ -519,6 +554,17 @@ public partial class WordHandler
             else
             {
                 WarnIfShadingOrderWrong(shdParts[0]);
+<<<<<<< HEAD
+=======
+                // OOXML ST_Shd enum: clear/solid/nil + many pct*/stripe/cross
+                // variants. SDK's `new ShadingPatternValues(raw)` happily
+                // accepts any string and throws an opaque internal exception
+                // at serialize time. Validate up-front so callers see a
+                // friendly ArgumentException.
+                if (!IsKnownShadingPatternValue(shdParts[0]))
+                    throw new ArgumentException(
+                        $"Invalid 'shading' pattern value: '{shdParts[0]}'. Valid ST_Shd values: clear, solid, nil, pct5/10/12/15/20/25/30/35/37/40/45/50/55/60/62/65/70/75/80/85/87/90/95, diagStripe, reverseDiagStripe, thinDiagStripe, thinReverseDiagStripe, horzStripe, vertStripe, thinHorzStripe, thinVertStripe, diagCross, thinDiagCross, horzCross, thinHorzCross.");
+>>>>>>> upstream/main
                 shd.Val = new ShadingPatternValues(shdParts[0]);
                 shd.Fill = SanitizeHex(shdParts[1]);
                 if (shdParts.Length >= 3 && !string.IsNullOrEmpty(shdParts[2])) shd.Color = SanitizeHex(shdParts[2]);
@@ -858,6 +904,7 @@ public partial class WordHandler
                 // accepts dotted form plus camelCase aliases. The OOXML
                 // shape is <w:u w:val="…" w:color="RRGGBB"/> — color is an
                 // attribute on the existing Underline element, not a child
+<<<<<<< HEAD
                 // element. Preserve any existing val (default single when
                 // user is setting color without prior underline).
                 var existingUl = props.GetFirstChild<Underline>();
@@ -865,6 +912,20 @@ public partial class WordHandler
                 props.RemoveAllChildren<Underline>();
                 var hex = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(value).Rgb;
                 InsertRunPropInSchemaOrder(props, new Underline { Val = ulVal, Color = hex });
+=======
+                // element. Preserve any existing val — including its absence:
+                // <w:u w:color="…"/> with no w:val is a legal source shape
+                // that renders NO underline, and defaulting it to single here
+                // underlined entire documents on dump→batch replay. Callers
+                // that want a visible underline pass `underline=` alongside.
+                var existingUl = props.GetFirstChild<Underline>();
+                var ulVal = existingUl?.Val;
+                props.RemoveAllChildren<Underline>();
+                var hex = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(value).Rgb;
+                var ulEl = new Underline { Color = hex };
+                if (ulVal != null) ulEl.Val = ulVal;
+                InsertRunPropInSchemaOrder(props, ulEl);
+>>>>>>> upstream/main
                 return true;
             }
             case "strike" or "strikethrough" or "font.strike" or "font.strikethrough":
@@ -927,6 +988,7 @@ public partial class WordHandler
                 {
                     InsertRunPropInSchemaOrder(props, new RightToLeftText());
                 }
+<<<<<<< HEAD
                 else if (isLegacyRtlKey)
                 {
                     // Legacy 'rtl=false' is an explicit override of inherited
@@ -949,6 +1011,52 @@ public partial class WordHandler
                 props.RemoveAllChildren<Shading>();
                 InsertRunPropInSchemaOrder(props, ParseShadingValue(value));
                 return true;
+=======
+                else
+                {
+                    // Both legacy 'rtl=false' and canonical 'direction=ltr'
+                    // emit <w:rtl w:val="0"/> as an explicit override of an
+                    // inherited RTL paragraph / style / docDefaults — without
+                    // it the LTR override has no render-time effect.
+                    InsertRunPropInSchemaOrder(props, new RightToLeftText { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
+                }
+                return true;
+            case "charspacing" or "letterspacing" or "spacing":
+                // w:spacing native unit is twips. With `pt` suffix convert to
+                // twips; bare number is taken as twips so dump→batch round-trips
+                // and `Get`'s "<n>pt" readback (twips/20) stays consistent.
+                int csTwips = value.EndsWith("pt", StringComparison.OrdinalIgnoreCase)
+                    ? (int)Math.Round(ParseHelpers.SafeParseDouble(value[..^2], "charspacing") * 20, MidpointRounding.AwayFromZero)
+                    : (int)Math.Round(ParseHelpers.SafeParseDouble(value, "charspacing"), MidpointRounding.AwayFromZero);
+                props.RemoveAllChildren<Spacing>();
+                InsertRunPropInSchemaOrder(props, new Spacing { Val = csTwips });
+                return true;
+            case "shading" or "shd" or "fill":
+                // CONSISTENCY(shd-canonical-fill): `fill` is the canonical key
+                // Get emits for a solid run <w:shd>; accept it as a Set/Add alias
+                // alongside the legacy shading/shd so the dump→batch round-trip
+                // (which now carries `fill`) replays. ParseShadingValue treats a
+                // bare #RRGGBB as <w:shd w:val="clear" w:fill="…"/>.
+                props.RemoveAllChildren<Shading>();
+                InsertRunPropInSchemaOrder(props, ParseShadingValue(value));
+                return true;
+            case "rstyle":
+                // <w:rStyle w:val="…"/> — character style binding. Needed by
+                // the markRPr.* dispatch (markRPr.rStyle) and generic callers;
+                // run/hyperlink Adds keep their own explicit handling.
+                props.RemoveAllChildren<RunStyle>();
+                if (!string.IsNullOrEmpty(value))
+                    InsertRunPropInSchemaOrder(props, new RunStyle { Val = value });
+                return true;
+            case "w" or "charscale":
+                // <w:w w:val="…"/> — horizontal character scale percentage.
+                props.RemoveAllChildren<CharacterScale>();
+                InsertRunPropInSchemaOrder(props, new CharacterScale
+                {
+                    Val = (int)Math.Round(ParseHelpers.SafeParseDouble(value.TrimEnd('%'), "charscale"), MidpointRounding.AwayFromZero),
+                });
+                return true;
+>>>>>>> upstream/main
             case "superscript":
                 props.RemoveAllChildren<VerticalTextAlignment>();
                 if (IsTruthy(value))
@@ -959,6 +1067,26 @@ public partial class WordHandler
                 if (IsTruthy(value))
                     InsertRunPropInSchemaOrder(props, new VerticalTextAlignment { Val = VerticalPositionValues.Subscript });
                 return true;
+<<<<<<< HEAD
+=======
+            case "vertalign":
+                // Canonical run-level vertAlign Set. Without this case the
+                // generic TypedAttributeFallback silently accepted invalid
+                // values (banana → SDK EnumValue null → Word silently treats
+                // as baseline). Mirror AddRun's vocabulary.
+                props.RemoveAllChildren<VerticalTextAlignment>();
+                InsertRunPropInSchemaOrder(props, new VerticalTextAlignment
+                {
+                    Val = value.ToLowerInvariant() switch
+                    {
+                        "superscript" or "super" => VerticalPositionValues.Superscript,
+                        "subscript" or "sub" => VerticalPositionValues.Subscript,
+                        "baseline" => VerticalPositionValues.Baseline,
+                        _ => throw new ArgumentException($"Invalid 'vertAlign' value: '{value}'. Valid values: superscript, subscript, baseline."),
+                    }
+                });
+                return true;
+>>>>>>> upstream/main
             case "caps":
             case "allcaps":
                 props.RemoveAllChildren<Caps>();
@@ -978,6 +1106,17 @@ public partial class WordHandler
                     InsertRunPropInSchemaOrder(props, new Vanish { Val = OnOffValue.FromBoolean(false) });
                 else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Vanish());
                 return true;
+<<<<<<< HEAD
+=======
+            case "specvanish":
+                // <w:specVanish/> — Word's style-separator marker (e.g. the
+                // hidden ¶ that lets a heading share a line with body text).
+                props.RemoveAllChildren<SpecVanish>();
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new SpecVanish { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new SpecVanish());
+                return true;
+>>>>>>> upstream/main
             case "bdr":
                 // BUG-R7-06: character border <w:bdr/> — round-trip captured
                 // it from real docs but Add/Set rejected it as UNSUPPORTED.
@@ -1016,6 +1155,13 @@ public partial class WordHandler
                 if (!uint.TryParse(value, out var kernVal))
                     throw new ArgumentException(
                         $"Invalid kern value '{value}'. Pass an integer in half-points (e.g. 28 = 14pt threshold); 'pt' suffix is not accepted on docx kern.");
+<<<<<<< HEAD
+=======
+                // OOXML ST_HpsMeasure MaxInclusive=3277 half-points (~164pt).
+                if (kernVal > 3277)
+                    throw new ArgumentException(
+                        $"Invalid kern value '{value}'. Must be 0-3277 (OOXML ST_HpsMeasure MaxInclusive=3277 half-points = ~164pt).");
+>>>>>>> upstream/main
                 InsertRunPropInSchemaOrder(props, new Kern { Val = kernVal });
                 return true;
             case "position":
@@ -1029,9 +1175,19 @@ public partial class WordHandler
                 // (see WordHandler.Navigation.cs); Add/Set previously
                 // routed to tab-stop SetElementTabStop only.
                 props.RemoveAllChildren<Position>();
+<<<<<<< HEAD
                 if (!string.IsNullOrEmpty(value)
                     && int.TryParse(value, out var posVal))
                     InsertRunPropInSchemaOrder(props, new Position { Val = posVal.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+=======
+                if (!string.IsNullOrEmpty(value))
+                {
+                    int posVal = value.EndsWith("pt", StringComparison.OrdinalIgnoreCase)
+                        ? (int)Math.Round(ParseHelpers.SafeParseDouble(value[..^2], "position") * 2, MidpointRounding.AwayFromZero)
+                        : (int)Math.Round(ParseHelpers.SafeParseDouble(value, "position"), MidpointRounding.AwayFromZero);
+                    InsertRunPropInSchemaOrder(props, new Position { Val = posVal.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+                }
+>>>>>>> upstream/main
                 return true;
             case "lang" or "lang.latin" or "lang.val":
             case "lang.ea" or "lang.eastasia" or "lang.eastasian":
@@ -1085,6 +1241,49 @@ public partial class WordHandler
                     lang.Remove();
                 return true;
             }
+<<<<<<< HEAD
+=======
+            case "snaptogrid":
+                // <w:snapToGrid> run/¶-mark toggle (CT_OnOff). On a doc with a
+                // <w:docGrid>, snapToGrid="0" tells Word NOT to snap this run (or
+                // the paragraph mark) to the line grid — which changes the line's
+                // height. The OFF form is the meaningful one to round-trip: a
+                // ¶-mark <w:rPr><w:snapToGrid w:val="0"/> set the terminating
+                // line's height, and dropping it re-snapped the line to the grid,
+                // shifting metrics and reflowing the page. The run-level toggle
+                // already round-trips via the generic CT_OnOff reader + this case;
+                // it's also reachable through the markRPr.* dispatch (Add.Text.cs)
+                // which previously fell to `default: return false` and dropped it.
+                props.RemoveAllChildren<SnapToGrid>();
+                if (IsTruthy(value))
+                    InsertRunPropInSchemaOrder(props, new SnapToGrid());
+                else
+                    InsertRunPropInSchemaOrder(props, new SnapToGrid { Val = OnOffValue.FromBoolean(false) });
+                return true;
+            // BUG-DUMP-RPR-CONTAINER: <w:em> (East-Asian emphasis mark — the dots/
+            // circles painted above/below CJK glyphs). Previously had NO curated
+            // case, so it only round-tripped on the plain-run path via AddRun's
+            // generic schema-reflection fallback; runs in a hyperlink / field-result /
+            // footnote (which apply rPr through this curated applier) silently lost it.
+            case "em":
+            case "emphasismark":
+            case "emphasis":
+            {
+                props.RemoveAllChildren<Emphasis>();
+                EmphasisMarkValues? emv = value?.Trim().ToLowerInvariant() switch
+                {
+                    "dot" => EmphasisMarkValues.Dot,
+                    "comma" => EmphasisMarkValues.Comma,
+                    "circle" => EmphasisMarkValues.Circle,
+                    "underdot" or "under-dot" => EmphasisMarkValues.UnderDot,
+                    "none" or "" or null => EmphasisMarkValues.None,
+                    _ => null
+                };
+                if (emv.HasValue)
+                    InsertRunPropInSchemaOrder(props, new Emphasis { Val = emv.Value });
+                return true;
+            }
+>>>>>>> upstream/main
             default:
                 return false;
         }
@@ -1098,6 +1297,28 @@ public partial class WordHandler
     /// (kern, w, position, …) to "append at end", producing out-of-order rPr
     /// that strict validators reject.
     /// </summary>
+<<<<<<< HEAD
+=======
+    // BUG-DUMP-R71-RPR-ORDER: re-seat every standard (non-w14) child of a
+    // run-property container (CT_RPr / CT_ParaRPr) into its schema slot. The
+    // rPr is built across mixed paths — SDK typed setters, ApplyRunFormatting
+    // (schema-ordered), but also raw AppendChild (e.g. AddRun's rFonts/sz) and
+    // TypedAttributeFallback (appends at the tail) — so a child can land out of
+    // CT_RPr order (sz after u, ins after rStyle). Running each standard child
+    // back through InsertRunPropInSchemaOrder once at the end converges on the
+    // correct order regardless of how it got there; its Place + w14 hoist also
+    // keep the w14 extension block last. Content-preserving (only reorders).
+    private static void NormalizeRunPropsSchemaOrder(OpenXmlCompositeElement? props)
+    {
+        if (props == null) return;
+        foreach (var child in props.ChildElements.Where(c => c.NamespaceUri != W14Ns).ToList())
+        {
+            child.Remove();
+            InsertRunPropInSchemaOrder(props, child);
+        }
+    }
+
+>>>>>>> upstream/main
     private static void InsertRunPropInSchemaOrder(OpenXmlCompositeElement props, OpenXmlElement elem)
     {
         props.AppendChild(elem);

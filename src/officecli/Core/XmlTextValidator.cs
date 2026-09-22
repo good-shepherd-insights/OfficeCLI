@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2026 OfficeCli (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -71,9 +75,20 @@ internal static class XmlTextValidator
     /// character data. <paramref name="fieldName"/> appears in the error
     /// message to help callers identify which input was rejected.
     /// </summary>
+<<<<<<< HEAD
     public static void ValidateOrThrow(string? text, string fieldName)
     {
         var problem = FindInvalidChar(text);
+=======
+    public static void ValidateOrThrow(string? text, string fieldName, bool allowSoftBreakChar = false)
+    {
+        // NEWLINE-SEMANTICS-V2: '\v' (U+000B) is XML-illegal, but text
+        // pipelines that split it into <a:br/> / <w:br/> ELEMENTS before
+        // serialization (AppendLineWithTabs / AppendTextWithBreaks) may
+        // opt in — the char never reaches XML character data there.
+        var probe = allowSoftBreakChar ? text?.Replace("\v", "") : text;
+        var problem = FindInvalidChar(probe);
+>>>>>>> upstream/main
         if (problem is null) return;
         throw new CliException(
             $"{fieldName}: contains character invalid in XML 1.0 text ({problem}). " +

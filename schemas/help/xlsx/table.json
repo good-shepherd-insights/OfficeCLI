@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "xlsx",
   "element": "table",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["listobject"],
+>>>>>>> upstream/main
   "parent": "sheet",
   "operations": {
     "add": true,
@@ -65,8 +69,14 @@
     },
     "totalRow": {
       "type": "bool",
+<<<<<<< HEAD
       "description": "show total row. Alias: showTotals.",
       "aliases": [
+=======
+      "description": "show total row. Aliases: totalsRow, showTotals.",
+      "aliases": [
+        "totalsRow",
+>>>>>>> upstream/main
         "showTotals"
       ],
       "add": true,

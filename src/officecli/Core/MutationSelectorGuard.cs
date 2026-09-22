@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -39,6 +43,15 @@ public static class MutationSelectorGuard
         if (string.IsNullOrEmpty(path)) return;
         if (path.StartsWith("/")) return;
         if (ExcelNotation.IsMatch(path)) return;
+<<<<<<< HEAD
+=======
+        // A slash path that lost its leading slash ("Sheet1/row[...]") IS
+        // scoped — query already restores the slash and resolves it (see
+        // ExcelHandler.QueryDispatch); rejecting it here as "would match
+        // across the whole document" was both inconsistent and untrue. A '/'
+        // inside a predicate value (row[url~=a/b]) does not count.
+        if (SelectorCommaSplit.ContainsTopLevelChar(path, '/')) return;
+>>>>>>> upstream/main
 
         throw new CliException(
             $"Bare selector '{path}' is not allowed for '{verb}' — it would match across the whole document.")

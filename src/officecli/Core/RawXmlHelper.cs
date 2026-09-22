@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.IO.Compression;
@@ -53,6 +57,17 @@ internal static class RawXmlHelper
             }
         }
         rootElement.InnerXml = string.Concat(xDoc.Root.Nodes().Select(n => n.ToString()));
+<<<<<<< HEAD
+=======
+        // Re-parsing a WordprocessingML part through InnerXml brings every
+        // <w:ind> back under the ISO-strict spelling (w:left/w:right become
+        // w:start/w:end) even though the source used the transitional one — so
+        // a raw-set that touched one node rewrote the indent of every paragraph
+        // in the part, and a later `set` then produced a mixed element. Fold the
+        // aliases straight back so the part keeps the spelling it arrived with.
+        foreach (var ind in rootElement.Descendants<DocumentFormat.OpenXml.Wordprocessing.Indentation>())
+            WordIndentAliases.Normalize(ind);
+>>>>>>> upstream/main
         // The InnerXml setter restores inner content but does NOT touch root
         // attributes — so non-xmlns attrs like `mc:Ignorable` carried by the
         // replacement root would be silently lost on round-trip. Copy them
@@ -183,7 +198,13 @@ internal static class RawXmlHelper
                     if (xml == null) throw new ArgumentException("--xml is required for insertbefore");
                     RequireParent(node, "insertbefore");
                     var beforeFragment = ParseFragment(xml, xDoc);
-                    foreach (var el in beforeFragment.AsEnumerable().Reverse())
+                    // AddBeforeSelf lands each element immediately before the
+                    // anchor, i.e. AFTER everything inserted so far — forward
+                    // iteration preserves source order. (The reverse idiom is
+                    // insertafter-only; reversing here flipped a multi-element
+                    // fragment, splitting bookmarkStart/End pairs so the id
+                    // balancer synthesized a duplicate w:id end marker.)
+                    foreach (var el in beforeFragment)
                         node.AddBeforeSelf(el);
                     affected++;
                     break;
@@ -192,7 +213,19 @@ internal static class RawXmlHelper
                     if (xml == null) throw new ArgumentException("--xml is required for insertafter");
                     RequireParent(node, "insertafter");
                     var afterFragment = ParseFragment(xml, xDoc);
-                    foreach (var el in afterFragment)
+                    // AddAfterSelf inserts immediately after `node`, so calling it
+                    // repeatedly against the SAME anchor REVERSES a multi-element
+                    // fragment (start,end → node,end,start). Iterate in REVERSE and
+                    // keep anchoring to `node`, mirroring insertbefore — each element
+                    // lands right after `node`, yielding source order. (Chaining the
+                    // anchor off the just-added node does NOT work: AddAfterSelf clones
+                    // a parented element, so the loop variable still points at the
+                    // detached fragment node, the chain breaks, and only the first
+                    // element reaches the document — silently dropping the rest of a
+                    // multi-marker fragment, e.g. a second tr-level bookmark.) A
+                    // reversed start/end pair also desynced the id-balancer into
+                    // duplicate bookmark ids.
+                    foreach (var el in afterFragment.AsEnumerable().Reverse())
                         node.AddAfterSelf(el);
                     affected++;
                     break;
@@ -454,8 +487,54 @@ internal static class RawXmlHelper
         var prefixedNs = string.Join(" ", nsDict.Select(kv => $"xmlns:{kv.Key}=\"{kv.Value}\""));
         var defaultNsDecl = !string.IsNullOrEmpty(defaultNs) ? $"xmlns=\"{defaultNs}\"" : "";
         var wrappedXml = $"<_root {defaultNsDecl} {prefixedNs}>{xml}</_root>";
-        var parsed = XDocument.Parse(wrappedXml);
+        // BUG-DUMP-R35-2: parse whitespace-PRESERVED, then normalize. The
+        // default loader (LoadOptions.None) silently drops every
+        // whitespace-only text node — including content whitespace in leaf
+        // text elements (`<w:t> </w:t>` without xml:space="preserve"), so a
+        // space-only run injected via raw-set vanished from the document
+        // ("John Smith" → "JohnSmith"). NormalizeFragmentWhitespace keeps the
+        // old behavior for inter-element formatting whitespace (pretty-printed
+        // --xml input stays clean) but retains leaf-content whitespace and
+        // stamps xml:space="preserve" on its parent so the downstream SDK
+        // parse (OpenXmlElement.InnerXml, which also discards insignificant
+        // whitespace) and every later reopen keep it too.
+        var parsed = XDocument.Parse(wrappedXml, LoadOptions.PreserveWhitespace);
+        NormalizeFragmentWhitespace(parsed.Root!);
         return parsed.Root!.Elements().ToList();
+    }
+
+    // BUG-DUMP-R35-2: post-pass over a whitespace-preserved fragment parse.
+    // A whitespace-only text node is FORMATTING when its parent also has
+    // element children (or is the synthetic _root wrapper) — remove it,
+    // matching the previous LoadOptions.None behavior. It is CONTENT when its
+    // parent is a leaf element (`<w:t> </w:t>`, `<a:t> </a:t>`) — keep it and
+    // stamp xml:space="preserve" (XML-core attribute, namespace-independent)
+    // so both XLinq re-serialization and the OpenXml SDK reader treat it as
+    // significant.
+    private static void NormalizeFragmentWhitespace(XElement root)
+    {
+        var wsTextNodes = root.DescendantNodes().OfType<XText>()
+            .Where(t => t.Value.Length > 0 && string.IsNullOrWhiteSpace(t.Value))
+            .ToList();
+        foreach (var t in wsTextNodes)
+        {
+            var parent = t.Parent;
+            if (parent == null) continue;
+            // xml:space="preserve" already in scope → significant by decree.
+            var inScope = parent.AncestorsAndSelf()
+                .Select(a => (string?)a.Attribute(XNamespace.Xml + "space"))
+                .FirstOrDefault(v => v != null);
+            if (string.Equals(inScope, "preserve", StringComparison.Ordinal))
+                continue;
+            if (parent == root || parent.Elements().Any())
+            {
+                t.Remove(); // formatting whitespace between elements
+            }
+            else
+            {
+                parent.SetAttributeValue(XNamespace.Xml + "space", "preserve");
+            }
+        }
     }
 
     private static XmlNamespaceManager BuildNamespaceManager(XDocument xDoc)
@@ -512,6 +591,24 @@ internal static class RawXmlHelper
         // reference needs an IPackageFactoryFeature that isn't registered for
         // packages opened via SpreadsheetDocument/Word.../Presentation.Open, but
         // the typed Clone(Stream, bool) works (same call HtmlPreview uses).
+<<<<<<< HEAD
+=======
+        //
+        // BUT Clone(stream) is itself a stream read of every LIVE part — so it
+        // re-introduces the exact desync the clone was meant to avoid: cloning a
+        // package with a dirty-but-unflushed StylesPart desyncs that live part,
+        // which then serializes EMPTY on the caller's next Save (a `set` that
+        // creates styles + an in-session `validate` over the resident pipe = a
+        // 0-byte styles.xml on close). Flush each ALREADY-LOADED part's DOM back
+        // to its stream first, so both Clone and PreflightXmlParts read in-sync
+        // bytes and never desync. Only loaded parts are flushed: an unloaded part
+        // cannot be dirty, and force-loading it would make the caller's Save
+        // re-serialize an untouched part (byte churn) — validate must stay
+        // read-only. There is no public IsRootElementLoaded in OpenXml 3.4, so
+        // FlushLoadedPartRoots peeks the private loaded-root field reflectively
+        // rather than touching part.RootElement (which would trigger a load).
+        FlushLoadedPartRoots(package);
+>>>>>>> upstream/main
         using var cloneStream = new MemoryStream();
         using OpenXmlPackage clone = package switch
         {
@@ -540,6 +637,12 @@ internal static class RawXmlHelper
         // original package on disk (the in-memory clone re-serializes a healthy
         // Content_Types, so the defect is only visible in the source file).
         errors.AddRange(DetectMissingDefaultRelsContentType(package, filePath));
+<<<<<<< HEAD
+=======
+        // Spreadsheet-only: a ref/sqref shifted past row 1048576 / column XFD is
+        // schema-legal but makes Excel refuse the workbook (0x800A03EC).
+        errors.AddRange(DetectOutOfGridSheetRefs(clone));
+>>>>>>> upstream/main
         var validator = new OpenXmlValidator(DocumentFormat.OpenXml.FileFormatVersions.Microsoft365);
         // BUG-R6-08: documents containing w:numPicBullet can trip an NRE
         // inside SDK validation when one of its child accessors hits a
@@ -611,10 +714,97 @@ internal static class RawXmlHelper
                     null, null));
             }
         }
+<<<<<<< HEAD
+=======
+        // Drop known SDK-validator false positives on chartEx (cx:) val-attribute
+        // elements — see IsBenignChartExValAttributeError. A valid pareto /
+        // histogram chart opens and renders correctly in real Excel; without this
+        // it would fail `validate` (and the Delivery Gate) over a gap in the
+        // OpenXmlValidator's schema model, not a real defect.
+        errors.RemoveAll(IsBenignChartExValAttributeError);
+        // Drop known SDK-validator false positives on xlsx <font> child order —
+        // see IsBenignFontChildOrderError.
+        errors.RemoveAll(IsBenignFontChildOrderError);
+>>>>>>> upstream/main
         return errors;
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Children of the spreadsheetml <c>CT_Font</c> particle. ECMA-376 defines it
+    /// as <c>&lt;xsd:choice maxOccurs="unbounded"&gt;</c> (sml.xsd), i.e. the child
+    /// elements may appear in ANY order.
+    /// </summary>
+    private static readonly HashSet<string> FontChildElementNames = new(StringComparer.Ordinal)
+    {
+        "name", "charset", "family", "b", "i", "strike", "outline", "shadow",
+        "condense", "extend", "color", "sz", "u", "vertAlign", "scheme"
+    };
+
+    /// <summary>
+    /// True for the OpenXmlValidator false positive on an xlsx <c>&lt;font&gt;</c>
+    /// whose children are not in the SDK's expected order — e.g. openpyxl writes
+    /// <c>name, family, color, sz, scheme</c> while Excel writes
+    /// <c>sz, color, name, family, scheme</c>. The SDK models CT_Font as an ordered
+    /// sequence, but ECMA-376 declares it as an unbounded <c>xsd:choice</c>, so
+    /// every order is schema-legal and Excel opens both forms. Suppress narrowly:
+    /// styles part + the offending element is a <c>font</c> + the "unexpected child"
+    /// really is one of CT_Font's own children, so a foreign element still surfaces.
+    /// </summary>
+    private static bool IsBenignFontChildOrderError(ValidationError e)
+    {
+        if (!(e.Part ?? "").EndsWith("/styles.xml", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var path = e.Path ?? "";
+        // Last path step must be the font element itself (fonts/font[N] or
+        // dxfs/dxf[N]/font[N]) — the validator reports the parent's path.
+        var lastSlash = path.LastIndexOf('/');
+        var last = lastSlash >= 0 ? path[(lastSlash + 1)..] : path;
+        if (!last.StartsWith("x:font[", StringComparison.Ordinal)) return false;
+        var d = e.Description ?? "";
+        if (!d.Contains("unexpected child element", StringComparison.OrdinalIgnoreCase))
+            return false;
+        const string ns = "spreadsheetml/2006/main:";
+        var i = d.IndexOf(ns, StringComparison.Ordinal);
+        if (i < 0) return false;
+        var start = i + ns.Length;
+        var end = start;
+        while (end < d.Length && (char.IsLetterOrDigit(d[end]))) end++;
+        return FontChildElementNames.Contains(d[start..end]);
+    }
+
+    /// <summary>
+    /// True for the OpenXmlValidator false positives on chartEx (cx:) elements
+    /// whose id is carried in a <c>val</c> ATTRIBUTE — <c>&lt;cx:axisId val="1"/&gt;</c>,
+    /// <c>&lt;cx:binCount val="5"/&gt;</c>, <c>&lt;cx:binSize val="3"/&gt;</c>. That is the
+    /// form every file real Excel writes and requires (the text-content form the
+    /// SDK models instead makes Excel refuse the whole workbook, 0x800A03EC — see
+    /// <c>MakeCxAxisId</c> in <c>Core/Chart/ChartExBuilder.cs</c>). The validator
+    /// can't model the attribute form, so it emits "the 'val' attribute is not
+    /// declared" and "the text value cannot be empty" on these elements. They are
+    /// not real defects; suppress them narrowly (chartEx part + one of those three
+    /// elements + one of those two messages) so genuine errors still surface.
+    /// </summary>
+    private static bool IsBenignChartExValAttributeError(ValidationError e)
+    {
+        var path = e.Path ?? "";
+        var part = e.Part ?? "";
+        bool inChartEx = part.Contains("extendedChart", StringComparison.OrdinalIgnoreCase)
+            || part.Contains("chartEx", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("cx:", StringComparison.OrdinalIgnoreCase);
+        if (!inChartEx) return false;
+        bool valAttrElement = path.Contains(":axisId", StringComparison.OrdinalIgnoreCase)
+            || path.Contains(":binCount", StringComparison.OrdinalIgnoreCase)
+            || path.Contains(":binSize", StringComparison.OrdinalIgnoreCase);
+        if (!valAttrElement) return false;
+        var d = e.Description ?? "";
+        return d.Contains("'val' attribute is not declared", StringComparison.OrdinalIgnoreCase)
+            || d.Contains("text value cannot be empty", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// BUG-R5B(BUG2): detect header/footer references whose relationship id does
     /// not resolve to a part. Such a dangling <c>w:headerReference</c> /
     /// <c>w:footerReference</c> makes the OpenXML SDK validator throw a bare
@@ -744,6 +934,202 @@ internal static class RawXmlHelper
         return result;
     }
 
+<<<<<<< HEAD
+=======
+    // Cache the reflective lookup of OpenXmlPart's private loaded-root field.
+    // null once resolution has been attempted-and-failed (older/newer SDK with a
+    // renamed field) so we degrade to a no-op instead of throwing per call.
+    private static System.Reflection.FieldInfo? _rootElementField;
+    private static bool _rootElementFieldResolved;
+
+    /// <summary>
+    /// Flush each ALREADY-LOADED part's in-memory DOM back to its part stream so
+    /// a subsequent Clone/GetStream of the LIVE package reads in-sync bytes and
+    /// cannot desync the SDK's dirty-tracking (which would serialize the part
+    /// EMPTY on the caller's next Save). Only loaded parts are touched: an
+    /// unloaded part cannot be dirty, and force-loading one would make the
+    /// caller's Save re-serialize an untouched part. Best-effort: any failure to
+    /// peek/flush a part is swallowed — validate must never throw on a quirk here.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Reflects over OpenXmlPart's private _rootElement field; officecli ships framework-dependent (not trimmed/AOT). Best-effort with a null guard if the field is removed.")]
+    private static void FlushLoadedPartRoots(OpenXmlPackage package)
+    {
+        if (!_rootElementFieldResolved)
+        {
+            _rootElementFieldResolved = true;
+            // OpenXmlPart stores its loaded root in a private "_rootElement"
+            // field (no public IsRootElementLoaded in DocumentFormat.OpenXml
+            // 3.x). Walk the type hierarchy to find it.
+            for (var t = typeof(OpenXmlPart); t != null; t = t.BaseType)
+            {
+                var f = t.GetField("_rootElement",
+                    System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic);
+                if (f != null) { _rootElementField = f; break; }
+            }
+        }
+        if (_rootElementField == null) return;   // SDK shape changed — no-op
+
+        foreach (var part in package.GetAllParts())
+        {
+            try
+            {
+                if (_rootElementField.GetValue(part) is OpenXmlPartRootElement root)
+                    root.Save();   // DOM -> part stream; idempotent on clean parts
+            }
+            catch
+            {
+                // Reflection/serialize hiccup on one part must not fail validate.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Spreadsheet grid check: an Excel sheet stops at row 1048576 / column XFD.
+    /// A <c>ref</c> or <c>sqref</c> reaching past that is schema-legal — the SDK
+    /// validator accepts it — yet real Excel refuses to open the workbook with
+    /// HRESULT 0x800A03EC. Row/column inserts are how one appears in practice: a
+    /// range that already ends at the last row gets shifted one past the grid.
+    /// Flag it here so <c>validate</c> stops passing a file Excel rejects.
+    ///
+    /// Scans every worksheet part — x14 conditional formatting included, it
+    /// lives in the same part's extLst — plus its table-definition parts.
+    /// Tokens that are not plain A1-style refs (structured refs, sheet-qualified
+    /// names) are skipped rather than guessed at, so this never false-positives.
+    /// </summary>
+    private static List<ValidationError> DetectOutOfGridSheetRefs(OpenXmlPackage package)
+    {
+        var result = new List<ValidationError>();
+        if (package is not SpreadsheetDocument spreadsheet) return result;
+        var wbPart = spreadsheet.WorkbookPart;
+        if (wbPart == null) return result;
+
+        foreach (var wsPart in wbPart.WorksheetParts)
+        {
+            ScanPart(wsPart);
+            foreach (var tablePart in wsPart.TableDefinitionParts) ScanPart(tablePart);
+            if (wsPart.DrawingsPart != null) ScanDrawingAnchors(wsPart.DrawingsPart);
+        }
+        return result;
+
+        void ScanPart(OpenXmlPart part)
+        {
+            try
+            {
+                using var s = part.GetStream(FileMode.Open, FileAccess.Read);
+                using var r = XmlReader.Create(s, new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                });
+                while (r.Read())
+                {
+                    if (r.NodeType != XmlNodeType.Element || !r.HasAttributes) continue;
+                    var element = r.LocalName;
+                    while (r.MoveToNextAttribute())
+                    {
+                        if (r.LocalName is not ("ref" or "sqref")) continue;
+                        var offender = FirstOutOfGridToken(r.Value);
+                        if (offender == null) continue;
+                        result.Add(new ValidationError(
+                            "OutOfGridReference",
+                            $"<{element}> {r.LocalName}=\"{r.Value}\" points at '{offender}', outside Excel's "
+                            + "grid (rows 1-1048576, columns A-XFD). The workbook is schema-valid but Excel "
+                            + "refuses to open it (0x800A03EC).",
+                            $"/{element}", part.Uri.ToString()));
+                    }
+                    r.MoveToElement();
+                }
+            }
+            catch
+            {
+                // Unreadable/malformed XML is already reported by PreflightXmlParts.
+            }
+        }
+
+        // Drawing anchors carry the grid position as element text (<xdr:row>,
+        // <xdr:col>), not as a ref attribute, and overflow the same way when a
+        // row/column insert pushes a shape sitting on the grid edge.
+        void ScanDrawingAnchors(OpenXmlPart part)
+        {
+            const string XdrNs = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
+            try
+            {
+                using var s = part.GetStream(FileMode.Open, FileAccess.Read);
+                var doc = XDocument.Load(s);
+                foreach (var marker in doc.Descendants())
+                {
+                    if (marker.Name.NamespaceName != XdrNs) continue;
+                    var axis = marker.Name.LocalName;
+                    if (axis is not ("row" or "col")) continue;
+                    if (!long.TryParse(marker.Value.Trim(), out var idx)) continue;
+                    var max = axis == "row" ? 1048576L : 16384L;
+                    if (idx < 0 || idx > max)
+                    {
+                        result.Add(new ValidationError(
+                            "OutOfGridReference",
+                            $"drawing anchor <xdr:{axis}>{marker.Value}</xdr:{axis}> is outside Excel's grid "
+                            + $"(0-{max}). The workbook is schema-valid but Excel refuses to open it "
+                            + "(0x800A03EC).",
+                            $"/xdr:{axis}", part.Uri.ToString()));
+                    }
+                }
+            }
+            catch
+            {
+                // Unreadable/malformed XML is already reported by PreflightXmlParts.
+            }
+        }
+    }
+
+    /// <summary>
+    /// First endpoint in a ref/sqref value that falls outside Excel's grid, or
+    /// null when every endpoint is in range. Handles space-separated sqref
+    /// lists, <c>A1:B2</c> ranges, whole-column (<c>A:A</c>) and whole-row
+    /// (<c>1:5</c>) forms, and <c>$</c> anchors.
+    /// </summary>
+    private static string? FirstOutOfGridToken(string refValue)
+    {
+        foreach (var area in refValue.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            foreach (var endpoint in area.Split(':'))
+            {
+                int i = 0;
+                if (i < endpoint.Length && endpoint[i] == '$') i++;
+                int letterStart = i;
+                while (i < endpoint.Length && char.IsAsciiLetter(endpoint[i])) i++;
+                int letters = i - letterStart;
+                if (i < endpoint.Length && endpoint[i] == '$') i++;
+                int digitStart = i;
+                while (i < endpoint.Length && char.IsAsciiDigit(endpoint[i])) i++;
+                int digits = i - digitStart;
+
+                // Anything else (sheet name, table ref, stray punctuation) is not
+                // ours to judge.
+                if (i != endpoint.Length || (letters == 0 && digits == 0)) continue;
+
+                // XFD is the widest in-grid column, so 4+ letters is out by
+                // construction — and stops the index accumulation below from
+                // overflowing on a long garbage run.
+                if (letters > 3) return endpoint;
+                if (letters > 0)
+                {
+                    int colIdx = 0;
+                    for (int k = letterStart; k < letterStart + letters; k++)
+                        colIdx = colIdx * 26 + (char.ToUpperInvariant(endpoint[k]) - 'A' + 1);
+                    if (colIdx > 16384) return endpoint;
+                }
+                if (digits > 0
+                    && (!long.TryParse(endpoint.AsSpan(digitStart, digits), out var row)
+                        || row < 1 || row > 1048576))
+                    return endpoint;
+            }
+        }
+        return null;
+    }
+
+>>>>>>> upstream/main
     /// <summary>
     /// Walk every XML part in the package and try to parse it. OpenXmlValidator
     /// silently skips parts that can't be read, so a deck whose presentation.xml

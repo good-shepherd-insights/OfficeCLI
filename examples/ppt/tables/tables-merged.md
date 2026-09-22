@@ -162,8 +162,13 @@ officecli validate tables-merged.pptx
 
 ```bash
 # List tables on each slide
+<<<<<<< HEAD
 officecli query tables-merged.pptx '/slide[1]' table
 officecli query tables-merged.pptx '/slide[2]' table
+=======
+officecli query tables-merged.pptx '/slide[1]/table'
+officecli query tables-merged.pptx '/slide[2]/table'
+>>>>>>> upstream/main
 
 # Inspect the merged header cells on slide 1
 officecli get tables-merged.pptx '/slide[1]/table[1]/tr[1]/tc[2]'

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
@@ -27,7 +31,11 @@ internal static class WordPdfBackend
     static extern void RoActivateInstance(IntPtr classId, out IntPtr instance);
 
     [DllImport("ole32.dll", PreserveSig = false)]
+<<<<<<< HEAD
     static extern void CoCreateInstance(ref Guid clsid, IntPtr unkOuter, int ctx, ref Guid iid, out IntPtr ppv);
+=======
+    internal static extern void CoCreateInstance(ref Guid clsid, IntPtr unkOuter, int ctx, ref Guid iid, out IntPtr ppv);
+>>>>>>> upstream/main
 
     [DllImport("ole32.dll", PreserveSig = false)]
     static extern void CreateStreamOnHGlobal(IntPtr hGlobal, [MarshalAs(UnmanagedType.Bool)] bool fDeleteOnRelease, out IntPtr ppstm);
@@ -80,7 +88,11 @@ internal static class WordPdfBackend
     static readonly Guid G_DataReaderFact = new("d7527847-57da-4e15-914c-06806699a098");
     static readonly Guid G_RAS            = new("905a0fe1-bc53-11df-8c49-001e4fc686da");
     static readonly Guid G_Word           = new("000209FF-0000-0000-C000-000000000046");
+<<<<<<< HEAD
     static readonly Guid G_IDispatch      = new("00020400-0000-0000-C000-000000000046");
+=======
+    internal static readonly Guid G_IDispatch      = new("00020400-0000-0000-C000-000000000046");
+>>>>>>> upstream/main
     static readonly Guid G_WICFactory_C   = new("CACAF262-9370-4615-A13B-9F5539DA4C0A");
     static readonly Guid G_WICFactory_I   = new("EC5EC8A9-C395-4314-9C77-54D7A935FF70");
     static readonly Guid G_PngContainer   = new("1B7CFAF4-713F-473C-BBCD-6137425FAEAF");
@@ -238,9 +250,15 @@ internal static class WordPdfBackend
         }
     }
 
+<<<<<<< HEAD
     static void DispSet(IntPtr d, string name, object? v) => DispCall(d, name, 4, [v], true);
     static object? DispGet(IntPtr d, string name) => DispCall(d, name, 2, []);
     static object? DispMethod(IntPtr d, string name, params object?[] args) => DispCall(d, name, 1, args);
+=======
+    internal static void DispSet(IntPtr d, string name, object? v) => DispCall(d, name, 4, [v], true);
+    internal static object? DispGet(IntPtr d, string name) => DispCall(d, name, 2, []);
+    internal static object? DispMethod(IntPtr d, string name, params object?[] args) => DispCall(d, name, 1, args);
+>>>>>>> upstream/main
 
     static byte[] RenderOne(IntPtr doc, uint i, IntPtr drFactory, int timeoutMs)
     {
@@ -383,7 +401,11 @@ internal static class WordPdfBackend
         }
     }
 
+<<<<<<< HEAD
     static byte[] Stitch(List<byte[]> pngs)
+=======
+    internal static byte[] Stitch(List<byte[]> pngs)
+>>>>>>> upstream/main
     {
         if (pngs.Count == 1) return pngs[0];
         var clsid = G_WICFactory_C; var iid = G_WICFactory_I;
@@ -411,6 +433,47 @@ internal static class WordPdfBackend
         finally { Marshal.Release(factory); }
     }
 
+<<<<<<< HEAD
+=======
+    // Tile equal-size cell PNGs into an N-column grid on a white background
+    // with uniform gap and outer padding (all in pixels). Reuses the same
+    // BGRA decode/encode primitives as Stitch. Cells are placed top-left in
+    // their cell; the last row may be partially filled.
+    internal static byte[] StitchGrid(List<byte[]> cells, int cols, int gap, int pad)
+    {
+        if (cells.Count == 0) throw new InvalidOperationException("no cells to tile");
+        if (cols < 1) cols = 1;
+        var clsid = G_WICFactory_C; var iid = G_WICFactory_I;
+        CoCreateInstance(ref clsid, IntPtr.Zero, 1, ref iid, out var factory);
+        try
+        {
+            var imgs = new List<(byte[] pixels, int w, int h)>();
+            foreach (var b in cells) imgs.Add(DecodePngBgra(factory, b));
+
+            int cellW = imgs.Max(i => i.w);
+            int cellH = imgs.Max(i => i.h);
+            int rows = (imgs.Count + cols - 1) / cols;
+            int W = pad * 2 + cols * cellW + (cols - 1) * gap;
+            int H = pad * 2 + rows * cellH + (rows - 1) * gap;
+            int targetStride = W * 4;
+            var target = new byte[targetStride * H];
+            for (int i = 0; i < target.Length; i++) target[i] = 0xFF;
+            for (int idx = 0; idx < imgs.Count; idx++)
+            {
+                int r = idx / cols, c = idx % cols;
+                int x0 = pad + c * (cellW + gap);
+                int y0 = pad + r * (cellH + gap);
+                var p = imgs[idx];
+                int srcStride = p.w * 4;
+                for (int row = 0; row < p.h; row++)
+                    Array.Copy(p.pixels, row * srcStride, target, (y0 + row) * targetStride + x0 * 4, srcStride);
+            }
+            return EncodeBgraToPng(factory, target, W, H);
+        }
+        finally { Marshal.Release(factory); }
+    }
+
+>>>>>>> upstream/main
     static string DocxToPdf(string docx)
     {
         var pdf = Path.Combine(Path.GetTempPath(), $"_w_{Guid.NewGuid():N}.pdf");
@@ -443,7 +506,14 @@ internal static class WordPdfBackend
         return pdf;
     }
 
+<<<<<<< HEAD
     static byte[] PdfToPng(string pdf, string pageFilter, int timeoutMs)
+=======
+    // Render the requested PDF pages to one PNG each (native page pixels), in
+    // page order. Shared by Render (vertical stitch) and RenderGrid (downscale +
+    // tile). Returns an empty list if the filter selects nothing.
+    static List<byte[]> PdfToPngList(string pdf, string pageFilter, int timeoutMs)
+>>>>>>> upstream/main
     {
         var fileFact = Factory("Windows.Storage.StorageFile", G_FileStatics);
         var pdfFact = Factory("Windows.Data.Pdf.PdfDocument", G_PdfDocStatics);
@@ -469,13 +539,55 @@ internal static class WordPdfBackend
                 var pages = ParsePages(pageFilter, (int)pageCount);
                 var pngs = new List<byte[]>();
                 foreach (var p in pages) pngs.Add(RenderOne(doc, (uint)(p - 1), drFact, timeoutMs));
+<<<<<<< HEAD
                 return Stitch(pngs);
+=======
+                return pngs;
+>>>>>>> upstream/main
             }
             finally { Rel(doc); }
         }
         finally { Rel(fileFact); Rel(pdfFact); Rel(drFact); }
     }
 
+<<<<<<< HEAD
+=======
+    // Box-average downscale of a BGRA buffer to dw×dh. Pure managed (no COM), so
+    // it runs and unit-tests anywhere; only invoked on the Windows render path.
+    // Area averaging (not bilinear) keeps downscaled page text legible in the
+    // thumbnail. Upscaling degenerates to nearest-neighbour (n == 1), which is
+    // fine — cells are only ever smaller than a native page.
+    internal static byte[] ScaleBgra(byte[] src, int sw, int sh, int dw, int dh)
+    {
+        if (sw == dw && sh == dh) return src;
+        var dst = new byte[dw * dh * 4];
+        for (int y = 0; y < dh; y++)
+        {
+            int sy0 = (int)((long)y * sh / dh);
+            int sy1 = Math.Min(sh, Math.Max(sy0 + 1, (int)((long)(y + 1) * sh / dh)));
+            for (int x = 0; x < dw; x++)
+            {
+                int sx0 = (int)((long)x * sw / dw);
+                int sx1 = Math.Min(sw, Math.Max(sx0 + 1, (int)((long)(x + 1) * sw / dw)));
+                long b = 0, g = 0, r = 0, a = 0; int n = 0;
+                for (int yy = sy0; yy < sy1; yy++)
+                {
+                    int rowOff = yy * sw * 4;
+                    for (int xx = sx0; xx < sx1; xx++)
+                    {
+                        int si = rowOff + xx * 4;
+                        b += src[si]; g += src[si + 1]; r += src[si + 2]; a += src[si + 3]; n++;
+                    }
+                }
+                int di = (y * dw + x) * 4;
+                dst[di] = (byte)(b / n); dst[di + 1] = (byte)(g / n);
+                dst[di + 2] = (byte)(r / n); dst[di + 3] = (byte)(a / n);
+            }
+        }
+        return dst;
+    }
+
+>>>>>>> upstream/main
     public static bool RefreshFields(string docx, int timeoutMs = 180000)
     {
         bool ok = false;
@@ -569,7 +681,12 @@ internal static class WordPdfBackend
             try
             {
                 pdf = DocxToPdf(docx);
+<<<<<<< HEAD
                 result = PdfToPng(pdf, pageFilter, timeoutMs);
+=======
+                var pngs = PdfToPngList(pdf, pageFilter, timeoutMs);
+                result = pngs.Count == 0 ? null : Stitch(pngs);
+>>>>>>> upstream/main
             }
             catch (Exception e)
             {
@@ -587,4 +704,53 @@ internal static class WordPdfBackend
         if (error != null) return null;
         return result;
     }
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// Render every page via real Word (Word → PDF → per-page raster), downscale
+    /// each to <paramref name="cellW"/>×<paramref name="cellH"/>, and tile them
+    /// into a <paramref name="cols"/>-column contact sheet. The docx analogue of
+    /// PowerPointPngBackend.RenderGrid (which exports each slide at cell size via
+    /// PowerPoint). Returns null on non-Windows, missing/inauthentic Word, or any
+    /// failure — caller falls back to the HTML grid. cellW/cellH are the FINAL
+    /// (already 1920-capped) cell size, so the stitched image needs no further cap.
+    /// </summary>
+    public static byte[]? RenderGrid(string docx, string pageFilter, int cellW, int cellH, int cols, int gap, int pad, int timeoutMs = 60000)
+    {
+        byte[]? result = null;
+        var th = new Thread(() =>
+        {
+            string? pdf = null;
+            try
+            {
+                pdf = DocxToPdf(docx);
+                var nativePngs = PdfToPngList(pdf, pageFilter, timeoutMs);
+                if (nativePngs.Count == 0) return;
+
+                var clsid = G_WICFactory_C; var iid = G_WICFactory_I;
+                CoCreateInstance(ref clsid, IntPtr.Zero, 1, ref iid, out var factory);
+                try
+                {
+                    var cells = new List<byte[]>(nativePngs.Count);
+                    foreach (var png in nativePngs)
+                    {
+                        var (px, w, h) = DecodePngBgra(factory, png);
+                        var scaled = ScaleBgra(px, w, h, cellW, cellH);
+                        cells.Add(EncodeBgraToPng(factory, scaled, cellW, cellH));
+                    }
+                    result = StitchGrid(cells, cols, gap, pad);
+                }
+                finally { Marshal.Release(factory); }
+            }
+            catch { result = null; }
+            finally { if (pdf != null) try { File.Delete(pdf); } catch { } }
+        });
+        th.SetApartmentState(ApartmentState.STA);
+        th.IsBackground = true;
+        th.Start();
+        if (!th.Join(timeoutMs + 30000)) return null;
+        return result;
+    }
+>>>>>>> upstream/main
 }

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 namespace OfficeCli.Core;
@@ -49,6 +53,25 @@ internal static class FileSource
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Resolve a source to its full text. Prefer this over
+    /// <see cref="ResolveLines"/> when the content is parsed with quoting
+    /// rules — a quoted CSV field may itself contain a newline, which
+    /// pre-splitting into lines would tear apart.
+    /// </summary>
+    public static string ResolveText(string source)
+    {
+        var (stream, _) = Resolve(source);
+        using (stream)
+        {
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Resolve a source to text lines (for CSV/text data).
     /// </summary>
     public static string[] ResolveLines(string source)
@@ -73,13 +96,35 @@ internal static class FileSource
 
     private static (MemoryStream, string) ResolveUrl(string url)
     {
+<<<<<<< HEAD
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+=======
+        // SSRF guard: same connect-time public-IP enforcement as image fetch —
+        // refuse loopback / private / link-local / cloud-metadata targets. See
+        // SsrfGuard. Without this, a caller-supplied data=/model3d=/media= URL
+        // is an SSRF primitive when officecli runs on untrusted input.
+        var handler = SsrfGuard.CreateGuardedHandler("file");
+
+        using var client = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
+>>>>>>> upstream/main
         client.DefaultRequestHeaders.Add("User-Agent", "OfficeCLI");
 
         var response = client.GetAsync(url).GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
 
+<<<<<<< HEAD
         var bytes = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+=======
+        // Bound memory use: fail fast on an honest oversized Content-Length, then
+        // read through the shared SsrfGuard.ReadBounded so a chunked / lying
+        // response can't exhaust memory either. Same cap as the image path.
+        var declared = response.Content.Headers.ContentLength;
+        if (declared is > SsrfGuard.MaxRemoteBytes)
+            throw new ArgumentException(
+                $"Remote file exceeds {SsrfGuard.MaxRemoteBytes / (1024 * 1024)} MB limit.");
+        var bytes = SsrfGuard.ReadBounded(
+            response.Content.ReadAsStream(), SsrfGuard.MaxRemoteBytes, url, "file");
+>>>>>>> upstream/main
 
         // Try extension from URL path
         var uri = new Uri(url);

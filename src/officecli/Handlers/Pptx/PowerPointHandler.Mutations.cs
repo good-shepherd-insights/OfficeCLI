@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -14,10 +18,19 @@ namespace OfficeCli.Handlers;
 public partial class PowerPointHandler
 {
     public string? Remove(string path, Dictionary<string, string>? properties = null)
+<<<<<<< HEAD
     {
         // Phase 4: trackChange.* is Word-only. Silently ignored here for now;
         // PowerPoint has no revision-tracking schema equivalent.
         Modified = true;
+=======
+        => MarkModified(() => RemoveCore(path, properties));
+
+    private string? RemoveCore(string path, Dictionary<string, string>? properties)
+    {
+        // Phase 4: trackChange.* is Word-only. Silently ignored here for now;
+        // PowerPoint has no revision-tracking schema equivalent.
+>>>>>>> upstream/main
         // CONSISTENCY(null-path-guard): callers that pass null get an
         // ArgumentNullException instead of a confusing downstream NRE.
         // Mirrors the Word/Excel guards on the same surface.
@@ -149,7 +162,7 @@ public partial class PowerPointHandler
             if (tableIdx < 1 || tableIdx > tables.Count)
                 throw new ArgumentException($"Table {tableIdx} not found (total: {tables.Count})");
 
-            var table = tables[tableIdx - 1].Descendants<Drawing.Table>().First();
+            var table = tables[PathIndex.ToArrayIndex(tableIdx)].Descendants<Drawing.Table>().First();
             var rows = table.Elements<Drawing.TableRow>().ToList();
             if (rowIdx < 1 || rowIdx > rows.Count)
                 throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
@@ -167,7 +180,11 @@ public partial class PowerPointHandler
             // become invisible if not promoted. Record the column slot and
             // remaining-rows budget so the post-Remove pass can clear them.
             var rowSpanFixups = new List<(int colIdx, int budget)>();
+<<<<<<< HEAD
             var anchorRow = rows[rowIdx - 1];
+=======
+            var anchorRow = rows[PathIndex.ToArrayIndex(rowIdx)];
+>>>>>>> upstream/main
             int slotAcc = 0;
             foreach (var anchorCell in anchorRow.Elements<Drawing.TableCell>())
             {
@@ -227,14 +244,14 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Column {colIdx} not found (total: {gridCols.Count})");
 
             // Remove the grid column
-            gridCols[colIdx - 1].Remove();
+            gridCols[PathIndex.ToArrayIndex(colIdx)].Remove();
 
             // Remove the corresponding cell from each row
             foreach (var row in colTable.Elements<Drawing.TableRow>())
             {
                 var cells = row.Elements<Drawing.TableCell>().ToList();
                 if (colIdx <= cells.Count)
-                    cells[colIdx - 1].Remove();
+                    cells[PathIndex.ToArrayIndex(colIdx)].Remove();
             }
 
             // Update GraphicFrame container width
@@ -328,6 +345,37 @@ public partial class PowerPointHandler
         // paragraph/run sub-paths on shapes and placeholders; Remove must too.
         // Mirrors the resolution helpers used by Set.Shape (ResolveShape /
         // ResolvePlaceholderShape) — no fingerprinting, pure positional path.
+<<<<<<< HEAD
+=======
+        // R7-4: remove the shape/placeholder hyperlink — equivalent to set link=none.
+        // Strips the hlinkClick from nvSpPr/cNvPr and every run (mirrors ApplyShapeHyperlink("none")).
+        var shapeHlinkRemoveMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/shape\[(\d+)\]/hyperlink$");
+        if (shapeHlinkRemoveMatch.Success)
+        {
+            var hSlideIdx = int.Parse(shapeHlinkRemoveMatch.Groups[1].Value);
+            var hShapeIdx = int.Parse(shapeHlinkRemoveMatch.Groups[2].Value);
+            var (hSlidePart, hShape) = ResolveShape(hSlideIdx, hShapeIdx);
+            ApplyShapeHyperlink(hSlidePart, hShape, "none");
+            return null;
+        }
+
+        var phHlinkRemoveMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/placeholder\[(\w+)\]/hyperlink$");
+        if (phHlinkRemoveMatch.Success)
+        {
+            var hSlideIdx = int.Parse(phHlinkRemoveMatch.Groups[1].Value);
+            var hPhId = phHlinkRemoveMatch.Groups[2].Value;
+            var hSlideParts = GetSlideParts().ToList();
+            if (hSlideIdx < 1 || hSlideIdx > hSlideParts.Count)
+                throw new ArgumentException($"Slide {hSlideIdx} not found (total: {hSlideParts.Count})");
+            var hSlidePart = hSlideParts[hSlideIdx - 1];
+            var hShape = ResolvePlaceholderShape(hSlidePart, hPhId);
+            ApplyShapeHyperlink(hSlidePart, hShape, "none");
+            return null;
+        }
+
+>>>>>>> upstream/main
         var runRemoveMatch = Regex.Match(path,
             @"^/slide\[(\d+)\]/shape\[(\d+)\]/(?:paragraph|p)\[(\d+)\]/(?:run|r)\[(\d+)\]$");
         if (runRemoveMatch.Success)
@@ -414,9 +462,29 @@ public partial class PowerPointHandler
             if (slideIdx < 1 || slideIdx > slideIds.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideIds.Count})");
 
-            var slideId = slideIds[slideIdx - 1];
+            var slideId = slideIds[PathIndex.ToArrayIndex(slideIdx)];
             var relId = slideId.RelationshipId?.Value;
             slideId.Remove();
+
+            // Custom shows reference slides by relationship id; prune entries
+            // for the slide being removed or they dangle once the part (and
+            // its relationship) is deleted — PowerPoint refuses to open the
+            // file (0x80070570). A show that becomes empty is dropped, as is
+            // an empty <p:custShowLst>.
+            var custShowList = presentation.GetFirstChild<CustomShowList>();
+            if (relId != null && custShowList != null)
+            {
+                foreach (var show in custShowList.Elements<CustomShow>().ToList())
+                {
+                    var entries = show.SlideList?.Elements<SlideListEntry>()
+                        .Where(e => e.Id?.Value == relId).ToList();
+                    if (entries == null) continue;
+                    foreach (var e in entries) e.Remove();
+                    if (show.SlideList!.HasChildren == false) show.Remove();
+                }
+                if (!custShowList.HasChildren) custShowList.Remove();
+            }
+
             if (relId != null)
                 presentationPart.DeletePart(presentationPart.GetPartById(relId));
             presentation.Save();
@@ -428,7 +496,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shapes");
 
@@ -545,14 +613,26 @@ public partial class PowerPointHandler
         }
         else if (elementType == "group")
         {
+<<<<<<< HEAD
             // Ungroup: move children back to parent container (slide root or outer group),
             // then remove group. `container` is the parent of the group being removed,
             // so children naturally land at the right level — root-level ungroup keeps
             // children at slide root; nested-group ungroup moves them up one level only.
+=======
+            // Delete the whole group and everything inside it. Mirrors Word's
+            // `remove /body/group[N]`, the diagram help ("remove deletes it"),
+            // and PowerPoint's own Delete on a selected group. (Previously this
+            // UNGROUPED — promoting children to the parent container — which
+            // silently scattered a removed diagram into loose shapes and
+            // diverged from the docx group.) Clean up parts / animation refs
+            // held by descendants so no orphaned ImageParts / ChartParts or
+            // dangling timing entries survive the delete.
+>>>>>>> upstream/main
             var groups = container.Elements<GroupShape>().ToList();
             if (elementIdx < 1 || elementIdx > groups.Count)
                 throw new ArgumentException($"Group {elementIdx} not found");
             var group = groups[elementIdx - 1];
+<<<<<<< HEAD
             var children = group.ChildElements
                 .Where(e => e is Shape or Picture or ConnectionShape or GraphicFrame or GroupShape)
                 .ToList();
@@ -560,6 +640,28 @@ public partial class PowerPointHandler
             {
                 child.Remove();
                 container.AppendChild(child);
+=======
+            var slide = GetSlide(slidePart);
+            foreach (var descPic in group.Descendants<Picture>().ToList())
+            {
+                var pid = descPic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Id?.Value ?? 0;
+                if (pid > 0) RemoveShapeAnimations(slide, (uint)pid);
+                RemovePictureWithCleanup(slidePart, shapeTree, descPic);
+            }
+            foreach (var descChart in group.Descendants<GraphicFrame>()
+                         .Where(gf => gf.Descendants<C.ChartReference>().Any()).ToList())
+            {
+                var chartRef = descChart.Descendants<C.ChartReference>().FirstOrDefault();
+                if (chartRef?.Id?.Value != null)
+                {
+                    try { slidePart.DeletePart(chartRef.Id.Value); } catch { }
+                }
+            }
+            foreach (var descShape in group.Descendants<Shape>().ToList())
+            {
+                var sid = descShape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value ?? 0;
+                if (sid > 0) RemoveShapeAnimations(slide, (uint)sid);
+>>>>>>> upstream/main
             }
             group.Remove();
         }
@@ -616,7 +718,11 @@ public partial class PowerPointHandler
             // this slide. Also deletes the backing embedded part and the
             // icon image part so the package doesn't bloat with orphaned
             // binaries — same rationale as the picture-replacement quirk
+<<<<<<< HEAD
             // noted in CLAUDE.md.
+=======
+            // noted in the project conventions.
+>>>>>>> upstream/main
             var oleFrames = shapeTree.Elements<GraphicFrame>()
                 .Where(gf => gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
                 .ToList();
@@ -647,6 +753,12 @@ public partial class PowerPointHandler
     }
 
     public string Move(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties = null)
+<<<<<<< HEAD
+=======
+        => MarkModified(() => MoveCore(sourcePath, targetParentPath, position, properties));
+
+    private string MoveCore(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties)
+>>>>>>> upstream/main
     {
         // pptx has no track-change concept; `properties` is accepted for IDocumentHandler parity but ignored.
         var index = position?.Index;
@@ -704,7 +816,11 @@ public partial class PowerPointHandler
             if (slideIdx < 1 || slideIdx > slideIds.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideIds.Count})");
 
+<<<<<<< HEAD
             var slideId = slideIds[slideIdx - 1];
+=======
+            var slideId = slideIds[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
 
             // Resolve after/before anchor BEFORE removing
             SlideId? afterAnchor = null, beforeAnchor = null;
@@ -737,10 +853,40 @@ public partial class PowerPointHandler
             {
                 // Moving a slide after/before itself is a no-op.
                 var sameNewSlideIds = slideIdList.Elements<SlideId>().ToList();
+<<<<<<< HEAD
                 var sameIdx = sameNewSlideIds.IndexOf(slideId) + 1;
                 return $"/slide[{sameIdx}]";
             }
 
+=======
+                var sameIdx = PathIndex.FromArrayIndex(sameNewSlideIds.IndexOf(slideId));
+                return $"/slide[{sameIdx}]";
+            }
+
+            // --to /slide[K] without explicit after/before/index: treat as a
+            // positional move to slot K. Without this branch the source was
+            // removed and appended at end (silent no-op when K equals current
+            // position; misleading "no movement" otherwise). Resolved against
+            // the post-remove list so K is the user-visible 1-based final
+            // position the source should occupy.
+            int? toIdxFromTarget = null;
+            if (afterAnchor == null && beforeAnchor == null && !index.HasValue
+                && !string.IsNullOrEmpty(targetParentPath))
+            {
+                var toMatch = Regex.Match(targetParentPath, @"^/slide\[(\d+)\]$");
+                if (toMatch.Success)
+                {
+                    var ti = int.Parse(toMatch.Groups[1].Value);
+                    // Reject an out-of-range target instead of silently clamping
+                    // to the end (a typo'd /slide[99] used to reorder to last and
+                    // report success). Mirrors Swap's slide-bounds check.
+                    if (ti < 1 || ti > slideIds.Count)
+                        throw new ArgumentException($"--to target /slide[{ti}] not found (total: {slideIds.Count})");
+                    toIdxFromTarget = ti;
+                }
+            }
+
+>>>>>>> upstream/main
             slideId.Remove();
 
             if (afterAnchor != null)
@@ -755,6 +901,17 @@ public partial class PowerPointHandler
                 else
                     slideIdList.AppendChild(slideId);
             }
+            else if (toIdxFromTarget.HasValue)
+            {
+                // Insert before the slide currently at (1-based) target index.
+                // Past-end target appends.
+                var remaining = slideIdList.Elements<SlideId>().ToList();
+                var zeroBased = toIdxFromTarget.Value - 1;
+                if (zeroBased >= 0 && zeroBased < remaining.Count)
+                    remaining[zeroBased].InsertBeforeSelf(slideId);
+                else
+                    slideIdList.AppendChild(slideId);
+            }
             else
             {
                 slideIdList.AppendChild(slideId);
@@ -762,7 +919,7 @@ public partial class PowerPointHandler
 
             movePresentation.Save();
             var newSlideIds = slideIdList.Elements<SlideId>().ToList();
-            var newIdx = newSlideIds.IndexOf(slideId) + 1;
+            var newIdx = PathIndex.FromArrayIndex(newSlideIds.IndexOf(slideId));
             return $"/slide[{newIdx}]";
         }
 
@@ -780,7 +937,7 @@ public partial class PowerPointHandler
             tgtSlidePart = srcSlidePart;
             tgtShapeTree = GetSlide(srcSlidePart).CommonSlideData?.ShapeTree
                 ?? throw new InvalidOperationException("Slide has no shape tree");
-            var srcSlideIdx = slideParts.IndexOf(srcSlidePart) + 1;
+            var srcSlideIdx = PathIndex.FromArrayIndex(slideParts.IndexOf(srcSlidePart));
             effectiveParentPath = $"/slide[{srcSlideIdx}]";
         }
         else
@@ -878,6 +1035,9 @@ public partial class PowerPointHandler
     }
 
     public (string NewPath1, string NewPath2) Swap(string path1, string path2)
+        => MarkModified(() => SwapCore(path1, path2));
+
+    private (string NewPath1, string NewPath2) SwapCore(string path1, string path2)
     {
         path1 = ResolveIdPath(path1);
         path2 = ResolveIdPath(path2);
@@ -1012,7 +1172,7 @@ public partial class PowerPointHandler
         SwapXmlElements(elem1, elem2);
         GetSlide(slide1Part).Save();
 
-        var slideIdx = slideParts.IndexOf(slide1Part) + 1;
+        var slideIdx = PathIndex.FromArrayIndex(slideParts.IndexOf(slide1Part));
         var parentPath = $"/slide[{slideIdx}]";
         var shapeTree = GetSlide(slide1Part).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
@@ -1057,12 +1217,17 @@ public partial class PowerPointHandler
         }
         else if (bNext == a)
         {
-            // B was directly before A: [... B A ...] → [... A B ...]
+            // B was directly before A: [... B A ...] → [... A B ...]. Put A back
+            // where the pair started, then B immediately AFTER it. Using
+            // InsertBeforeSelf here re-created the original [B A] order, so an
+            // adjacent swap whose first path has the HIGHER index (e.g.
+            // `swap /slide[2] /slide[1]`, which is what a "move slide up" issues)
+            // reported success but left the order unchanged.
             if (aNext != null)
                 aNext.InsertBeforeSelf(a);
             else
                 parent.AppendChild(a);
-            a.InsertBeforeSelf(b);
+            a.InsertAfterSelf(b);
         }
         else
         {
@@ -1079,6 +1244,12 @@ public partial class PowerPointHandler
     }
 
     public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
+<<<<<<< HEAD
+=======
+        => MarkModified(() => CopyFromCore(sourcePath, targetParentPath, position));
+
+    private string CopyFromCore(string sourcePath, string targetParentPath, InsertPosition? position)
+>>>>>>> upstream/main
     {
         var index = position?.Index;
         sourcePath = ResolveIdPath(sourcePath);
@@ -1192,7 +1363,11 @@ public partial class PowerPointHandler
         var rows = table.Elements<Drawing.TableRow>().ToList();
         if (rowIdx < 1 || rowIdx > rows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
+<<<<<<< HEAD
         var row = rows[rowIdx - 1];
+=======
+        var row = rows[PathIndex.ToArrayIndex(rowIdx)];
+>>>>>>> upstream/main
 
         // Resolve --before/--after anchor relative to sibling rows (1-based)
         // before mutating, then convert to a 0-based target position.
@@ -1230,7 +1405,11 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newRows = table.Elements<Drawing.TableRow>().ToList();
+<<<<<<< HEAD
         var newRowIdx = newRows.IndexOf(row) + 1;
+=======
+        var newRowIdx = PathIndex.FromArrayIndex(newRows.IndexOf(row));
+>>>>>>> upstream/main
         return $"/slide[{slideIdx}]/table[{tableIdx}]/tr[{newRowIdx}]";
     }
 
@@ -1258,7 +1437,11 @@ public partial class PowerPointHandler
         if (rowIdx < 1 || rowIdx > rows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
 
+<<<<<<< HEAD
         var clone = (Drawing.TableRow)rows[rowIdx - 1].CloneNode(true);
+=======
+        var clone = (Drawing.TableRow)rows[PathIndex.ToArrayIndex(rowIdx)].CloneNode(true);
+>>>>>>> upstream/main
 
         // Resolve --before/--after anchor first (relative to current sibling order).
         int? targetIdx = null;
@@ -1289,7 +1472,11 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newRows = table.Elements<Drawing.TableRow>().ToList();
+<<<<<<< HEAD
         var newRowIdx = newRows.IndexOf(clone) + 1;
+=======
+        var newRowIdx = PathIndex.FromArrayIndex(newRows.IndexOf(clone));
+>>>>>>> upstream/main
         return $"/slide[{slideIdx}]/table[{tableIdx}]/tr[{newRowIdx}]";
     }
 
@@ -1320,12 +1507,20 @@ public partial class PowerPointHandler
         var rows = table.Elements<Drawing.TableRow>().ToList();
         if (rowIdx < 1 || rowIdx > rows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
+<<<<<<< HEAD
         var row = rows[rowIdx - 1];
+=======
+        var row = rows[PathIndex.ToArrayIndex(rowIdx)];
+>>>>>>> upstream/main
         var cells = row.Elements<Drawing.TableCell>().ToList();
         if (cellIdx < 1 || cellIdx > cells.Count)
             throw new ArgumentException($"Cell {cellIdx} not found (total: {cells.Count})");
 
+<<<<<<< HEAD
         var clone = (Drawing.TableCell)cells[cellIdx - 1].CloneNode(true);
+=======
+        var clone = (Drawing.TableCell)cells[PathIndex.ToArrayIndex(cellIdx)].CloneNode(true);
+>>>>>>> upstream/main
 
         int? targetIdx = null;
         if (position?.After != null || position?.Before != null)
@@ -1356,7 +1551,11 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newCells = row.Elements<Drawing.TableCell>().ToList();
+<<<<<<< HEAD
         var newCellIdx = newCells.IndexOf(clone) + 1;
+=======
+        var newCellIdx = PathIndex.FromArrayIndex(newCells.IndexOf(clone));
+>>>>>>> upstream/main
         return $"/slide[{slideIdx}]/table[{tableIdx}]/tr[{rowIdx}]/tc[{newCellIdx}]";
     }
 
@@ -1420,7 +1619,11 @@ public partial class PowerPointHandler
             return $"/slide[{slideIdx}]/table[{tableIdx}]/col[{colIdx}]";
 
         // Detach gridCol + per-row tc
+<<<<<<< HEAD
         var movingGridCol = gridCols[colIdx - 1];
+=======
+        var movingGridCol = gridCols[PathIndex.ToArrayIndex(colIdx)];
+>>>>>>> upstream/main
         movingGridCol.Remove();
         var movingCells = new List<Drawing.TableCell>();
         foreach (var row in table.Elements<Drawing.TableRow>())
@@ -1428,8 +1631,13 @@ public partial class PowerPointHandler
             var cells = row.Elements<Drawing.TableCell>().ToList();
             if (colIdx <= cells.Count)
             {
+<<<<<<< HEAD
                 movingCells.Add(cells[colIdx - 1]);
                 cells[colIdx - 1].Remove();
+=======
+                movingCells.Add(cells[PathIndex.ToArrayIndex(colIdx)]);
+                cells[PathIndex.ToArrayIndex(colIdx)].Remove();
+>>>>>>> upstream/main
             }
             else
             {
@@ -1458,7 +1666,11 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newGridCols = grid.Elements<Drawing.GridColumn>().ToList();
+<<<<<<< HEAD
         var newColIdx = newGridCols.IndexOf(movingGridCol) + 1;
+=======
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(movingGridCol));
+>>>>>>> upstream/main
         return $"/slide[{slideIdx}]/table[{tableIdx}]/col[{newColIdx}]";
     }
 
@@ -1489,13 +1701,21 @@ public partial class PowerPointHandler
         // No source removal here, so don't pass sourceColIdx (no compensation needed).
         var targetIdx = ResolveColumnAnchorIndex(position, slideIdx, tableIdx, sourceColIdx: null);
 
+<<<<<<< HEAD
         var clonedGridCol = (Drawing.GridColumn)gridCols[colIdx - 1].CloneNode(true);
+=======
+        var clonedGridCol = (Drawing.GridColumn)gridCols[PathIndex.ToArrayIndex(colIdx)].CloneNode(true);
+>>>>>>> upstream/main
         var clonedCells = new List<Drawing.TableCell>();
         foreach (var row in table.Elements<Drawing.TableRow>())
         {
             var cells = row.Elements<Drawing.TableCell>().ToList();
             clonedCells.Add(colIdx <= cells.Count
+<<<<<<< HEAD
                 ? (Drawing.TableCell)cells[colIdx - 1].CloneNode(true)
+=======
+                ? (Drawing.TableCell)cells[PathIndex.ToArrayIndex(colIdx)].CloneNode(true)
+>>>>>>> upstream/main
                 : new Drawing.TableCell());
         }
 
@@ -1527,7 +1747,11 @@ public partial class PowerPointHandler
 
         GetSlide(slidePart).Save();
         var newGridCols = grid.Elements<Drawing.GridColumn>().ToList();
+<<<<<<< HEAD
         var newColIdx = newGridCols.IndexOf(clonedGridCol) + 1;
+=======
+        var newColIdx = PathIndex.FromArrayIndex(newGridCols.IndexOf(clonedGridCol));
+>>>>>>> upstream/main
         return $"/slide[{slideIdx}]/table[{tableIdx}]/col[{newColIdx}]";
     }
 
@@ -1559,6 +1783,47 @@ public partial class PowerPointHandler
         var srcSlide = GetSlide(srcSlidePart);
         newSlidePart.Slide = (Slide)srcSlide.CloneNode(true);
 
+        // 3b. Reassign every cNvPr id on the cloned slide so the new slide
+        // doesn't share element IDs with the source. Real PowerPoint rejects
+        // a deck with overlapping cNvPr ids across slides (422 "could not
+        // open the file"); the SDK validator doesn't catch this. The
+        // shape-tree-root nvGrpSpPr cNvPr stays as-is (it's a per-slide
+        // wrapper, not a sibling), matching AcquireShapeId's exception list.
+        var newShapeTree = newSlidePart.Slide.CommonSlideData?.ShapeTree;
+        var shapeIdRemap = new Dictionary<uint, uint>();
+        if (newShapeTree != null)
+        {
+            var rootNvPr = newShapeTree.GetFirstChild<NonVisualGroupShapeProperties>()
+                ?.GetFirstChild<NonVisualDrawingProperties>();
+            foreach (var nvPr in newShapeTree.Descendants<NonVisualDrawingProperties>().ToList())
+            {
+                if (ReferenceEquals(nvPr, rootNvPr)) continue;
+                if (nvPr.Id?.HasValue != true) continue;
+                var oldId = nvPr.Id.Value;
+                var newId = GenerateUniqueShapeId(newShapeTree);
+                nvPr.Id = newId;
+                shapeIdRemap[oldId] = newId;
+            }
+
+            // R46: connector endpoints (a:stCxn/@id, a:endCxn/@id) reference
+            // shape IDs by number. Without remapping, the cloned connector's
+            // stCxn/endCxn still point at slide[1]'s shapes — connector draws
+            // via stored geometry but is logically dangling, so dragging a
+            // shape on slide[2] won't move it.
+            foreach (var stCxn in newShapeTree.Descendants<DocumentFormat.OpenXml.Drawing.StartConnection>())
+            {
+                if (stCxn.Id?.HasValue == true
+                    && shapeIdRemap.TryGetValue(stCxn.Id.Value, out var mappedSt))
+                    stCxn.Id = mappedSt;
+            }
+            foreach (var endCxn in newShapeTree.Descendants<DocumentFormat.OpenXml.Drawing.EndConnection>())
+            {
+                if (endCxn.Id?.HasValue == true
+                    && shapeIdRemap.TryGetValue(endCxn.Id.Value, out var mappedEnd))
+                    endCxn.Id = mappedEnd;
+            }
+        }
+
         // 4. Copy all referenced parts (images, charts, embedded objects, media)
         CopySlideParts(srcSlidePart, newSlidePart);
 
@@ -1572,6 +1837,16 @@ public partial class PowerPointHandler
                 : new NotesSlide();
             // Link notes to the new slide
             newNotesPart.AddPart(newSlidePart);
+            // BUG(notes-orphan): the clone must also carry the source's
+            // notesMaster relationship. Its placeholders have an empty
+            // <p:spPr/> and inherit geometry from the master, so without this
+            // the duplicated notes text has no position or size anywhere in
+            // the package and conformant readers throw on the missing
+            // relationship — even though the deck itself has a valid master.
+            newNotesPart.AddPart(EnsureNotesMasterPart(presentationPart));
+            // Pictures / hyperlinks living in the notes themselves, plus the
+            // rId remap their cloned XML needs.
+            CopyNotesSlideParts(srcNotesPart, newNotesPart);
         }
 
         newSlidePart.Slide.Save();
@@ -1611,19 +1886,91 @@ public partial class PowerPointHandler
     /// </summary>
     private static void CopySlideParts(SlidePart source, SlidePart target)
     {
+        // SlideLayoutPart is already linked by the caller; NotesSlidePart is
+        // cloned separately by CopyNotesSlideParts, which needs its own rId
+        // remap target (the notes XML, not the slide XML).
+        var rIdMap = CopyPartsAndRelationships(source, target,
+            part => part is SlideLayoutPart or NotesSlidePart);
+        if (rIdMap.Count > 0 && target.Slide != null)
+        {
+            RemapRelationshipIds(target.Slide, rIdMap);
+            target.Slide.Save();
+        }
+    }
+
+    /// <summary>
+    /// Copy a duplicated slide's notes-slide sub-parts. Speaker notes can carry
+    /// their own pictures and external hyperlinks; without this the clone kept
+    /// the r:embed / r:id in its notes XML while the relationships stayed behind
+    /// on the source part, leaving a dangling reference that makes PowerPoint
+    /// offer to repair the file.
+    ///
+    /// NotesMasterPart and SlidePart are skipped: CloneSlide wires those
+    /// explicitly to the NEW slide and the deck's notes master, and copying the
+    /// source's would point the clone back at the original slide.
+    /// </summary>
+    private static void CopyNotesSlideParts(NotesSlidePart source, NotesSlidePart target)
+    {
+        var rIdMap = CopyPartsAndRelationships(source, target,
+            part => part is NotesMasterPart or SlidePart);
+        if (rIdMap.Count > 0 && target.NotesSlide != null)
+        {
+            RemapRelationshipIds(target.NotesSlide, rIdMap);
+            target.NotesSlide.Save();
+        }
+    }
+
+    /// <summary>
+    /// Shared part + relationship copier behind CopySlideParts and
+    /// CopyNotesSlideParts. Returns the old rId -&gt; new rId map that the caller
+    /// must replay over its own cloned XML.
+    /// </summary>
+    private static Dictionary<string, string> CopyPartsAndRelationships(
+        OpenXmlPartContainer source, OpenXmlPartContainer target,
+        Func<OpenXmlPart, bool> skip)
+    {
         // Build a map of old rId → new rId for all parts that need copying
         var rIdMap = new Dictionary<string, string>();
 
         foreach (var part in source.Parts)
         {
-            // Skip SlideLayoutPart (already linked above)
-            if (part.OpenXmlPart is SlideLayoutPart) continue;
-            // Skip NotesSlidePart (handled separately)
-            if (part.OpenXmlPart is NotesSlidePart) continue;
+            if (skip(part.OpenXmlPart)) continue;
+
+            // Charts and embedded objects MUST be deep-copied — both slides
+            // sharing the same ChartPart instance makes real PowerPoint reject
+            // the file (422) even though the SDK validator accepts it. Images
+            // and media are safe to share (truly read-only after creation).
+            if (NeedsDeepCopy(part.OpenXmlPart))
+            {
+                try
+                {
+                    var newPart = CreateNewTypedPartForDeepCopy(target, part.OpenXmlPart);
+                    using (var stream = part.OpenXmlPart.GetStream())
+                        newPart.FeedData(stream);
+                    DeepCopySubParts(part.OpenXmlPart, newPart);
+                    var newRelId = target.GetIdOfPart(newPart);
+                    if (newRelId != part.RelationshipId)
+                        rIdMap[part.RelationshipId] = newRelId;
+                }
+                catch
+                {
+                    // Best-effort fallback: share the part — better than dropping
+                    // the relationship entirely. Real Office may still complain
+                    // but at least the file structure is preserved.
+                    try
+                    {
+                        var fallbackRelId = target.CreateRelationshipToPart(part.OpenXmlPart);
+                        if (fallbackRelId != part.RelationshipId)
+                            rIdMap[part.RelationshipId] = fallbackRelId;
+                    }
+                    catch { }
+                }
+                continue;
+            }
 
             try
             {
-                // Try to add the same part (shares the underlying data)
+                // Share the part (images / media — safe to share).
                 var newRelId = target.CreateRelationshipToPart(part.OpenXmlPart);
                 if (newRelId != part.RelationshipId)
                     rIdMap[part.RelationshipId] = newRelId;
@@ -1659,11 +2006,114 @@ public partial class PowerPointHandler
             catch { }
         }
 
-        // Remap any changed relationship IDs in the slide XML
-        if (rIdMap.Count > 0 && target.Slide != null)
+        return rIdMap;
+    }
+
+    /// <summary>
+    /// Create a fresh part of the same concrete type as <paramref name="source"/>
+    /// hung off <paramref name="parent"/>. Using the strongly-typed AddNewPart
+    /// overload is critical: the generic `AddNewPart&lt;OpenXmlPart&gt;(contentType)`
+    /// path can reuse an existing URI (sharing the underlying part), which is
+    /// exactly the bug we're trying to fix — two slides ending up pointing at
+    /// `chart1.xml` despite our deep-copy intent.
+    /// </summary>
+    private static OpenXmlPart CreateNewTypedPartForDeepCopy(OpenXmlPartContainer parent, OpenXmlPart source)
+    {
+        return source switch
         {
-            RemapRelationshipIds(target.Slide, rIdMap);
-            target.Slide.Save();
+            DocumentFormat.OpenXml.Packaging.ChartPart
+                when parent is SlidePart sp => sp.AddNewPart<DocumentFormat.OpenXml.Packaging.ChartPart>(),
+            DocumentFormat.OpenXml.Packaging.ChartPart
+                when parent is DocumentFormat.OpenXml.Packaging.ChartDrawingPart cdp
+                => cdp.AddNewPart<DocumentFormat.OpenXml.Packaging.ChartPart>(),
+            DocumentFormat.OpenXml.Packaging.ExtendedChartPart
+                when parent is SlidePart sp2 => sp2.AddNewPart<DocumentFormat.OpenXml.Packaging.ExtendedChartPart>(),
+            DocumentFormat.OpenXml.Packaging.EmbeddedPackagePart
+                => parent.AddNewPart<DocumentFormat.OpenXml.Packaging.EmbeddedPackagePart>(source.ContentType),
+            DocumentFormat.OpenXml.Packaging.EmbeddedObjectPart
+                => parent.AddNewPart<DocumentFormat.OpenXml.Packaging.EmbeddedObjectPart>(source.ContentType),
+            DocumentFormat.OpenXml.Packaging.DiagramDataPart
+                when parent is SlidePart sp3 => sp3.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramDataPart>(),
+            DocumentFormat.OpenXml.Packaging.DiagramColorsPart
+                when parent is SlidePart sp4 => sp4.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramColorsPart>(),
+            DocumentFormat.OpenXml.Packaging.DiagramLayoutDefinitionPart
+                when parent is SlidePart sp5 => sp5.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramLayoutDefinitionPart>(),
+            DocumentFormat.OpenXml.Packaging.DiagramStylePart
+                when parent is SlidePart sp6 => sp6.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramStylePart>(),
+            DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart
+                when parent is SlidePart sp7 => sp7.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart>(),
+            // Generic fallback — content-type addressed. Less reliable for
+            // uniqueness but at least the method doesn't throw on unknown
+            // parent/child combinations.
+            _ => parent.AddNewPart<OpenXmlPart>(source.ContentType),
+        };
+    }
+
+    /// <summary>
+    /// Parts that carry per-slide mutable data and must be cloned (not shared)
+    /// when a slide is duplicated. ChartParts especially: real PowerPoint
+    /// rejects (422) a file in which two slides point to the same chart part,
+    /// even though the SDK validator passes it. Embedded packages / OLE
+    /// objects have the same constraint. Image and media parts are immutable
+    /// after creation and safe to share.
+    /// </summary>
+    private static bool NeedsDeepCopy(OpenXmlPart part) => part is
+        DocumentFormat.OpenXml.Packaging.ChartPart
+        or DocumentFormat.OpenXml.Packaging.ExtendedChartPart
+        or DocumentFormat.OpenXml.Packaging.EmbeddedPackagePart
+        or DocumentFormat.OpenXml.Packaging.EmbeddedObjectPart
+        or DocumentFormat.OpenXml.Packaging.DiagramDataPart
+        or DocumentFormat.OpenXml.Packaging.DiagramColorsPart
+        or DocumentFormat.OpenXml.Packaging.DiagramLayoutDefinitionPart
+        or DocumentFormat.OpenXml.Packaging.DiagramStylePart
+        or DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart;
+
+    /// <summary>
+    /// Recursively deep-copy sub-parts (e.g. a ChartPart's embedded workbook,
+    /// chart style, chart color style) into the newly-cloned part. Each
+    /// sub-part either deep-copies (its own NeedsDeepCopy class) or shares
+    /// (everything else — images bundled with the chart, etc.).
+    /// </summary>
+    private static void DeepCopySubParts(OpenXmlPart source, OpenXmlPart target)
+    {
+        var subRIdMap = new Dictionary<string, string>();
+        foreach (var sub in source.Parts)
+        {
+            try
+            {
+                if (NeedsDeepCopy(sub.OpenXmlPart))
+                {
+                    var newSubPart = CreateNewTypedPartForDeepCopy(target, sub.OpenXmlPart);
+                    using (var s = sub.OpenXmlPart.GetStream())
+                        newSubPart.FeedData(s);
+                    DeepCopySubParts(sub.OpenXmlPart, newSubPart);
+                    var newId = target.GetIdOfPart(newSubPart);
+                    if (newId != sub.RelationshipId)
+                        subRIdMap[sub.RelationshipId] = newId;
+                }
+                else
+                {
+                    var newId = target.CreateRelationshipToPart(sub.OpenXmlPart);
+                    if (newId != sub.RelationshipId)
+                        subRIdMap[sub.RelationshipId] = newId;
+                }
+            }
+            catch { /* best-effort copy */ }
+        }
+        if (subRIdMap.Count > 0)
+        {
+            // Rewrite rId references inside the just-cloned part's root XML
+            // when sub-part rIds drifted. Charts reference workbook / style
+            // sub-parts via r:id attributes inside the chart XML.
+            try
+            {
+                if (target.RootElement is OpenXmlPartRootElement root)
+                {
+                    RemapRelationshipIds(root, subRIdMap);
+                    root.Save();
+                }
+            }
+            catch { /* not all parts have a typed RootElement */ }
         }
     }
 
@@ -1697,7 +2147,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
 
@@ -1753,13 +2203,31 @@ public partial class PowerPointHandler
                 {
                     var referencedPart = sourcePart.GetPartById(oldRelId);
                     string newRelId;
-                    try
+                    // R47: parts with per-slide mutable content (ChartPart,
+                    // EmbeddedPackagePart, Diagram*) must be deep-copied when
+                    // an element referencing them is copied across slides.
+                    // Sharing the same chart1.xml between two slides makes
+                    // real PowerPoint reject the file with 422 AND causes
+                    // edits on one slide to mutate the other. Mirrors the
+                    // NeedsDeepCopy gate in CopySlideParts from R45.
+                    if (NeedsDeepCopy(referencedPart))
                     {
-                        newRelId = targetPart.GetIdOfPart(referencedPart);
+                        var newPart = CreateNewTypedPartForDeepCopy(targetPart, referencedPart);
+                        using (var s = referencedPart.GetStream())
+                            newPart.FeedData(s);
+                        DeepCopySubParts(referencedPart, newPart);
+                        newRelId = targetPart.GetIdOfPart(newPart);
                     }
-                    catch (ArgumentException)
+                    else
                     {
-                        newRelId = targetPart.CreateRelationshipToPart(referencedPart);
+                        try
+                        {
+                            newRelId = targetPart.GetIdOfPart(referencedPart);
+                        }
+                        catch (ArgumentException)
+                        {
+                            newRelId = targetPart.CreateRelationshipToPart(referencedPart);
+                        }
                     }
 
                     if (newRelId != oldRelId)
@@ -1863,16 +2331,23 @@ public partial class PowerPointHandler
             if (gf.Descendants<Drawing.Table>().Any())
             {
                 typeName = "table";
-                typeIdx = shapeTree.Elements<GraphicFrame>()
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.Elements<GraphicFrame>()
                     .Where(f => f.Descendants<Drawing.Table>().Any())
-                    .ToList().IndexOf(gf) + 1;
+                    .ToList().IndexOf(gf));
             }
             else if (gf.Descendants<C.ChartReference>().Any())
             {
                 typeName = "chart";
-                typeIdx = shapeTree.Elements<GraphicFrame>()
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.Elements<GraphicFrame>()
                     .Where(f => f.Descendants<C.ChartReference>().Any())
-                    .ToList().IndexOf(gf) + 1;
+                    .ToList().IndexOf(gf));
+            }
+            else if (gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
+            {
+                typeName = "ole";
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.Elements<GraphicFrame>()
+                    .Where(f => f.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
+                    .ToList().IndexOf(gf));
             }
             else if (gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
             {
@@ -1884,17 +2359,17 @@ public partial class PowerPointHandler
             else
             {
                 typeName = element.LocalName;
-                typeIdx = shapeTree.ChildElements
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.ChildElements
                     .Where(e => e.LocalName == element.LocalName)
-                    .ToList().IndexOf(element) + 1;
+                    .ToList().IndexOf(element));
             }
         }
         else
         {
             typeName = element.LocalName;
-            typeIdx = shapeTree.ChildElements
+            typeIdx = PathIndex.FromArrayIndex(shapeTree.ChildElements
                 .Where(e => e.LocalName == element.LocalName)
-                .ToList().IndexOf(element) + 1;
+                .ToList().IndexOf(element));
         }
         return $"{parentPath}/{BuildElementPathSegment(typeName, element, typeIdx)}";
     }
@@ -1924,11 +2399,19 @@ public partial class PowerPointHandler
             ?? throw new ArgumentException("Shape has no text body");
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
             throw new ArgumentException($"Paragraph {paraIdx} not found (shape has {paragraphs.Count} paragraphs)");
+<<<<<<< HEAD
         var para = paragraphs[paraIdx - 1];
         var runs = para.Elements<Drawing.Run>().ToList();
         if (runIdx < 1 || runIdx > runs.Count)
             throw new ArgumentException($"Run {runIdx} not found (paragraph has {runs.Count} runs)");
         runs[runIdx - 1].Remove();
+=======
+        var para = paragraphs[PathIndex.ToArrayIndex(paraIdx)];
+        var runs = para.Elements<Drawing.Run>().ToList();
+        if (runIdx < 1 || runIdx > runs.Count)
+            throw new ArgumentException($"Run {runIdx} not found (paragraph has {runs.Count} runs)");
+        runs[PathIndex.ToArrayIndex(runIdx)].Remove();
+>>>>>>> upstream/main
         GetSlide(slidePart).Save();
     }
 
@@ -1938,7 +2421,11 @@ public partial class PowerPointHandler
             ?? throw new ArgumentException("Shape has no text body");
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
             throw new ArgumentException($"Paragraph {paraIdx} not found (shape has {paragraphs.Count} paragraphs)");
+<<<<<<< HEAD
         paragraphs[paraIdx - 1].Remove();
+=======
+        paragraphs[PathIndex.ToArrayIndex(paraIdx)].Remove();
+>>>>>>> upstream/main
         GetSlide(slidePart).Save();
     }
 }

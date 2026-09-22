@@ -295,7 +295,11 @@
     // its find no longer matches, we flip a visual-only stale class and
     // move on — same naive positional model as selection. No fingerprint,
     // no drift detection. grep "CONSISTENCY(path-stability)" for deferred
+<<<<<<< HEAD
     // sites. See CLAUDE.md Watch Server Rules.
+=======
+    // sites. See the project conventions Watch Server Rules.
+>>>>>>> upstream/main
     var _marks = [];
 
     function _isRegexFind(find) {
@@ -685,7 +689,11 @@
         var currentRow = overlay ? parseInt(overlay.getAttribute('data-from-row'), 10) || 0 : 0;
         var newRow = Math.max(0, currentRow + dRows);
         var newCol = Math.max(0, currentCol + dCols);
+<<<<<<< HEAD
         fetch('/api/edit', {
+=======
+        fetch('/api/send', {
+>>>>>>> upstream/main
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: cd.path, props: {
@@ -739,7 +747,11 @@
             _editingCell = null;
             if (newValue === editText) return; // no change
             // POST edit to watch server
+<<<<<<< HEAD
             fetch('/api/edit', {
+=======
+            fetch('/api/send', {
+>>>>>>> upstream/main
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: path, prop: 'text', value: newValue })

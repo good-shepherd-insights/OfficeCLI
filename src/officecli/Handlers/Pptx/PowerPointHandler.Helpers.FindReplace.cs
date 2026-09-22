@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -271,6 +275,88 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Apply run formatting to one or more explicit character ranges, reusing the
+    /// find format path's split-run engine with caller-supplied [start,end)
+    /// offsets. Offsets are relative to the concatenated run text of the resolved
+    /// scope (no inter-paragraph separator): a shape-scoped path spans all the
+    /// shape's paragraphs; a /paragraph[P]-scoped path is that paragraph only. A
+    /// range that straddles a paragraph boundary formats each covered paragraph's
+    /// slice; multiple disjoint ranges format each in turn — safe in any order
+    /// because format-only run splitting never shifts character offsets. Returns
+    /// the number of runs formatted.
+    /// </summary>
+    private int ProcessPptRange(string path, IReadOnlyList<(int Start, int End)> ranges, Dictionary<string, string> formatProps)
+    {
+        var (paragraphs, runIndex) = ResolvePptParagraphsForFindInternal(path);
+        if (runIndex.HasValue)
+            throw new ArgumentException(
+                "range addressing is not supported on a /run[K] path — apply range on a " +
+                "shape or /paragraph[P] path.");
+        if (paragraphs.Count == 0)
+            throw new ArgumentException($"No paragraphs found at path: {path}");
+
+        // Shape context for color resolution (anchored shape segment only), same
+        // as ProcessPptFind.
+        Shape? contextShape = null;
+        var shapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(\w+)\[(\d+)\](?:/|$)");
+        if (shapeMatch.Success && shapeMatch.Groups[2].Value is not ("table" or "notes"))
+        {
+            try
+            {
+                var (_, shape) = ResolveShape(int.Parse(shapeMatch.Groups[1].Value), int.Parse(shapeMatch.Groups[3].Value));
+                contextShape = shape;
+            }
+            catch { }
+        }
+
+        // Total text length across the resolved scope, to bounds-check the range.
+        int totalLen = 0;
+        foreach (var para in paragraphs)
+        {
+            var rts = BuildPptRunTexts(para);
+            totalLen += rts.Count > 0 ? rts[^1].End : 0;
+        }
+        foreach (var (s, e) in ranges)
+            if (s > totalLen || e > totalLen)
+                throw new ArgumentException(
+                    $"range end {e} out of bounds (scope text has {totalLen} chars).");
+
+        int applied = 0;
+        foreach (var (start, end) in ranges)
+        {
+            int cursor = 0;
+            foreach (var para in paragraphs)
+            {
+                var rts = BuildPptRunTexts(para);
+                int paraLen = rts.Count > 0 ? rts[^1].End : 0;
+                int paraStart = cursor;
+                int paraEnd = cursor + paraLen;
+                cursor = paraEnd;
+
+                // Overlap of [start,end) with this paragraph's [paraStart,paraEnd),
+                // expressed in paragraph-local coordinates for SplitPptRunsAtRange.
+                int localStart = Math.Max(start, paraStart) - paraStart;
+                int localEnd = Math.Min(end, paraEnd) - paraStart;
+                if (localStart >= localEnd) continue; // no (non-empty) overlap here
+
+                var targetRuns = SplitPptRunsAtRange(para, localStart, localEnd);
+                foreach (var run in targetRuns)
+                    foreach (var (key, value) in formatProps)
+                        ApplyPptRunFormatting(run, key, value, contextShape);
+                applied += targetRuns.Count;
+            }
+        }
+
+        foreach (var slidePart in _doc.PresentationPart?.SlideParts ?? Enumerable.Empty<SlidePart>())
+            slidePart.Slide?.Save();
+
+        return applied;
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Unified find across all paragraphs in the resolved scope.
     /// </summary>
     private int ProcessPptFind(string path, string findValue, string? replace, Dictionary<string, string> formatProps)
@@ -361,7 +447,11 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx} (have {slideParts.Count} slides)");
+<<<<<<< HEAD
             var notesPart = slideParts[slideIdx - 1].NotesSlidePart;
+=======
+            var notesPart = slideParts[PathIndex.ToArrayIndex(slideIdx)].NotesSlidePart;
+>>>>>>> upstream/main
             if (notesPart?.NotesSlide != null)
                 paragraphs.AddRange(notesPart.NotesSlide.Descendants<Drawing.Paragraph>());
             return (paragraphs, null);
@@ -380,6 +470,7 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx}");
+<<<<<<< HEAD
             var slide = slideParts[slideIdx - 1].Slide;
             var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
             if (tableIdx < 1 || tableIdx > tables.Count)
@@ -391,11 +482,28 @@ public partial class PowerPointHandler
             if (colIdx < 1 || colIdx > cells.Count)
                 throw new ArgumentException($"Column index out of range: {colIdx}");
             var cellParas = cells[colIdx - 1].Descendants<Drawing.Paragraph>().ToList();
+=======
+            var slide = slideParts[PathIndex.ToArrayIndex(slideIdx)].Slide;
+            var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
+            if (tableIdx < 1 || tableIdx > tables.Count)
+                throw new ArgumentException($"Table index out of range: {tableIdx}");
+            var rows = tables[PathIndex.ToArrayIndex(tableIdx)].Elements<Drawing.TableRow>().ToList();
+            if (rowIdx < 1 || rowIdx > rows.Count)
+                throw new ArgumentException($"Row index out of range: {rowIdx}");
+            var cells = rows[PathIndex.ToArrayIndex(rowIdx)].Elements<Drawing.TableCell>().ToList();
+            if (colIdx < 1 || colIdx > cells.Count)
+                throw new ArgumentException($"Column index out of range: {colIdx}");
+            var cellParas = cells[PathIndex.ToArrayIndex(colIdx)].Descendants<Drawing.Paragraph>().ToList();
+>>>>>>> upstream/main
             if (paraIdx.HasValue)
             {
                 if (paraIdx.Value < 1 || paraIdx.Value > cellParas.Count)
                     throw new ArgumentException($"Paragraph index out of range: {paraIdx.Value} (cell has {cellParas.Count})");
+<<<<<<< HEAD
                 paragraphs.Add(cellParas[paraIdx.Value - 1]);
+=======
+                paragraphs.Add(cellParas[PathIndex.ToArrayIndex(paraIdx.Value)]);
+>>>>>>> upstream/main
             }
             else
             {
@@ -419,11 +527,19 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx}");
+<<<<<<< HEAD
             var slide = slideParts[slideIdx - 1].Slide;
             var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
             if (tableIdx < 1 || tableIdx > tables.Count)
                 throw new ArgumentException($"Table index out of range: {tableIdx}");
             paragraphs.AddRange(tables[tableIdx - 1].Descendants<Drawing.Paragraph>());
+=======
+            var slide = slideParts[PathIndex.ToArrayIndex(slideIdx)].Slide;
+            var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
+            if (tableIdx < 1 || tableIdx > tables.Count)
+                throw new ArgumentException($"Table index out of range: {tableIdx}");
+            paragraphs.AddRange(tables[PathIndex.ToArrayIndex(tableIdx)].Descendants<Drawing.Paragraph>());
+>>>>>>> upstream/main
             return (paragraphs, null);
         }
 
@@ -457,7 +573,11 @@ public partial class PowerPointHandler
             {
                 if (paraIdx.Value < 1 || paraIdx.Value > shapeParas.Count)
                     throw new ArgumentException($"Paragraph index out of range: {paraIdx.Value} (shape has {shapeParas.Count})");
+<<<<<<< HEAD
                 paragraphs.Add(shapeParas[paraIdx.Value - 1]);
+=======
+                paragraphs.Add(shapeParas[PathIndex.ToArrayIndex(paraIdx.Value)]);
+>>>>>>> upstream/main
             }
             else
             {
@@ -480,7 +600,11 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx}");
+<<<<<<< HEAD
             var slide = slideParts[slideIdx - 1].Slide;
+=======
+            var slide = slideParts[PathIndex.ToArrayIndex(slideIdx)].Slide;
+>>>>>>> upstream/main
             if (slide != null)
                 paragraphs.AddRange(slide.Descendants<Drawing.Paragraph>());
             return (paragraphs, null);
@@ -493,12 +617,24 @@ public partial class PowerPointHandler
 
     /// <summary>
     /// Build a color element for PPT highlight from a color value.
+<<<<<<< HEAD
     /// </summary>
     private static Drawing.RgbColorModelHex BuildSolidFillColor(string value)
     {
         var hex = ParseHelpers.NormalizeArgbColor(value);
         return new Drawing.RgbColorModelHex { Val = hex };
     }
+=======
+    /// CONSISTENCY(highlight): delegate to the canonical DrawingML color
+    /// builder — the previous NormalizeArgbColor form wrote an 8-digit
+    /// AARRGGBB into a:srgbClr@val (ST_HexColorRGB is 6 hex digits), which
+    /// PowerPoint and the HTML renderer both misread. BuildColorElement
+    /// emits a 6-digit srgbClr (+ a:alpha child when alpha given) or a
+    /// schemeClr for theme names.
+    /// </summary>
+    private static OpenXmlElement BuildSolidFillColor(string value)
+        => BuildColorElement(value);
+>>>>>>> upstream/main
 
     /// <summary>
     /// Add an element at a text-find position within a PPT paragraph.

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -43,8 +47,62 @@ public partial class ExcelHandler
         {
             switch (key.ToLowerInvariant())
             {
+<<<<<<< HEAD
                 case "ref": dn.Text = value; break;
                 case "name": dn.Name = value; break;
+=======
+                // refersTo / formula: the schema documents them as ref aliases
+                // for add/set/get and Add honors them — Set alone rejected the
+                // aliases as unsupported.
+                case "ref" or "refersto" or "formula":
+                {
+                    // Same guards as AddNamedRange: sheet-qualified refs must
+                    // name an existing sheet, and a bare A1 range without a
+                    // sheet qualifier is invalid in a defined-name body (real
+                    // Excel refuses the file, 0x800A03EC). Qualify with the
+                    // scope sheet when the name is sheet-scoped.
+                    var nrRefVal = value;
+                    // Match Add: defined-name bodies must not carry the
+                    // formula-bar leading '=' (Excel rejects the file).
+                    if (nrRefVal.StartsWith('=')) nrRefVal = nrRefVal.TrimStart('=');
+                    if (!nrRefVal.Contains('!')
+                        && Regex.IsMatch(nrRefVal.Replace("$", ""), @"^[A-Za-z]{1,3}\d+(:[A-Za-z]{1,3}\d+)?$"))
+                    {
+                        var scopeSheetName = dn.LocalSheetId?.HasValue == true
+                            ? workbook.GetFirstChild<Sheets>()?.Elements<Sheet>()
+                                .ElementAtOrDefault((int)dn.LocalSheetId!.Value)?.Name?.Value
+                            : null;
+                        if (scopeSheetName == null)
+                            throw new ArgumentException(
+                                $"Defined-name ref '{nrRefVal}' has no sheet qualifier — Excel refuses unqualified " +
+                                "cell ranges in defined names. Use ref=SheetName!A1:B1.");
+                        nrRefVal = $"{Core.ModernFunctionQualifier.QuoteSheetNameForRef(scopeSheetName)}!{nrRefVal}";
+                    }
+                    ValidateDefinedNameRef(nrRefVal);
+                    dn.Text = nrRefVal;
+                    break;
+                }
+                case "name":
+                    // CONSISTENCY(remove-refs): renaming a defined name breaks
+                    // every formula/DV/CF/chart still referencing the old name
+                    // (Excel surfaces #NAME?). Mirror the table-remove guard —
+                    // scan the workbook and refuse the rename if the old name is
+                    // still referenced, rather than silently orphaning them.
+                    {
+                        var oldName = dn.Name?.Value;
+                        if (!string.IsNullOrEmpty(oldName)
+                            && !string.Equals(oldName, value, StringComparison.Ordinal))
+                        {
+                            var dnRefs = FindDefinedNameReferences(oldName!);
+                            if (dnRefs.Count > 0)
+                                throw new ArgumentException(
+                                    $"Cannot rename named range '{oldName}': it is referenced by {string.Join(", ", dnRefs)}. " +
+                                    $"Repoint those references first.");
+                        }
+                    }
+                    dn.Name = value;
+                    break;
+>>>>>>> upstream/main
                 case "comment": dn.Comment = value; break;
                 case "volatile":
                     // CONSISTENCY(definedname-volatile): map to the
@@ -77,6 +135,51 @@ public partial class ExcelHandler
         return nrUnsupported;
     }
 
+<<<<<<< HEAD
+=======
+    /// <summary>
+    /// Scan the whole workbook for references to a defined name: cell formulas,
+    /// data-validation and conditional-formatting formulas, and chart XML.
+    /// Returns a distinct list of human-readable locations (empty when unused).
+    /// </summary>
+    private List<string> FindDefinedNameReferences(string name)
+    {
+        var refs = new List<string>();
+        var wbPart = _doc.WorkbookPart;
+        if (wbPart == null) return refs;
+        var pattern = @"\b" + Regex.Escape(name) + @"\b";
+        foreach (var wsp in wbPart.WorksheetParts)
+        {
+            if (wsp.Worksheet is null) continue;
+            var wsName = wbPart.Workbook?.Sheets?.Elements<Sheet>()
+                .FirstOrDefault(s => s.Id?.Value == wbPart.GetIdOfPart(wsp))?.Name?.Value ?? "?";
+            foreach (var fcell in wsp.Worksheet.Descendants<Cell>())
+            {
+                var f = fcell.CellFormula?.Text;
+                if (!string.IsNullOrEmpty(f) && Regex.IsMatch(f, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName}!{fcell.CellReference?.Value ?? "?"}");
+            }
+            foreach (var f1 in wsp.Worksheet.Descendants<Formula1>())
+                if (!string.IsNullOrEmpty(f1.Text) && Regex.IsMatch(f1.Text, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName} (data validation)");
+            foreach (var f2 in wsp.Worksheet.Descendants<Formula2>())
+                if (!string.IsNullOrEmpty(f2.Text) && Regex.IsMatch(f2.Text, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName} (data validation)");
+            foreach (var cf in wsp.Worksheet.Descendants<Formula>())
+                if (!string.IsNullOrEmpty(cf.Text) && Regex.IsMatch(cf.Text, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName} (conditional formatting)");
+            if (wsp.DrawingsPart != null)
+                foreach (var cp in wsp.DrawingsPart.ChartParts)
+                {
+                    var xml = cp.ChartSpace?.InnerXml;
+                    if (xml != null && Regex.IsMatch(xml, pattern, RegexOptions.IgnoreCase))
+                        refs.Add($"{wsName} (chart)");
+                }
+        }
+        return refs.Distinct().ToList();
+    }
+
+>>>>>>> upstream/main
     private List<string> SetValidationByPath(Match m, WorksheetPart worksheet, Dictionary<string, string> properties)
     {
         var dvIdx = int.Parse(m.Groups[1].Value);
@@ -95,10 +198,40 @@ public partial class ExcelHandler
             switch (key.ToLowerInvariant())
             {
                 // CONSISTENCY(canonical-key): schema canonical key is 'ref';
+<<<<<<< HEAD
                 // 'sqref' retained as legacy alias.
                 case "sqref" or "ref":
                     dv.SequenceOfReferences = new ListValue<StringValue>(
                         value.Split(' ').Select(s => new StringValue(s)));
+=======
+                // 'sqref' retained as legacy alias. Same shape+grid-bounds
+                // guard as Add — an unchecked A0 saved fine and real Excel
+                // refused the file (0x800A03EC).
+                case "sqref" or "ref":
+                    var dvNormRef = ValidateSqref(value, "validation ref");
+                    // Mirror AddValidation's R27-3 overlap guard: a validation
+                    // moved onto cells already covered by another validation is
+                    // silently inert in Excel (first wins). Reject rather than
+                    // persist a dead rule.
+                    var dvContainer = dv.Parent as DataValidations;
+                    if (dvContainer != null)
+                    {
+                        var movedRanges = dvNormRef.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var sibling in dvContainer.Elements<DataValidation>())
+                        {
+                            if (ReferenceEquals(sibling, dv)) continue;
+                            var sibRanges = (sibling.SequenceOfReferences?.InnerText ?? "")
+                                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            foreach (var mr in movedRanges)
+                                foreach (var sr in sibRanges)
+                                    if (RangesOverlap(mr, sr))
+                                        throw new ArgumentException(
+                                            $"DataValidation ref '{mr}' overlaps existing validation ref '{sr}'; Excel ignores stacked validations on the same cells. Use a non-overlapping range.");
+                        }
+                    }
+                    dv.SequenceOfReferences = new ListValue<StringValue>(
+                        dvNormRef.Split(' ').Select(s => new StringValue(s)));
+>>>>>>> upstream/main
                     break;
                 case "type":
                     dv.Type = value.ToLowerInvariant() switch
@@ -118,9 +251,19 @@ public partial class ExcelHandler
                     // as Add so range refs (C1:C3, Sheet1!A1:A3) are NOT double-quoted.
                     // Previous code only checked !value.StartsWith("\""), which incorrectly
                     // wrapped range refs that pass through unchanged in Add.
+<<<<<<< HEAD
                     dv.Formula1 = new Formula1(NormalizeValidationFormula(value, dv.Type?.Value));
                     break;
                 case "formula2":
+=======
+                    if (dv.Type?.Value != DataValidationValues.List)
+                        ValidateNoR1C1Reference(value);
+                    dv.Formula1 = new Formula1(NormalizeValidationFormula(value, dv.Type?.Value));
+                    break;
+                case "formula2":
+                    if (dv.Type?.Value != DataValidationValues.List)
+                        ValidateNoR1C1Reference(value);
+>>>>>>> upstream/main
                     dv.Formula2 = new Formula2(NormalizeValidationFormula(value, dv.Type?.Value));
                     break;
                 case "operator":
@@ -173,7 +316,11 @@ public partial class ExcelHandler
     }
 
     // Replace backing embedded part + refresh ProgID. Cleans up the old payload
+<<<<<<< HEAD
     // part (CLAUDE.md Known API Quirks rule: always delete the old part on src
+=======
+    // part (the project conventions Known API Quirks rule: always delete the old part on src
+>>>>>>> upstream/main
 
     private List<string> SetTableColumnByPath(Match m, WorksheetPart worksheet, Dictionary<string, string> properties)
     {
@@ -257,7 +404,11 @@ public partial class ExcelHandler
         if (tableIdx < 1 || tableIdx > tableParts.Count)
             throw new ArgumentException($"Table index {tableIdx} out of range (1..{tableParts.Count})");
 
+<<<<<<< HEAD
         var table = tableParts[tableIdx - 1].Table
+=======
+        var table = tableParts[PathIndex.ToArrayIndex(tableIdx)].Table
+>>>>>>> upstream/main
             ?? throw new ArgumentException($"Table {tableIdx} has no definition");
 
         var tblUnsupported = new List<string>();
@@ -265,10 +416,60 @@ public partial class ExcelHandler
         {
             switch (key.ToLowerInvariant())
             {
+<<<<<<< HEAD
                 case "name": table.Name = value; break;
                 case "displayname": table.DisplayName = value; break;
                 case "headerrow": table.HeaderRowCount = IsTruthy(value) ? 1u : 0u; break;
                 case "totalrow":
+=======
+                case "name":
+                    ValidateTableIdentifierUnique(value, table, isDisplayName: false);
+                    table.Name = value;
+                    break;
+                case "displayname":
+                    ValidateTableIdentifierUnique(value, table, isDisplayName: true);
+                    table.DisplayName = value;
+                    break;
+                case "headerrow":
+                {
+                    // A table autoFilter filters BY the header row; Excel
+                    // writes no <autoFilter> when headerRowCount="0" and
+                    // rejects the file outright (0x800A03EC) if a stale one
+                    // is left behind — schema validation stays green, so this
+                    // must be handled here, not caught downstream.
+                    var headerOn = IsTruthy(value);
+                    table.HeaderRowCount = headerOn ? 1u : 0u;
+                    // Turning the header ON: the first row's cells must carry
+                    // text EXACTLY matching each <tableColumn name>. Add's create
+                    // path stamps them; the Set toggle did not, so a numeric
+                    // first row (10, 20) stayed mismatched from Column1/Column2
+                    // and real Excel refused the file (0x800A03EC). Stamp here.
+                    if (headerOn)
+                        StampTableHeaderCells(worksheet, table);
+                    var existingAf = table.GetFirstChild<AutoFilter>();
+                    if (!headerOn)
+                    {
+                        existingAf?.Remove();
+                    }
+                    else if (existingAf == null && table.Reference?.Value is { } tblRef)
+                    {
+                        // Re-enable: restore the filter over the data range
+                        // (header..last data row, excluding a totals row),
+                        // mirroring AddTable.
+                        var afRef = tblRef;
+                        if ((table.TotalsRowCount?.Value ?? 0) > 0 && tblRef.Contains(':'))
+                        {
+                            var afParts = tblRef.Split(':');
+                            var (aCol, aRow) = ParseCellReference(afParts[1]);
+                            afRef = $"{afParts[0]}:{aCol}{aRow - 1}";
+                        }
+                        table.InsertAt(new AutoFilter { Reference = afRef }, 0);
+                    }
+                    break;
+                }
+                case "totalrow":
+                case "totalsrow":   // Excel UI calls it "Total Row"; the plural slips in
+>>>>>>> upstream/main
                 case "showtotals":
                 {
                     // CONSISTENCY(table-totalrow): mirror Add — toggling
@@ -294,7 +495,20 @@ public partial class ExcelHandler
                         else if (!totalRowEnabled && prevTotalsCount > 0)
                         {
                             // Shrink only if there is at least one data row left.
+<<<<<<< HEAD
                             if (eRow - 1 >= sRow) eRow -= 1;
+=======
+                            if (eRow - 1 >= sRow)
+                            {
+                                // Clear the now-orphaned totals-row cells (the
+                                // "Total" label + SUBTOTAL formulas). Add builds
+                                // them but the toggle-off previously only shrank
+                                // the ref, leaving a stray plain-text total row
+                                // visible below the table in real Excel.
+                                ClearTableRowCells(worksheet, sCol, eCol, eRow);
+                                eRow -= 1;
+                            }
+>>>>>>> upstream/main
                         }
                         var newTblRef = $"{sCol}{sRow}:{eCol}{eRow}";
                         table.Reference = newTblRef;
@@ -332,7 +546,11 @@ public partial class ExcelHandler
                     });
                     break;
                 }
+<<<<<<< HEAD
                 case "ref":
+=======
+                case "ref" or "range":
+>>>>>>> upstream/main
                 {
                     var newRef = value.ToUpperInvariant();
                     // Grow/shrink <x:tableColumns> to match the new column count.
@@ -377,6 +595,17 @@ public partial class ExcelHandler
                     table.Reference = newRef;
                     var af = table.GetFirstChild<AutoFilter>();
                     if (af != null) af.Reference = newRef;
+<<<<<<< HEAD
+=======
+                    // Growing the ref column-wise adds tableColumns above, but a
+                    // header table also needs a header CELL under each new
+                    // column whose text matches the column name — without it
+                    // real Excel refuses the file (0x800A03EC). Stamp the header
+                    // row (no-op for cells already matching). Header-less tables
+                    // have no header row, so skip.
+                    if ((table.HeaderRowCount?.Value ?? 1) != 0)
+                        StampTableHeaderCells(worksheet, table);
+>>>>>>> upstream/main
                     break;
                 }
                 case "showrowstripes" or "bandedrows" or "bandrows":
@@ -412,7 +641,11 @@ public partial class ExcelHandler
                     var tableCols = table.GetFirstChild<TableColumns>()?.Elements<TableColumn>().ToList();
                     if (tableCols == null || colIdx < 1 || colIdx > tableCols.Count)
                         throw new ArgumentException($"Column index {colIdx} out of range (1..{tableCols?.Count ?? 0})");
+<<<<<<< HEAD
                     var col = tableCols[colIdx - 1];
+=======
+                    var col = tableCols[PathIndex.ToArrayIndex(colIdx)];
+>>>>>>> upstream/main
                     switch (colProp)
                     {
                         case "name": col.Name = value; break;
@@ -446,10 +679,126 @@ public partial class ExcelHandler
             }
         }
 
+<<<<<<< HEAD
         tableParts[tableIdx - 1].Table!.Save();
         return tblUnsupported;
     }
 
+=======
+        tableParts[PathIndex.ToArrayIndex(tableIdx)].Table!.Save();
+        return tblUnsupported;
+    }
+
+    /// <summary>
+    /// Reject a Set that renames a table to a name/displayName already used by
+    /// ANOTHER table or a workbook defined name. Mirrors AddTable's
+    /// CONSISTENCY(table-name-unique) guard — Excel requires both to be unique
+    /// workbook-wide and refuses the file (0x800A03EC) on a collision; the Set
+    /// path previously assigned the name with no check.
+    /// </summary>
+    private void ValidateTableIdentifierUnique(string candidate, Table self, bool isDisplayName)
+    {
+        foreach (var existing in _doc.WorkbookPart!.WorksheetParts
+            .SelectMany(wp => wp.TableDefinitionParts)
+            .Select(tdp => tdp.Table)
+            .Where(t => t != null && !ReferenceEquals(t, self))!)
+        {
+            if (string.Equals(existing!.Name?.Value, candidate, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(existing.DisplayName?.Value, candidate, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException(
+                    $"Table {(isDisplayName ? "displayName" : "name")} '{candidate}' already exists in workbook; choose a different {(isDisplayName ? "displayName" : "name")}.");
+        }
+        var definedNames = _doc.WorkbookPart.Workbook?.DefinedNames;
+        if (definedNames != null)
+        {
+            foreach (var dn in definedNames.Elements<DefinedName>())
+            {
+                if (dn.Name?.Value is { } dnName
+                    && string.Equals(dnName, candidate, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException(
+                        $"Table {(isDisplayName ? "displayName" : "name")} '{candidate}' collides with the workbook defined name '{dnName}'; choose a different name.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stamp a table's header-row (first-row) cells with inline-string text
+    /// EXACTLY matching each &lt;tableColumn name&gt;. Excel requires this match;
+    /// a numeric or mismatched header cell makes it refuse the file
+    /// (0x800A03EC). Mirrors the create-time stamping in AddTable so the
+    /// Set headerRow=true toggle produces a valid header row.
+    /// </summary>
+    // Remove the cells in columns [startColName..endColName] on the given row,
+    // and drop the row itself if nothing else is left. Used to clear a table's
+    // orphaned totals row when totalRow is toggled off, mirroring how the header
+    // toggle-off removes the stale AutoFilter.
+    private void ClearTableRowCells(WorksheetPart worksheet, string startColName, string endColName, int rowIndex)
+    {
+        var sheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
+        var row = sheetData?.Elements<Row>().FirstOrDefault(r => r.RowIndex?.Value == (uint)rowIndex);
+        if (row == null) return;
+        int startIdx = ColumnNameToIndex(startColName);
+        int endIdx = ColumnNameToIndex(endColName);
+        foreach (var cell in row.Elements<Cell>().ToList())
+        {
+            var colName = System.Text.RegularExpressions.Regex.Match(
+                cell.CellReference?.Value ?? "", @"^[A-Z]+").Value;
+            if (string.IsNullOrEmpty(colName)) continue;
+            var colIdx = ColumnNameToIndex(colName);
+            if (colIdx >= startIdx && colIdx <= endIdx)
+                cell.Remove();
+        }
+        if (!row.Elements<Cell>().Any())
+            row.Remove();
+    }
+
+    private void StampTableHeaderCells(WorksheetPart worksheet, Table table)
+    {
+        if (table.Reference?.Value is not { } refStr) return;
+        var first = refStr.Split(':')[0];
+        var (startColName, startRow) = ParseCellReference(first);
+        int startColIdx = ColumnNameToIndex(startColName);
+        var colNames = (table.GetFirstChild<TableColumns>()?.Elements<TableColumn>()
+            .Select(c => c.Name?.Value ?? "").ToList()) ?? new List<string>();
+        if (colNames.Count == 0) return;
+
+        var sheetData = GetSheet(worksheet).GetFirstChild<SheetData>()
+            ?? GetSheet(worksheet).AppendChild(new SheetData());
+        var hdrRow = sheetData.Elements<Row>().FirstOrDefault(r => r.RowIndex?.Value == (uint)startRow);
+        if (hdrRow == null)
+        {
+            hdrRow = new Row { RowIndex = (uint)startRow };
+            var insertAfter = sheetData.Elements<Row>()
+                .Where(r => r.RowIndex?.Value < (uint)startRow).LastOrDefault();
+            if (insertAfter != null) insertAfter.InsertAfterSelf(hdrRow);
+            else sheetData.PrependChild(hdrRow);
+        }
+        for (int i = 0; i < colNames.Count; i++)
+        {
+            var cellRefStr = $"{IndexToColumnName(startColIdx + i)}{startRow}";
+            var headerCell = hdrRow.Elements<Cell>()
+                .FirstOrDefault(c => c.CellReference?.Value == cellRefStr);
+            if (headerCell == null)
+            {
+                headerCell = new Cell { CellReference = cellRefStr };
+                var insertBefore = hdrRow.Elements<Cell>()
+                    .FirstOrDefault(c => ColumnNameToIndex(
+                        System.Text.RegularExpressions.Regex.Match(
+                            c.CellReference?.Value ?? "", @"^[A-Z]+").Value) > startColIdx + i);
+                if (insertBefore != null) insertBefore.InsertBeforeSelf(headerCell);
+                else hdrRow.AppendChild(headerCell);
+            }
+            if (!string.Equals(GetCellDisplayValue(headerCell), colNames[i], StringComparison.Ordinal))
+            {
+                headerCell.DataType = CellValues.InlineString;
+                headerCell.CellValue = null;
+                headerCell.CellFormula = null;
+                headerCell.InlineString = new InlineString(new Text(colNames[i]));
+            }
+        }
+    }
+
+>>>>>>> upstream/main
     private List<string> SetCommentByPath(Match m, WorksheetPart worksheet, string sheetName, Dictionary<string, string> properties)
     {
         var cmtIndex = int.Parse(m.Groups[1].Value);
@@ -493,8 +842,32 @@ public partial class ExcelHandler
                 case var k1 when k1.StartsWith("font."):
                     break;
                 case "ref":
+<<<<<<< HEAD
                     cmtElement.Reference = value.ToUpperInvariant();
                     break;
+=======
+                {
+                    // Validate as a real A1 reference (same check add uses):
+                    // an arbitrary string here passes schema validation but
+                    // real Excel refuses the whole file (0x800A03EC).
+                    ParseCellReference(value);
+                    var oldCmtRef = cmtElement.Reference?.Value;
+                    cmtElement.Reference = value.ToUpperInvariant();
+                    // The legacy VML shape anchors the comment popup by its
+                    // own x:Row/x:Column — leaving them at the old cell after
+                    // a ref move desynchronizes the two parts and real Excel
+                    // rejects the file (0x800A03EC) while validation stays
+                    // green. Keep the VML in lockstep.
+                    if (!string.IsNullOrEmpty(oldCmtRef)
+                        && !string.Equals(oldCmtRef, cmtElement.Reference!.Value, StringComparison.OrdinalIgnoreCase)
+                        && !UpdateCommentVmlShapeRef(worksheet, oldCmtRef!, cmtElement.Reference!.Value!))
+                        Console.Error.WriteLine(
+                            "Warning: comment moved to " + cmtElement.Reference!.Value
+                            + " but the legacy VML shape anchor could not be located; "
+                            + "the comment popup may still point at the old cell.");
+                    break;
+                }
+>>>>>>> upstream/main
                 case "author":
                     var authors = commentsPart.Comments.GetFirstChild<Authors>()!;
                     var existingAuthors = authors.Elements<Author>().ToList();
@@ -662,6 +1035,70 @@ public partial class ExcelHandler
                     else unsup.Add(key);
                     break;
                 }
+<<<<<<< HEAD
+=======
+                // ─── cellIs rule props (mirror AddCellIs in Add.Cf.cs) ───────
+                case "value":
+                case "value1":
+                {
+                    // formula1: the comparison threshold for a cellIs rule.
+                    // A1-only element — reject R1C1 (mirrors Add.Cf.cs).
+                    ValidateNoR1C1Reference(value);
+                    var f1 = rule?.GetFirstChild<Formula>();
+                    if (f1 != null) f1.Text = value;
+                    else if (rule != null) rule.InsertAt(new Formula(value), 0);
+                    else unsup.Add(key);
+                    break;
+                }
+                case "value2":
+                case "formula2":
+                {
+                    // formula2: upper bound for between/notBetween. A1-only.
+                    ValidateNoR1C1Reference(value);
+                    var formulas = rule?.Elements<Formula>().ToList();
+                    if (formulas != null && formulas.Count >= 2) formulas[1].Text = value;
+                    else if (formulas != null && formulas.Count == 1) rule!.InsertAfter(new Formula(value), formulas[0]);
+                    else if (rule != null) rule.Append(new Formula(value));
+                    else unsup.Add(key);
+                    break;
+                }
+                case "operator":
+                {
+                    if (rule != null)
+                        rule.Operator = ParseCellIsOperator(value);
+                    else unsup.Add(key);
+                    break;
+                }
+                case "fill":
+                {
+                    var dxf = ResolveCfDxf(rule) ?? EnsureCfDxf(rule);
+                    var normFill = ParseHelpers.NormalizeArgbColor(value);
+                    dxf.RemoveAllChildren<Fill>();
+                    dxf.Append(new Fill(new PatternFill(
+                        new BackgroundColor { Rgb = normFill })
+                    { PatternType = PatternValues.Solid }));
+                    _dirtyStylesheet = true;
+                    break;
+                }
+                case "font.color":
+                {
+                    var dxf = ResolveCfDxf(rule) ?? EnsureCfDxf(rule);
+                    var font = dxf.GetFirstChild<Font>() ?? (Font)dxf.AppendChild(new Font());
+                    font.RemoveAllChildren<DocumentFormat.OpenXml.Spreadsheet.Color>();
+                    font.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = ParseHelpers.NormalizeArgbColor(value) });
+                    _dirtyStylesheet = true;
+                    break;
+                }
+                case "font.bold":
+                {
+                    var dxf = ResolveCfDxf(rule) ?? EnsureCfDxf(rule);
+                    var font = dxf.GetFirstChild<Font>() ?? (Font)dxf.AppendChild(new Font());
+                    font.RemoveAllChildren<Bold>();
+                    if (IsTruthy(value)) font.Append(new Bold());
+                    _dirtyStylesheet = true;
+                    break;
+                }
+>>>>>>> upstream/main
                 default:
                     unsup.Add(key);
                     break;
@@ -672,6 +1109,69 @@ public partial class ExcelHandler
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Resolve the DifferentialFormat (dxf) referenced by a cellIs/expression
+    /// rule via its FormatId. Returns null if the rule or dxf is missing.
+    /// </summary>
+    private DifferentialFormat? ResolveCfDxf(ConditionalFormattingRule? rule)
+    {
+        if (rule?.FormatId?.Value == null) return null;
+        var dxfs = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet?.GetFirstChild<DifferentialFormats>();
+        var dxfList = dxfs?.Elements<DifferentialFormat>().ToList();
+        if (dxfList == null) return null;
+        var id = (int)rule.FormatId.Value;
+        return id >= 0 && id < dxfList.Count ? dxfList[id] : null;
+    }
+
+    /// <summary>
+    /// Create a fresh DifferentialFormat, append it to the stylesheet's
+    /// DifferentialFormats collection (creating the collection if absent), and
+    /// point rule.FormatId at the new index. Mirrors the dxf-create path in
+    /// AddCfExtended so that Set fill/font.color/font.bold work even when no
+    /// formatting props were supplied at Add time.
+    /// </summary>
+    private DifferentialFormat EnsureCfDxf(ConditionalFormattingRule? rule)
+    {
+        if (rule == null) throw new InvalidOperationException("Cannot create dxf: CF rule is null");
+        var wbPart = _doc.WorkbookPart ?? throw new InvalidOperationException("Workbook not found");
+        var styleMgr = new ExcelStyleManager(wbPart);
+        styleMgr.EnsureStylesPart();
+        var stylesheet = wbPart.WorkbookStylesPart!.Stylesheet!;
+        var dxfs = stylesheet.GetFirstChild<DifferentialFormats>();
+        if (dxfs == null)
+        {
+            dxfs = new DifferentialFormats { Count = 0 };
+            stylesheet.Append(dxfs);
+        }
+        var newDxf = new DifferentialFormat();
+        dxfs.Append(newDxf);
+        dxfs.Count = (uint)dxfs.Elements<DifferentialFormat>().Count();
+        rule.FormatId = dxfs.Count!.Value - 1;
+        _dirtyStylesheet = true;
+        return newDxf;
+    }
+
+    /// <summary>
+    /// Parse a cellIs operator string. Mirrors AddCellIs's operator switch.
+    /// </summary>
+    private static ConditionalFormattingOperatorValues ParseCellIsOperator(string opStr) =>
+        opStr.Trim().ToLowerInvariant() switch
+        {
+            "greaterthan" or "gt" or ">" => ConditionalFormattingOperatorValues.GreaterThan,
+            "lessthan" or "lt" or "<" => ConditionalFormattingOperatorValues.LessThan,
+            "greaterthanorequal" or "gte" or ">=" => ConditionalFormattingOperatorValues.GreaterThanOrEqual,
+            "lessthanorequal" or "lte" or "<=" => ConditionalFormattingOperatorValues.LessThanOrEqual,
+            "equal" or "eq" or "=" or "==" => ConditionalFormattingOperatorValues.Equal,
+            "notequal" or "ne" or "!=" or "<>" => ConditionalFormattingOperatorValues.NotEqual,
+            "between" => ConditionalFormattingOperatorValues.Between,
+            "notbetween" => ConditionalFormattingOperatorValues.NotBetween,
+            _ => throw new ArgumentException(
+                $"Unsupported cellIs operator '{opStr}'. Valid: greaterThan, lessThan, greaterThanOrEqual, lessThanOrEqual, equal, notEqual, between, notBetween.")
+        };
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Resolve the x14:dataBar element paired with a 2007 dataBar rule via x14:id reference.
     /// Returns null if the rule has no x14 extension or the worksheet has no matching x14 cf.
     /// </summary>

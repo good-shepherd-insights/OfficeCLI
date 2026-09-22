@@ -29,15 +29,29 @@
     },
     "colspan": {
       "type": "number",
+<<<<<<< HEAD
       "description": "horizontal cell span (a:tc @gridSpan). Surfaces only when the cell spans more than one column. Read-only — set spans by structuring the table at Add time.",
       "add": false, "set": false, "get": true,
       "readback": "integer ≥ 2",
+=======
+      "description": "horizontal cell span (a:tc @gridSpan) — number of grid columns this cell spans (>=2 means merged across). Setting colspan=N also stamps hMerge=true on the next (N-1) cells in the same row, matching the convenience prop merge.right. Surfaces on Get only when the cell spans more than one column. Canonical name matches docx; alias: gridspan.",
+      "add": false, "set": true, "get": true,
+      "aliases": ["gridspan"],
+      "readback": "integer ≥ 2",
+      "examples": ["--prop colspan=3"],
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "rowspan": {
       "type": "number",
+<<<<<<< HEAD
       "description": "vertical cell span (a:tc @rowSpan). Surfaces only when the cell spans more than one row. Read-only — set spans by structuring the table at Add time.",
       "add": false, "set": false, "get": true,
+=======
+      "description": "vertical cell span (a:tc @rowSpan). Settable: rowspan=N writes rowSpan=N on this anchor cell and vMerge=true on the (N-1) continuation cells directly below. Surfaces on Get only when the cell spans more than one row.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop rowspan=2"],
+>>>>>>> upstream/main
       "readback": "integer ≥ 2",
       "enforcement": "report"
     },
@@ -119,7 +133,11 @@
     },
     "merge.right": {
       "type": "number",
+<<<<<<< HEAD
       "description": "convenience for horizontal merge — stamps gridSpan=N on this cell and hMerge=true on the next N-1 cells in the same row.",
+=======
+      "description": "convenience for horizontal merge — merges N neighbor cells to the right into this one, so the total span becomes N+1 (writes gridSpan=N+1 on this cell and hMerge=true on the next N cells in the same row).",
+>>>>>>> upstream/main
       "add": false, "set": true, "get": false,
       "examples": ["--prop merge.right=2"],
       "enforcement": "report"
@@ -282,6 +300,7 @@
       "readback": "percent (e.g. 30)",
       "enforcement": "report"
     },
+<<<<<<< HEAD
     "gridSpan": {
       "type": "number",
       "add": false,
@@ -292,6 +311,8 @@
       "examples": ["--prop gridSpan=3"],
       "enforcement": "report"
     },
+=======
+>>>>>>> upstream/main
     "hmerge": {
       "type": "bool",
       "add": false,
@@ -334,7 +355,11 @@
         "--prop border.all=\"single;4;FF0000\""
       ],
       "enforcement": "report",
+<<<<<<< HEAD
       "readback": "edge descriptor (e.g. 'solid;4;FF0000')"
+=======
+      "readback": "edge descriptor 'WIDTH DASH #COLOR' (e.g. '2pt solid #FF0000')"
+>>>>>>> upstream/main
     },
     "border.bottom": {
       "type": "string",
@@ -347,7 +372,11 @@
         "--prop border.bottom=\"double;6;0000FF\""
       ],
       "enforcement": "report",
+<<<<<<< HEAD
       "readback": "edge descriptor (e.g. 'solid;4;FF0000')"
+=======
+      "readback": "edge descriptor 'WIDTH DASH #COLOR' (e.g. '2pt solid #FF0000')"
+>>>>>>> upstream/main
     },
     "border.left": {
       "type": "string",
@@ -360,7 +389,11 @@
         "--prop border.left=\"single;4\""
       ],
       "enforcement": "report",
+<<<<<<< HEAD
       "readback": "edge descriptor (e.g. 'solid;4;FF0000')"
+=======
+      "readback": "edge descriptor 'WIDTH DASH #COLOR' (e.g. '2pt solid #FF0000')"
+>>>>>>> upstream/main
     },
     "border.right": {
       "type": "string",
@@ -373,7 +406,11 @@
         "--prop border.right=\"single;4\""
       ],
       "enforcement": "report",
+<<<<<<< HEAD
       "readback": "edge descriptor (e.g. 'solid;4;FF0000')"
+=======
+      "readback": "edge descriptor 'WIDTH DASH #COLOR' (e.g. '2pt solid #FF0000')"
+>>>>>>> upstream/main
     },
     "border.tl2br": {
       "type": "string",
@@ -399,7 +436,11 @@
         "--prop border.top=\"single;4;000000\""
       ],
       "enforcement": "report",
+<<<<<<< HEAD
       "readback": "edge descriptor (e.g. 'solid;4;FF0000')"
+=======
+      "readback": "edge descriptor 'WIDTH DASH #COLOR' (e.g. '2pt solid #FF0000')"
+>>>>>>> upstream/main
     },
     "border.tr2bl": {
       "type": "string",

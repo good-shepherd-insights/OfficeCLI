@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -63,10 +67,44 @@ public partial class ExcelHandler
         if (spkGroup.Last?.Value == true) node.Format["lastPoint"] = true;
         if (spkGroup.Negative?.Value == true) node.Format["negative"] = true;
 
+<<<<<<< HEAD
+=======
+        // Marker colors — Add persists these into the x14 group; without the
+        // readback they were invisible to Get and dropped by dump round-trips.
+        if (spkGroup.HighMarkerColor?.Rgb?.Value is string spkHiMc)
+            node.Format["highMarkerColor"] = ParseHelpers.FormatHexColor(spkHiMc);
+        if (spkGroup.LowMarkerColor?.Rgb?.Value is string spkLoMc)
+            node.Format["lowMarkerColor"] = ParseHelpers.FormatHexColor(spkLoMc);
+        if (spkGroup.FirstMarkerColor?.Rgb?.Value is string spkFiMc)
+            node.Format["firstMarkerColor"] = ParseHelpers.FormatHexColor(spkFiMc);
+        if (spkGroup.LastMarkerColor?.Rgb?.Value is string spkLaMc)
+            node.Format["lastMarkerColor"] = ParseHelpers.FormatHexColor(spkLaMc);
+        if (spkGroup.MarkersColor?.Rgb?.Value is string spkMkMc)
+            node.Format["markersColor"] = ParseHelpers.FormatHexColor(spkMkMc);
+
+>>>>>>> upstream/main
         // Line weight
         if (spkGroup.LineWeight?.HasValue == true)
             node.Format["lineWeight"] = spkGroup.LineWeight.Value;
 
+<<<<<<< HEAD
+=======
+        // Group-level axis / empty-cell / RTL attributes. Add/Set persist these
+        // into the x14 group; without the readback they were invisible to Get
+        // and silently dropped by dump round-trips.
+        if (spkGroup.DisplayEmptyCellsAs?.HasValue == true)
+        {
+            var de = spkGroup.DisplayEmptyCellsAs.Value;
+            node.Format["displayEmptyCellsAs"] =
+                de == X14.DisplayBlanksAsValues.Gap ? "gap"
+                : de == X14.DisplayBlanksAsValues.Span ? "span"
+                : "zero";
+        }
+        if (spkGroup.DisplayXAxis?.Value == true) node.Format["displayXAxis"] = true;
+        if (spkGroup.RightToLeft?.Value == true) node.Format["rightToLeft"] = true;
+        if (spkGroup.DateAxis?.Value == true) node.Format["dateAxis"] = true;
+
+>>>>>>> upstream/main
         // Cell / range from first sparkline element
         var firstSparkline = spkGroup.GetFirstChild<X14.Sparklines>()?.GetFirstChild<X14.Sparkline>();
         if (firstSparkline != null)
@@ -116,12 +154,35 @@ public partial class ExcelHandler
             var ridx = row.RowIndex?.Value ?? 0;
             if (ridx != 0 && !seenRowIndices.Add(ridx))
                 continue;
+<<<<<<< HEAD
+=======
+
+            // Bulk enumeration omits value-less, formula-less empty cells —
+            // and rows that thereby become empty and carry no row-level
+            // formatting — so `get /` and `get /Sheet` stay bounded on sheets
+            // that declare millions of empty cells (issue #149). The load-time
+            // WorksheetBloatFilter already strips BARE empties (no style); a
+            // STYLED empty cell (<c s="1"/>) must stay in the DOM (common
+            // spreadsheet apps keep it — its xf may hold real formatting), so the
+            // only consistent place to suppress it is here, at output. This
+            // makes bare vs styled empties behave identically in bulk listings.
+            // Targeted reads (`get /Sheet/A1`, Query.cs empty-cell path) still
+            // return the cell, so no formatting becomes unreachable.
+            var contentCells = row.Elements<Cell>().Where(CellHasContent).ToList();
+            if (contentCells.Count == 0 && !RowHasMeaningfulAttrs(row))
+                continue;
+
+>>>>>>> upstream/main
             var rowIdx = row.RowIndex?.Value ?? 0;
             var rowNode = new DocumentNode
             {
                 Path = $"/{sheetName}/row[{rowIdx}]",
                 Type = "row",
+<<<<<<< HEAD
                 ChildCount = row.Elements<Cell>().Count()
+=======
+                ChildCount = contentCells.Count
+>>>>>>> upstream/main
             };
             // CONSISTENCY(unit-qualified-readback): pt-suffix row height
             // (Query.cs:433/1367 mirror). Stored value is already points.
@@ -129,10 +190,24 @@ public partial class ExcelHandler
                 rowNode.Format["height"] = $"{row.Height.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}pt";
             if (row.Hidden?.Value == true)
                 rowNode.Format["hidden"] = true;
+<<<<<<< HEAD
 
             if (depth > 0)
             {
                 foreach (var cell in row.Elements<Cell>())
+=======
+            // CONSISTENCY(nested-get-parity): the same node fetched directly
+            // (Query.cs row path) exposes outlineLevel/collapsed — the nested
+            // sheet-children view must return the identical Format dict.
+            if (row.OutlineLevel?.HasValue == true && row.OutlineLevel.Value > 0)
+                rowNode.Format["outlineLevel"] = (int)row.OutlineLevel.Value;
+            if (row.Collapsed?.Value == true)
+                rowNode.Format["collapsed"] = true;
+
+            if (depth > 0)
+            {
+                foreach (var cell in contentCells)
+>>>>>>> upstream/main
                 {
                     rowNode.Children.Add(CellToNode(sheetName, cell, worksheetPart, eval));
                 }
@@ -176,15 +251,87 @@ public partial class ExcelHandler
                     Core.PivotTableHelper.ReadPivotTableProperties(pivotDef, ptNode, pivotParts[i]);
                 children.Add(ptNode);
             }
+<<<<<<< HEAD
+=======
+
+            // Slicers are addressable (/Sheet1/slicer[N] get/set/remove all
+            // work) but were invisible in the parent sheet's child listing —
+            // the only sheet-level element missing from enumeration.
+            // CONSISTENCY(sheet-children): same pattern as pivottable above.
+            var slicersPart = worksheetPart.GetPartsOfType<SlicersPart>().FirstOrDefault();
+            var slicerElems = slicersPart?.Slicers?
+                .Elements<DocumentFormat.OpenXml.Office2010.Excel.Slicer>().ToList();
+            if (slicerElems != null)
+            {
+                for (int i = 0; i < slicerElems.Count; i++)
+                {
+                    var slNode = new DocumentNode
+                    {
+                        Path = $"/{sheetName}/slicer[{i + 1}]",
+                        Type = "slicer"
+                    };
+                    if (TryFindSlicerByIndex(worksheetPart, i + 1, out var slElem, out var slCache) && slElem != null)
+                        ReadSlicerProperties(slElem, slCache, slNode);
+                    children.Add(slNode);
+                }
+            }
+>>>>>>> upstream/main
         }
 
         return children;
     }
 
+<<<<<<< HEAD
     private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null, Core.FormulaEvaluator? evaluator = null)
     {
         var cellRef = cell.CellReference?.Value ?? "?";
         var formula = cell.CellFormula?.Text is { } fText
+=======
+    /// <summary>
+    /// A cell carries content when it has a formula, a non-empty value, or an
+    /// inline string. Style alone (<c>&lt;c s="1"/&gt;</c>) is NOT content —
+    /// such cells are omitted from bulk enumeration (see GetSheetChildNodes)
+    /// but stay in the DOM and remain reachable via a targeted get.
+    /// </summary>
+    private static bool CellHasContent(Cell cell)
+    {
+        if (cell.CellFormula != null) return true;
+        if (!string.IsNullOrEmpty(cell.CellValue?.Text)) return true;
+        if (cell.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.InlineString>() != null) return true;
+        // Explicit empty-string cell (<c t="str"><v/></c>): a stored value
+        // node with a string DataType is real content — COUNTA counts it,
+        // ISBLANK is FALSE — even when the text is empty. Excluding it hid
+        // the cell from bulk enumeration AND from dump, which silently
+        // dropped it on replay. A typeless <c s="1"/> (style only, no value
+        // node) remains non-content.
+        if (cell.DataType?.HasValue == true && cell.CellValue != null) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Mirrors WorksheetBloatFilter.ProcessRow's row-keep rule: a row is
+    /// meaningful (kept even with no content cells) when it carries any
+    /// attribute beyond <c>r</c>/<c>spans</c>, or any namespaced attribute
+    /// (height, hidden, style, outline, x14ac:dyDescent, …).
+    /// </summary>
+    private static bool RowHasMeaningfulAttrs(Row row)
+    {
+        foreach (var attr in row.GetAttributes())
+        {
+            if (!string.IsNullOrEmpty(attr.NamespaceUri)) return true;
+            if (attr.LocalName is "r" or "spans") continue;
+            return true;
+        }
+        return false;
+    }
+
+    private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null, Core.FormulaEvaluator? evaluator = null)
+    {
+        var cellRef = cell.CellReference?.Value ?? "?";
+        // Shared-formula children hold an empty <f/>; ResolveText expands them
+        // from the master so they read back like any other formula cell.
+        var formula = Core.SharedFormulaResolver.ResolveText(cell) is { } fText
+>>>>>>> upstream/main
             ? Core.ModernFunctionQualifier.Unqualify(fText)
             : null;
         string type;
@@ -232,6 +379,21 @@ public partial class ExcelHandler
 
         var displayText = GetCellDisplayValue(cell, evaluator);
 
+<<<<<<< HEAD
+=======
+        // In-cell image ("Place in Cell" richValue): stored as t="e" #VALUE!
+        // with a vm pointer into xl/richData. Surface it as an Image cell
+        // instead of a bare error — the #VALUE! is only the down-level
+        // fallback, not the cell's meaning.
+        InCellImageInfo? inCellImage = null;
+        if (type == "Error" && cell.ValueMetaIndex != null && TryGetInCellImage(cell, out var imgInfo))
+        {
+            inCellImage = imgInfo;
+            type = "Image";
+            displayText = "[image]";
+        }
+
+>>>>>>> upstream/main
         var node = new DocumentNode
         {
             Path = $"/{sheetName}/{cellRef}",
@@ -241,6 +403,19 @@ public partial class ExcelHandler
         };
 
         node.Format["type"] = type;
+<<<<<<< HEAD
+=======
+        if (inCellImage is { } ici)
+        {
+            node.Format["image.contentType"] = ici.ContentType;
+            node.Format["image.fileSize"] = ici.FileSize;
+            // CONSISTENCY(picture-alt): bare `alt` is the project-wide
+            // canonical readback key for image alt text (picture nodes in all
+            // three handlers emit Format["alt"]).
+            if (!string.IsNullOrEmpty(ici.Alt))
+                node.Format["alt"] = ici.Alt!;
+        }
+>>>>>>> upstream/main
         if (formula != null)
         {
             node.Format["formula"] = formula;
@@ -274,7 +449,11 @@ public partial class ExcelHandler
                 node.Format["cachedValue"] = rawCached;
             if (evaluator != null && !FormulaReferencesMissingSheet(formula))
             {
+<<<<<<< HEAD
                 var report = evaluator.EvaluateForReport(formula);
+=======
+                var report = evaluator.EvaluateForReport(formula, cellRef);
+>>>>>>> upstream/main
                 if (report.Status == Core.EvalReportStatus.Evaluated)
                     computedValue = report.Result!.ToCellValueText();
                 else if (report.Status == Core.EvalReportStatus.Error)
@@ -354,6 +533,20 @@ public partial class ExcelHandler
             {
                 node.Format["link"] = "#" + loc;
             }
+<<<<<<< HEAD
+=======
+            // Tooltip readback — Set/Add persist tooltip= into the hyperlink's
+            // @tooltip attribute, but without this emit the value was invisible
+            // to Get and dropped by dump round-trips.
+            if (hyperlink?.Tooltip?.Value is { Length: > 0 } hlTooltip)
+                node.Format["tooltip"] = hlTooltip;
+
+            // Display readback — the @display attribute is the friendly text
+            // Excel shows for the link; without this emit it was invisible to
+            // Get and silently dropped by dump round-trips.
+            if (hyperlink?.Display?.Value is { Length: > 0 } hlDisplay)
+                node.Format["display"] = hlDisplay;
+>>>>>>> upstream/main
 
             // Border readback from stylesheet
             var styleIndex = cell.StyleIndex?.Value ?? 0;
@@ -382,12 +575,29 @@ public partial class ExcelHandler
                             // normalize to the canonical key so set->get round-trips.
                             if (font.Strike != null) node.Format["strike"] = true;
                             if (font.Underline != null)
+<<<<<<< HEAD
                                 node.Format["underline"] = font.Underline.Val?.InnerText == "double" ? "double" : "single";
+=======
+                            {
+                                var uCanon = OfficeCli.Core.ExcelStyleManager.NormalizeStoredUnderline(font.Underline.Val?.InnerText);
+                                if (uCanon != null) node.Format["underline"] = uCanon;
+                            }
+>>>>>>> upstream/main
                             if (font.Color?.Rgb?.Value != null)
                                 node.Format["font.color"] = ParseHelpers.FormatHexColor(font.Color.Rgb.Value);
                             else if (font.Color?.Theme?.Value != null)
                             {
+<<<<<<< HEAD
                                 var themeName = ParseHelpers.ExcelThemeIndexToName(font.Color.Theme.Value);
+=======
+                                // Carry @tint into the value ("accent1+tint40").
+                                // Dropping it made Get report a full-strength
+                                // scheme color for Excel's stock "Lighter 40%"
+                                // shades, so dump→batch flattened every tinted
+                                // font and the readback could not be verified.
+                                var themeName = ParseHelpers.ExcelThemeNameWithTint(
+                                    font.Color.Theme.Value, font.Color.Tint?.Value);
+>>>>>>> upstream/main
                                 if (themeName != null) node.Format["font.color"] = themeName;
                             }
                             // vertAlign (superscript/subscript) readback. Canonical cell
@@ -446,11 +656,55 @@ public partial class ExcelHandler
                             else
                             {
                                 var pf = fill.PatternFill;
+<<<<<<< HEAD
                                 if (pf?.ForegroundColor?.Rgb?.Value != null)
                                     node.Format["fill"] = ParseHelpers.FormatHexColor(pf.ForegroundColor.Rgb.Value);
                                 else if (pf?.ForegroundColor?.Theme?.Value != null)
                                 {
                                     var themeName = ParseHelpers.ExcelThemeIndexToName(pf.ForegroundColor.Theme.Value);
+=======
+                                // Non-solid pattern fills (lightGray, darkGrid, …)
+                                // carry a pattern type plus fg/bg colors that must
+                                // all survive round-trip. Solid/none keep the
+                                // legacy single-color `fill` readback so existing
+                                // behavior is unchanged.
+                                var patType = pf?.PatternType?.Value;
+                                bool nonSolidPattern = patType != null
+                                    && patType != PatternValues.Solid
+                                    && patType != PatternValues.None;
+                                if (nonSolidPattern)
+                                {
+                                    // Emit the OOXML wire name (e.g. "lightGray"),
+                                    // not the enum struct's ToString.
+                                    node.Format["fillPattern"] = pf!.PatternType!.InnerText;
+                                    // CONSISTENCY(scheme-color): theme fg/bg read
+                                    // back as scheme names, mirroring the solid
+                                    // path below — Set accepts them, so a pattern
+                                    // fill with theme colors must round-trip
+                                    // through dump→batch instead of silently
+                                    // dropping both colors.
+                                    if (pf!.ForegroundColor?.Rgb?.Value != null)
+                                        node.Format["fill"] = ParseHelpers.FormatHexColor(pf.ForegroundColor.Rgb.Value);
+                                    else if (pf.ForegroundColor?.Theme?.Value != null
+                                        && ParseHelpers.ExcelThemeNameWithTint(
+                                            pf.ForegroundColor.Theme.Value,
+                                            pf.ForegroundColor.Tint?.Value) is { } fgTheme)
+                                        node.Format["fill"] = fgTheme;
+                                    if (pf.BackgroundColor?.Rgb?.Value != null)
+                                        node.Format["fillBg"] = ParseHelpers.FormatHexColor(pf.BackgroundColor.Rgb.Value);
+                                    else if (pf.BackgroundColor?.Theme?.Value != null
+                                        && ParseHelpers.ExcelThemeNameWithTint(
+                                            pf.BackgroundColor.Theme.Value,
+                                            pf.BackgroundColor.Tint?.Value) is { } bgTheme)
+                                        node.Format["fillBg"] = bgTheme;
+                                }
+                                else if (pf?.ForegroundColor?.Rgb?.Value != null)
+                                    node.Format["fill"] = ParseHelpers.FormatHexColor(pf.ForegroundColor.Rgb.Value);
+                                else if (pf?.ForegroundColor?.Theme?.Value != null)
+                                {
+                                    var themeName = ParseHelpers.ExcelThemeNameWithTint(
+                                        pf.ForegroundColor.Theme.Value, pf.ForegroundColor.Tint?.Value);
+>>>>>>> upstream/main
                                     if (themeName != null) node.Format["fill"] = themeName;
                                 }
                             }
@@ -593,7 +847,11 @@ public partial class ExcelHandler
 
                     // Protection readback handled above via the dotted
                     // canonical form (`protection.locked` / `protection.hidden`)
+<<<<<<< HEAD
                     // — see CONSISTENCY(canonical-keys) in CLAUDE.md. Flat
+=======
+                    // — see CONSISTENCY(canonical-keys) in the project conventions. Flat
+>>>>>>> upstream/main
                     // `locked` / `formulahidden` Get emission was removed to
                     // avoid double-emission alongside the dotted form. The
                     // Set side still accepts both flat shorthand and dotted
@@ -754,6 +1012,105 @@ public partial class ExcelHandler
         return rPr;
     }
 
+<<<<<<< HEAD
+=======
+    // Serialize a multi-run comment's runs into the `runs=<json>` array
+    // BuildCommentTextFromRuns consumes. Vocabulary mirrors SerializeRichTextRuns.
+    internal static string SerializeCommentRuns(List<Run> runs)
+    {
+        var arr = new System.Text.Json.Nodes.JsonArray();
+        foreach (var run in runs)
+        {
+            var o = new System.Text.Json.Nodes.JsonObject { ["text"] = run.Text?.Text ?? "" };
+            var rp = run.RunProperties;
+            if (rp != null)
+            {
+                if (rp.GetFirstChild<Bold>() != null) o["bold"] = true;
+                if (rp.GetFirstChild<Italic>() != null) o["italic"] = true;
+                if (rp.GetFirstChild<Strike>() != null) o["strike"] = true;
+                var ul = rp.GetFirstChild<Underline>();
+                if (ul != null) o["underline"] = ul.Val?.InnerText == "double" ? "double" : "single";
+                var va = rp.GetFirstChild<VerticalTextAlignment>();
+                if (va?.Val?.Value == VerticalAlignmentRunValues.Superscript) o["superscript"] = true;
+                if (va?.Val?.Value == VerticalAlignmentRunValues.Subscript) o["subscript"] = true;
+                var sz = rp.GetFirstChild<FontSize>();
+                if (sz?.Val?.Value != null) o["size"] = $"{sz.Val.Value:0.##}pt";
+                var clr = rp.GetFirstChild<Color>();
+                if (clr?.Rgb?.Value != null) o["color"] = ParseHelpers.FormatHexColor(clr.Rgb.Value!);
+                var rf = rp.GetFirstChild<RunFont>();
+                if (rf?.Val?.Value != null) o["font"] = rf.Val.Value!;
+            }
+            // Non-generic Add(JsonNode) — the generic Add<T> overload carries
+            // RequiresUnreferencedCode (IL2026) though it never serializes a JsonNode.
+            arr.Add((System.Text.Json.Nodes.JsonNode)o);
+        }
+        return arr.ToJsonString();
+    }
+
+    // Build a CommentText from a `runs=<json array>` value, one <r> per run
+    // carrying its own <rPr>. Run vocabulary mirrors rich-text cells
+    // (bold/italic/strike/underline/superscript/subscript/size/color/font) so
+    // the two paths share one input contract. Comment runs keep the Tahoma-9
+    // indexed-81 default for facets a run leaves unspecified.
+    internal static CommentText BuildCommentTextFromRuns(string runsJson)
+    {
+        System.Text.Json.Nodes.JsonArray? arr;
+        try { arr = System.Text.Json.Nodes.JsonNode.Parse(runsJson) as System.Text.Json.Nodes.JsonArray; }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new ArgumentException($"comment runs: invalid JSON array — {ex.Message}");
+        }
+        if (arr == null)
+            throw new ArgumentException("comment runs: value must be a JSON array");
+
+        var ct = new CommentText();
+        foreach (var item in arr)
+        {
+            if (item is not System.Text.Json.Nodes.JsonObject o) continue;
+            var text = o["text"]?.GetValue<string>() ?? "";
+            OfficeCli.Core.ParseHelpers.ValidateXmlText(text, "comment run text");
+
+            var rPr = new RunProperties();
+            bool RunBool(string key) => o[key] is { } n
+                && (n.GetValueKind() == System.Text.Json.JsonValueKind.True
+                    || (n.GetValueKind() == System.Text.Json.JsonValueKind.String && IsTruthy(n.GetValue<string>())));
+
+            if (RunBool("bold")) rPr.AppendChild(new Bold());
+            if (RunBool("italic")) rPr.AppendChild(new Italic());
+            if (RunBool("strike")) rPr.AppendChild(new Strike());
+            var uStr = o["underline"]?.GetValue<string>();
+            if (!string.IsNullOrEmpty(uStr) && !string.Equals(uStr, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                rPr.AppendChild(new Underline
+                {
+                    Val = string.Equals(uStr, "double", StringComparison.OrdinalIgnoreCase)
+                        ? UnderlineValues.Double : UnderlineValues.Single
+                });
+            }
+            if (RunBool("superscript"))
+                rPr.AppendChild(new VerticalTextAlignment { Val = VerticalAlignmentRunValues.Superscript });
+            else if (RunBool("subscript"))
+                rPr.AppendChild(new VerticalTextAlignment { Val = VerticalAlignmentRunValues.Subscript });
+
+            var szStr = o["size"]?.GetValue<string>();
+            rPr.AppendChild(new FontSize { Val = szStr != null ? ParseHelpers.ParseFontSize(szStr) : 9.0 });
+
+            var colStr = o["color"]?.GetValue<string>();
+            if (!string.IsNullOrWhiteSpace(colStr))
+                rPr.AppendChild(new Color { Rgb = ParseHelpers.NormalizeArgbColor(colStr) });
+            else
+                rPr.AppendChild(new Color { Indexed = 81 });
+
+            var fontStr = o["font"]?.GetValue<string>();
+            rPr.AppendChild(new RunFont { Val = string.IsNullOrWhiteSpace(fontStr) ? "Tahoma" : fontStr });
+
+            ct.AppendChild(new Run(rPr,
+                new Text(text.Replace("\r\n", "\n")) { Space = SpaceProcessingModeValues.Preserve }));
+        }
+        return ct;
+    }
+
+>>>>>>> upstream/main
     // ==================== Data Validation Helpers ====================
 
     private DocumentNode TableToNode(string sheetName, WorksheetPart worksheetPart, int tableIndex, int depth)
@@ -830,8 +1187,23 @@ public partial class ExcelHandler
         // CONSISTENCY(xlsx/comment-font): C8 — surface font.* from first run's
         // rPr so Query/Get round-trips the Add-time formatting. Only report
         // non-default facets so Tahoma-9-indexed-81 comments stay unadorned.
+<<<<<<< HEAD
         var firstRun = comment.CommentText?.Elements<Run>().FirstOrDefault();
         var rProps = firstRun?.RunProperties;
+=======
+        var allRuns = comment.CommentText?.Elements<Run>().ToList() ?? new List<Run>();
+        // Per-run rich formatting: a comment with 2+ runs carries distinct
+        // per-run <rPr>. Surfacing only the first run's font.* (legacy path)
+        // collapsed the formatting on round-trip. Emit a `runs=<json>` carrier
+        // (same vocabulary as rich-text cells) so Add can rebuild every run.
+        // Single-run comments keep the legacy font.* readback unchanged.
+        if (allRuns.Count > 1)
+        {
+            node.Format["runs"] = SerializeCommentRuns(allRuns);
+        }
+        var firstRun = allRuns.FirstOrDefault();
+        var rProps = allRuns.Count <= 1 ? firstRun?.RunProperties : null;
+>>>>>>> upstream/main
         if (rProps != null)
         {
             if (rProps.Elements<Bold>().Any()) node.Format["font.bold"] = true;

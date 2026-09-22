@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -18,14 +22,39 @@ public partial class ExcelHandler
     /// <param name="delimiter">Field delimiter: ',' for CSV, '\t' for TSV</param>
     /// <param name="hasHeader">If true, set AutoFilter and freeze pane on first row</param>
     /// <param name="startCell">Starting cell reference, e.g. "A1"</param>
+    /// <param name="decimalSeparator">Decimal mark the SOURCE uses: '.' (default)
+    /// or ',' for the de-DE / ru-RU spelling, where '.' becomes the thousands
+    /// group. Declared by the caller — never detected (see Core.NumericText).</param>
     /// <returns>Summary of rows/cols imported</returns>
-    public string Import(string parentPath, string csvContent, char delimiter, bool hasHeader, string startCell)
+    public string Import(string parentPath, string csvContent, char delimiter, bool hasHeader, string startCell,
+        char decimalSeparator = '.')
     {
         parentPath = NormalizeExcelPath(parentPath);
         parentPath = ResolveSheetIndexInPath(parentPath);
-        var sheetName = parentPath.TrimStart('/').Split('/', 2)[0];
+        var pathSegments = parentPath.TrimStart('/').Split('/', 2);
+        var sheetName = pathSegments[0];
         var worksheet = FindWorksheet(sheetName)
             ?? throw new ArgumentException($"Sheet not found: {sheetName}");
+
+        // A cell-qualified target (/Sheet1/D3) is the same address every other
+        // xlsx verb takes, so it names the top-left landing cell. It used to be
+        // cut off after the sheet segment without a word, and the matrix landed
+        // on A1 over whatever was there. Anything that is not a single cell —
+        // a range, a row/col locator, a typo — is refused rather than guessed.
+        if (pathSegments.Length > 1 && pathSegments[1].Length > 0)
+        {
+            var cellSeg = pathSegments[1].Replace("$", "").ToUpperInvariant();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(cellSeg, @"^[A-Z]{1,3}[1-9]\d*$"))
+                throw new Core.CliException(
+                    $"import target '{parentPath}' must be a sheet (/{sheetName}) or a single cell (/{sheetName}/A1); '{pathSegments[1]}' is neither.")
+                { Code = "invalid_path", Suggestion = $"Use /{sheetName}/{{top-left cell}} or --start-cell." };
+            if (!string.Equals(startCell, "A1", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(startCell, cellSeg, StringComparison.OrdinalIgnoreCase))
+                throw new Core.CliException(
+                    $"import target '{parentPath}' names cell {cellSeg} but --start-cell says {startCell}; pass one or make them agree.")
+                { Code = "invalid_argument" };
+            startCell = cellSeg;
+        }
 
         var ws = GetSheet(worksheet);
         var sheetData = ws.GetFirstChild<SheetData>()
@@ -34,6 +63,15 @@ public partial class ExcelHandler
         // Parse start cell
         var (startCol, startRow) = ParseCellReference(startCell.ToUpperInvariant());
         var startColIdx = ColumnNameToIndex(startCol);
+
+        // Excel's `sep=X` first line is a declaration, not a row. Strip it
+        // whatever the caller chose as the delimiter: left in place it becomes a
+        // junk first row that shifts every real row down one, so hasHeader
+        // freezes and auto-filters the wrong line. Which separator to USE is the
+        // caller's call (an explicit --delimiter still wins) — see
+        // Core.CsvSepDeclaration.
+        if (Core.CsvSepDeclaration.TryRead(csvContent, out _, out var withoutSepLine))
+            csvContent = withoutSepLine;
 
         // Parse CSV
         var rows = ParseCsv(csvContent, delimiter);
@@ -81,6 +119,14 @@ public partial class ExcelHandler
         foreach (var er in existingRows)
             rowByIndex[er.RowIndex!.Value] = er;
         int exCursor = 0; // points at the first existing row with index > last processed
+<<<<<<< HEAD
+=======
+        var importedFormulaCells = new List<Cell>();
+        // Lazily created the first time an ISO date is imported, so a detected
+        // date cell gets a date number format (matching Set/Add) instead of
+        // displaying its raw serial number.
+        Core.ExcelStyleManager? styleManager = null;
+>>>>>>> upstream/main
 
         for (int r = 0; r < rows.Count; r++)
         {
@@ -96,6 +142,17 @@ public partial class ExcelHandler
                     if (existingCell.CellReference?.Value is { } cr)
                         cellByRef[cr] = existingCell;
             }
+<<<<<<< HEAD
+=======
+            else if (fields.All(string.IsNullOrEmpty))
+            {
+                // All-empty row on a row that doesn't exist yet: nothing to
+                // write. Materializing it would add phantom <row>/<c> elements
+                // absent from the imported data (dump's gap-bridge "," rows
+                // land here), inflating UsedRange and non-empty iteration.
+                continue;
+            }
+>>>>>>> upstream/main
             else
             {
                 row = new Row { RowIndex = rowIdx };
@@ -119,6 +176,14 @@ public partial class ExcelHandler
                 cellByRef?.TryGetValue(cellRef, out cell);
                 if (cell == null)
                 {
+<<<<<<< HEAD
+=======
+                    // Empty field, no pre-existing cell: skip. Creating an
+                    // empty <c> here would fabricate cells the source never
+                    // had; when the cell DOES exist, the empty field keeps
+                    // its clear-the-value semantics below.
+                    if (string.IsNullOrEmpty(fields[c])) continue;
+>>>>>>> upstream/main
                     cell = new Cell { CellReference = cellRef };
                     row.Append(cell);
                 }
@@ -128,10 +193,51 @@ public partial class ExcelHandler
                     cell.CellValue = null;
                     cell.DataType = null;
                 }
+<<<<<<< HEAD
                 SetCellValueWithTypeDetection(cell, fields[c]);
             }
         }
 
+=======
+                if (SetCellValueWithTypeDetection(cell, fields[c], IsWorkbookDate1904(), decimalSeparator,
+                        keepAsText: CellCarriesTextFormat(cell)))
+                {
+                    // Date cell — apply a date number format so it shows as a
+                    // date, not the raw serial. Mirrors Set/Add (numFmt yyyy-mm-dd).
+                    styleManager ??= new Core.ExcelStyleManager(_doc.WorkbookPart!);
+                    cell.StyleIndex = styleManager.ApplyStyle(cell,
+                        new Dictionary<string, string> { ["numberformat"] = "yyyy-mm-dd" });
+                }
+                if (cell.CellFormula != null && cell.CellValue == null)
+                    importedFormulaCells.Add(cell);
+            }
+        }
+
+        // CONSISTENCY(cell-formula-cache): `set formula=` evaluates and caches
+        // the result (t= type + <v>), but the import path used to write a bare
+        // <f> — a dump→import replay of a formula cell silently dropped the
+        // cached value and its Error/Boolean type, so Get on the replayed file
+        // disagreed with the source. Evaluate once after the whole block is in
+        // (handles forward references within the imported range).
+        if (importedFormulaCells.Count > 0)
+        {
+            var importEvaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
+            foreach (var fc in importedFormulaCells)
+            {
+                var fText = fc.CellFormula!.Text ?? "";
+                // A formula referencing a sheet that does not exist yet (dump
+                // replay imports a sheet before the sheet its formula points at)
+                // would evaluate to #REF! here and cache that wrong value. Leave
+                // the cache empty instead; the persist-time RefreshStaleFormulaCaches
+                // sweep fills it once every referenced sheet's data exists. Mirrors
+                // the sweep's own missing-sheet guard.
+                if (FormulaReferencesMissingSheet(fText)) continue;
+                WriteFormulaResultToCell(fc, importEvaluator.TryEvaluateFull(fText));
+            }
+            EnsureFullCalcOnLoad();
+        }
+
+>>>>>>> upstream/main
         InvalidateRowIndex(sheetData);
 
         // --header: set AutoFilter on data range and freeze pane below first row
@@ -162,7 +268,7 @@ public partial class ExcelHandler
             if (sheetViews == null)
             {
                 sheetViews = new SheetViews();
-                ws.InsertAt(sheetViews, 0);
+                InsertSheetViewsInSchemaOrder(ws, sheetViews);
             }
             var sheetView = sheetViews.GetFirstChild<SheetView>();
             if (sheetView == null)
@@ -186,6 +292,12 @@ public partial class ExcelHandler
             sheetView.InsertAt(pane, 0);
         }
 
+        // Mark the document modified so Dispose flushes it. Without this, an
+        // `import` with no explicit Save (the CLI path) hits the !Modified
+        // byte-preserving discard branch in Dispose and the imported rows are
+        // silently dropped — success reported, disk unchanged. Same gap that
+        // affected Move/Swap/CopyFrom.
+        Modified = true;
         SaveWorksheet(worksheet);
         return $"Imported {rows.Count} rows x {maxCols} cols into /{sheetName} starting at {startCell.ToUpperInvariant()}";
     }
@@ -194,14 +306,55 @@ public partial class ExcelHandler
     /// Set a cell's value with automatic type detection.
     /// Order: number -> date (ISO) -> boolean -> formula -> string
     /// </summary>
-    private static void SetCellValueWithTypeDetection(Cell cell, string value)
+    /// <returns>true when the value was stored as a DATE (serial number needing
+    /// a date number format); false for every other type.</returns>
+    /// <summary>
+    /// True when the (pre-existing) cell is formatted as Text — numFmtId 49 /
+    /// format code "@". Excel keeps whatever is typed into such a cell as a
+    /// literal string, formulas and numbers included; a pre-formatted import
+    /// target must get the same treatment.
+    /// </summary>
+    private bool CellCarriesTextFormat(Cell cell)
+    {
+        if (cell.StyleIndex == null) return false;
+        var (numFmtId, code) = ExcelDataFormatter.GetCellFormat(cell, _doc.WorkbookPart);
+        return numFmtId == 49 || (code != null && code.Trim() == "@");
+    }
+
+    /// <summary>
+    /// The same rule the `set` path applies before treating a digit string as a
+    /// number: an identifier-shaped literal — leading zero (007, 01234) or more
+    /// digits than a double can carry (>15) — is text. Storing it numeric drops
+    /// the zeros / rounds the tail in every consumer, and nothing can bring
+    /// them back; the reverse (type=number on a text cell) is always available.
+    /// </summary>
+    private static bool LooksLikeIdentifierNotNumber(string value)
+        => value.Length > 1 && value.All(char.IsDigit)
+           && (value[0] == '0' || value.Length > 15);
+
+    private static bool SetCellValueWithTypeDetection(Cell cell, string value, bool date1904,
+        char decimalSeparator = '.', bool keepAsText = false)
     {
         // Empty
         if (string.IsNullOrEmpty(value))
         {
             cell.CellValue = null;
             cell.DataType = null;
-            return;
+            return false;
+        }
+
+        // R13-1: enforce Excel's 32767-char per-cell limit at the CSV/TSV
+        // import path too, so bulk imports fail fast instead of producing a
+        // file Excel refuses to open.
+        EnsureCellValueLength(value, cell.CellReference?.Value);
+
+        // Text-formatted target, or a literal that only reads correctly as
+        // text: store verbatim, no formula/number/date detection.
+        if (keepAsText || LooksLikeIdentifierNotNumber(value))
+        {
+            cell.CellValue = new CellValue(value);
+            cell.DataType = new EnumValue<CellValues>(CellValues.String);
+            return false;
         }
 
         // R13-1: enforce Excel's 32767-char per-cell limit at the CSV/TSV
@@ -212,27 +365,48 @@ public partial class ExcelHandler
         // Formula: starts with =
         if (value.StartsWith('='))
         {
+<<<<<<< HEAD
+=======
+            // Same A1-only guard as Add/Set: verbatim R1C1 text in <f> makes
+            // real Excel refuse the file.
+            ValidateFormulaCellRefs(value);
+>>>>>>> upstream/main
             cell.CellFormula = new CellFormula(OfficeCli.Core.PivotTableHelper.SanitizeXmlText(OfficeCli.Core.ModernFunctionQualifier.Qualify(value[1..])));
             cell.CellValue = null;
             cell.DataType = null;
-            return;
+            return false;
         }
 
-        // Number (integer or decimal)
-        if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var numVal))
+        // Number (integer or decimal). Which spellings count is Core.NumericText's
+        // call: by default "1,5" is NOT a number (AllowThousands would read it as
+        // 15, silently 10x-ing every decimal-comma value in a de-DE / ru-RU CSV);
+        // under a declared decimal comma it is rewritten to 1.5 instead.
+        string? numericText = decimalSeparator == ','
+            ? (Core.NumericText.TryRewriteCommaDecimal(value, out var rewritten) ? rewritten : null)
+            : (HasValidThousandsGrouping(value) ? value : null);
+        if (numericText != null
+            && double.TryParse(numericText, NumberStyles.Any, CultureInfo.InvariantCulture, out var numVal)
+            && double.IsFinite(numVal)) // "Infinity"/"NaN" parse but have no OOXML numeric form — fall through to string
         {
-            cell.CellValue = new CellValue(numVal.ToString(CultureInfo.InvariantCulture));
+            // Preserve the literal digits when the input is already a plain
+            // canonical numeric literal. Round-tripping through double
+            // silently rounds >15-16 significant digits (e.g. 18-digit IDs
+            // stored as numbers by openpyxl-authored files), so dump→replay
+            // would corrupt them. Normalization is kept for the non-canonical
+            // spellings double.TryParse accepts (whitespace padding,
+            // thousands separators, "Infinity"/"NaN").
+            cell.CellValue = new CellValue(NormalizeNumericCellText(numericText, numVal));
             cell.DataType = null; // numeric is default
-            return;
+            return false;
         }
 
         // Date: ISO 8601 formats (yyyy-MM-dd, yyyy-MM-ddTHH:mm:ss, etc.)
         if (TryParseIsoDate(value, out var dateVal))
         {
             // Excel stores dates as OLE Automation date numbers
-            cell.CellValue = new CellValue(dateVal.ToOADate().ToString(CultureInfo.InvariantCulture));
+            cell.CellValue = new CellValue(ExcelDataFormatter.ToExcelSerial(dateVal, date1904).ToString(CultureInfo.InvariantCulture));
             cell.DataType = null; // numeric
-            return;
+            return true; // caller applies a date number format
         }
 
         // Boolean: TRUE/FALSE (case-insensitive)
@@ -240,18 +414,19 @@ public partial class ExcelHandler
         {
             cell.CellValue = new CellValue("1");
             cell.DataType = new EnumValue<CellValues>(CellValues.Boolean);
-            return;
+            return false;
         }
         if (value.Equals("FALSE", StringComparison.OrdinalIgnoreCase))
         {
             cell.CellValue = new CellValue("0");
             cell.DataType = new EnumValue<CellValues>(CellValues.Boolean);
-            return;
+            return false;
         }
 
         // String (fallback)
         cell.CellValue = new CellValue(value);
         cell.DataType = new EnumValue<CellValues>(CellValues.String);
+        return false;
     }
 
     private static bool TryParseIsoDate(string value, out DateTime result)
@@ -336,8 +511,12 @@ public partial class ExcelHandler
                     // End of row
                     currentRow.Add(field.ToString());
                     field.Clear();
-                    if (currentRow.Count > 0 && !(currentRow.Count == 1 && currentRow[0] == ""))
-                        rows.Add(currentRow);
+                    // Keep blank lines as single-empty-field rows: dropping
+                    // them shifted every subsequent line up (r4 landed on row
+                    // 2). The import loop skips materializing all-empty rows,
+                    // so no phantom <row> elements are written — only the row
+                    // cursor advances, preserving source line positions.
+                    rows.Add(currentRow);
                     currentRow = new List<string>();
                     i++;
                     if (i < content.Length && content[i] == '\n')
@@ -348,8 +527,8 @@ public partial class ExcelHandler
                     // End of row
                     currentRow.Add(field.ToString());
                     field.Clear();
-                    if (currentRow.Count > 0 && !(currentRow.Count == 1 && currentRow[0] == ""))
-                        rows.Add(currentRow);
+                    // Blank lines preserved — see the \r branch above.
+                    rows.Add(currentRow);
                     currentRow = new List<string>();
                     i++;
                 }

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 namespace OfficeCli.Core.TableStyles;
@@ -125,7 +129,12 @@ public record ResolvedCell(
     ResolvedBorder? Top,
     ResolvedBorder? Bottom,
     ResolvedBorder? Left,
+<<<<<<< HEAD
     ResolvedBorder? Right);
+=======
+    ResolvedBorder? Right,
+    bool Bold = false);   // header/total/first-col/last-col emphasis bands render bold
+>>>>>>> upstream/main
 
 /// <summary>One resolved cell-edge border: colour + width + dash.</summary>
 public record ResolvedBorder(string Color, int WidthEmu, string Dash);

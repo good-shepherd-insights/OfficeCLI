@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -45,6 +49,7 @@ public partial class ExcelHandler
         // If series sub-path, prefix all properties with series{N}. for ChartSetter
         var chartProps = properties;
         var isSeriesPath = m.Groups[2].Success;
+<<<<<<< HEAD
         if (isSeriesPath)
         {
             var seriesIdx = int.Parse(m.Groups[2].Value);
@@ -53,6 +58,29 @@ public partial class ExcelHandler
                 chartProps[$"series{seriesIdx}.{key}"] = value;
         }
 
+=======
+        var seriesPrefix = "";
+        if (isSeriesPath)
+        {
+            var seriesIdx = int.Parse(m.Groups[2].Value);
+            seriesPrefix = $"series{seriesIdx}.";
+            chartProps = new Dictionary<string, string>();
+            foreach (var (key, value) in properties)
+                chartProps[seriesPrefix + key] = value;
+        }
+
+        // Unsupported keys must be reported under the CALLER's spelling: the
+        // internal series{N}. prefix made them miss the CLI's applied-props
+        // subtraction, so a rejected key still showed up in the "Updated ..."
+        // success line while an UNSUPPORTED warning named a key the user
+        // never typed.
+        List<string> UnprefixSeries(List<string> unsup) => seriesPrefix.Length == 0
+            ? unsup
+            : unsup.Select(u => u.StartsWith(seriesPrefix, StringComparison.OrdinalIgnoreCase)
+                ? u[seriesPrefix.Length..]
+                : u).ToList();
+
+>>>>>>> upstream/main
         // Chart-level position/size Set — TwoCellAnchor mutation. Skip for series
         // sub-paths (series don't have their own position). Accepts x/y/width/height
         // in the same units as OLE Set and chart Add.
@@ -63,6 +91,7 @@ public partial class ExcelHandler
         {
             var positionUnsupported = ApplyChartPositionSet(
                 drawingsPart, chartIdx, chartProps);
+<<<<<<< HEAD
             foreach (var k in new[] { "x", "y", "width", "height" })
             {
                 var matched = chartProps.Keys
@@ -70,18 +99,38 @@ public partial class ExcelHandler
                 if (matched != null && !positionUnsupported.Contains(matched))
                     chartProps.Remove(matched);
             }
+=======
+            // Forward everything EXCEPT successfully-applied position keys to the
+            // property setter. Build a filtered COPY — never mutate the caller's
+            // `properties` dict, or the CLI's applied-props accounting drops the
+            // position change and reports "No properties applied" on a
+            // position-only set. Failed position keys stay so the setter flags them.
+            var posKeys = new[] { "x", "y", "width", "height", "anchor" };
+            chartProps = chartProps
+                .Where(kv => positionUnsupported.Contains(kv.Key)
+                          || !posKeys.Any(p => p.Equals(kv.Key, StringComparison.OrdinalIgnoreCase)))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+>>>>>>> upstream/main
         }
 
         if (chartInfo.StandardPart != null)
         {
             var unsup = ChartHelper.SetChartProperties(chartInfo.StandardPart, chartProps);
             chartInfo.StandardPart.ChartSpace?.Save();
+<<<<<<< HEAD
             return unsup;
+=======
+            return UnprefixSeries(unsup);
+>>>>>>> upstream/main
         }
         else if (chartInfo.ExtendedPart != null)
         {
             // cx:chart — delegates to ChartExBuilder.SetChartProperties.
+<<<<<<< HEAD
             return ChartExBuilder.SetChartProperties(chartInfo.ExtendedPart, chartProps);
+=======
+            return UnprefixSeries(ChartExBuilder.SetChartProperties(chartInfo.ExtendedPart, chartProps));
+>>>>>>> upstream/main
         }
         else
         {
@@ -110,7 +159,11 @@ public partial class ExcelHandler
         if (runIdx < 1 || runIdx > runs.Count)
             throw new ArgumentException($"Run index {runIdx} out of range (1-{runs.Count})");
 
+<<<<<<< HEAD
         var run = runs[runIdx - 1];
+=======
+        var run = runs[PathIndex.ToArrayIndex(runIdx)];
+>>>>>>> upstream/main
         var rProps = run.RunProperties ?? run.PrependChild(new RunProperties());
 
         var unsupported = new List<string>();

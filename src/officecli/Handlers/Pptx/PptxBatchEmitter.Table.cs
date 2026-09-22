@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using OfficeCli.Core;
@@ -36,10 +40,42 @@ public static partial class PptxBatchEmitter
             Props = props.Count > 0 ? props : null,
         });
 
+<<<<<<< HEAD
+=======
+        // Whole-table effects (<a:tblPr><a:effectLst> — e.g. an outerShdw
+        // with sx/sy/algn the semantic shadow= compound cannot express,
+        // sample15). Carry the verbatim block and PREPEND it into the
+        // replayed tblPr (schema: effectLst precedes tableStyleId).
+        var tblFx = ppt.GetTableEffectsXmlWithOrdinal(tableNode.Path ?? "");
+        if (tblFx.HasValue
+            && System.Text.RegularExpressions.Regex.Match(replayPath, @"^/slide\[\d+\]/table\[\d+\]$").Success)
+        {
+            var slideRoot = System.Text.RegularExpressions.Regex.Match(
+                replayPath, @"^/slide\[\d+\]").Value;
+            items.Add(new BatchItem
+            {
+                Command = "raw-set",
+                Part = slideRoot,
+                Xpath = $"/p:sld/p:cSld/p:spTree/p:graphicFrame[{tblFx.Value.GfOrdinal}]/a:graphic/a:graphicData/a:tbl/a:tblPr",
+                Action = "prepend",
+                Xml = tblFx.Value.Xml,
+            });
+        }
+
+>>>>>>> upstream/main
         var tablePath = replayPath;
         if (fullTable.Children == null) return;
         var rows = fullTable.Children.Where(c => c.Type == "tr").ToList();
 
+<<<<<<< HEAD
+=======
+        // Collect external-hyperlink rIds referenced by any cell's verbatim
+        // txBodyRaw. A cell that links a run to a URL keeps <a:hlinkClick
+        // r:id="rIdN"> in the raw body, but the typed emit never re-creates that
+        // external relationship — the rebuilt slide dangled. Carry each below.
+        var cellHlinkRids = new HashSet<string>(StringComparer.Ordinal);
+
+>>>>>>> upstream/main
         int rIdx = 0;
         foreach (var row in rows)
         {
@@ -75,8 +111,75 @@ public static partial class PptxBatchEmitter
                 // text=""` — which routes through AppendLineWithTabs and
                 // produces the canonical empty run.
                 bool forceEmptyText = cellProps.Remove("hasEmptyRun");
+<<<<<<< HEAD
                 // Set tc accepts text= for replacing the cell's text body.
                 if (!string.IsNullOrEmpty(cell.Text))
+=======
+
+                // Border verbatim-raw wins over the granular border.<edge>.*
+                // keys. The Set path reuses an existing border element when the
+                // granular op runs, so a stray granular op after the raw inject
+                // appends an out-of-order child (e.g. solidFill into an lnB that
+                // already carries noFill) and breaks the schema. Drop every
+                // granular border key for an edge whose .raw counterpart is
+                // present; the raw element is authoritative and self-contained.
+                foreach (var edge in new[] { "left", "right", "top", "bottom", "tl2br", "tr2bl" })
+                {
+                    if (!cellProps.ContainsKey($"border.{edge}.raw")) continue;
+                    foreach (var suffix in new[] { "", ".width", ".color", ".dash", ".compound" })
+                        cellProps.Remove($"border.{edge}{suffix}");
+                }
+                // The summary keys (border / border.all) fan out to all four
+                // straight edges; if any of those edges has a raw, the summary
+                // would re-touch it. Drop the summaries whenever any edge raw is
+                // present — raws fully describe their edges.
+                if (new[] { "left", "right", "top", "bottom" }
+                        .Any(e => cellProps.ContainsKey($"border.{e}.raw")))
+                {
+                    cellProps.Remove("border");
+                    cellProps.Remove("border.all");
+                }
+
+                // When the cell carries a verbatim txBodyRaw (rich pPr/lstStyle/
+                // rPr the text= rebuild would drop), the raw passthrough already
+                // contains the full text — emitting a companion text= op would
+                // rebuild bare paragraphs and clobber it. Suppress text= in that
+                // case and let the txBodyRaw set op restore the body verbatim.
+                bool hasRawBody = cellProps.ContainsKey("txBodyRaw");
+                if (hasRawBody && cellProps.TryGetValue("txBodyRaw", out var rawBody) && rawBody != null)
+                {
+                    foreach (System.Text.RegularExpressions.Match hm in
+                             System.Text.RegularExpressions.Regex.Matches(rawBody, @"<a:hlink(?:Click|Hover)\b[^>]*r:id=""([^""]+)"""))
+                        cellHlinkRids.Add(hm.Groups[1].Value);
+                }
+                // Set tc accepts text= for replacing the cell's text body.
+                if (hasRawBody)
+                {
+                    // raw body is authoritative; no text= companion. It also
+                    // fully specifies every run/paragraph's formatting, so drop
+                    // the companion text-body semantic props (size, font, align,
+                    // lineSpacing, space*, bold, …). Left in, the `set` applies
+                    // them across the WHOLE cell and flattens per-run values —
+                    // e.g. a cell with a big "±" run (25pt) and a small caption
+                    // run (7pt) collapsed to a single 25pt via a companion
+                    // size=25pt, ballooning the row (sample14). Keep only
+                    // cell-level (tcPr) props the txBody does NOT carry:
+                    // padding.* (marL/R/T/B), valign (anchor), border*, fill*,
+                    // and cell spans.
+                    foreach (var k in cellProps.Keys.ToList())
+                    {
+                        if (k == "txBodyRaw") continue;
+                        bool cellLevel = k.StartsWith("padding.", StringComparison.Ordinal)
+                            || k.StartsWith("border", StringComparison.Ordinal)
+                            || k.StartsWith("fill", StringComparison.Ordinal)
+                            || k is "valign" or "anchor" or "rowSpan" or "gridSpan"
+                                 or "colSpan" or "rowspan" or "gridspan" or "colspan"
+                                 or "vMerge" or "hMerge" or "vmerge" or "hmerge";
+                        if (!cellLevel) cellProps.Remove(k);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(cell.Text))
+>>>>>>> upstream/main
                     cellProps["text"] = cell.Text!;
                 else if (forceEmptyText)
                     cellProps["text"] = "";
@@ -89,5 +192,68 @@ public static partial class PptxBatchEmitter
                 });
             }
         }
+<<<<<<< HEAD
+=======
+
+        // Carry external hyperlink rels referenced by the cells' verbatim
+        // txBodyRaw so <a:hlinkClick r:id="rIdN"> resolves instead of dangling.
+        // Host is the slide (cell hlink rels live on the SlidePart); pin the
+        // source rId + URL. Mirrors the layout/notes external-hyperlink carrier.
+        if (cellHlinkRids.Count > 0)
+        {
+            var slideM = System.Text.RegularExpressions.Regex.Match(parentSlidePath, @"^/slide\[(\d+)\]");
+            if (slideM.Success)
+            {
+                var slideHostPath = $"/slide[{slideM.Groups[1].Value}]";
+                var slideNumForCell = int.Parse(slideM.Groups[1].Value);
+                try
+                {
+                    foreach (var (relId, target) in
+                             ppt.GetSlideExternalHyperlinksByRelId(slideNumForCell, cellHlinkRids))
+                    {
+                        items.Add(new BatchItem
+                        {
+                            Command = "add-part",
+                            Parent = slideHostPath,
+                            Type = "hyperlink",
+                            Props = new Dictionary<string, string>
+                            {
+                                ["rid"] = relId,
+                                ["target"] = target,
+                            },
+                        });
+                    }
+                }
+                catch { /* best-effort */ }
+
+                // Internal slide-jump links (<a:hlinkClick action="…hlinksldjump"
+                // r:id> → another slide) in a cell's txBodyRaw. The target slide
+                // is re-added later, so DEFER the pinned slide relationship to the
+                // end of the emit (ctx.DeferredLinks replays after every slide
+                // exists), mapping the source rId to the rebuilt target ordinal.
+                // Without this the rebuilt cell's r:id dangles → PowerPoint refuses
+                // the deck (0x80070570).
+                try
+                {
+                    foreach (var (relId, targetOrd) in
+                             ppt.GetSlideInternalSlideJumpRels(slideNumForCell, cellHlinkRids))
+                    {
+                        ctx.DeferredLinks.Add(new BatchItem
+                        {
+                            Command = "add-part",
+                            Parent = slideHostPath,
+                            Type = "sliderel",
+                            Props = new Dictionary<string, string>
+                            {
+                                ["rid"] = relId,
+                                ["target"] = targetOrd.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            },
+                        });
+                    }
+                }
+                catch { /* best-effort */ }
+            }
+        }
+>>>>>>> upstream/main
     }
 }

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 //
 // Render xlsx shapes (xdr:sp) and textboxes as absolutely-positioned SVG/HTML
@@ -22,9 +26,15 @@ public partial class ExcelHandler
     /// anchor row/col positions (same tuple shape as CollectSheetCharts so the
     /// existing overlay positioning code can consume the result).
     /// </summary>
+<<<<<<< HEAD
     private List<(int fromRow, int toRow, int fromCol, int toCol, string html)> CollectSheetShapes(WorksheetPart worksheetPart)
     {
         var result = new List<(int fromRow, int toRow, int fromCol, int toCol, string html)>();
+=======
+    private List<(int fromRow, int toRow, int fromCol, int toCol, double colOffsetPt, string html)> CollectSheetShapes(WorksheetPart worksheetPart)
+    {
+        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, double colOffsetPt, string html)>();
+>>>>>>> upstream/main
         var drawingsPart = worksheetPart.DrawingsPart;
         if (drawingsPart?.WorksheetDrawing == null) return result;
 
@@ -60,7 +70,13 @@ public partial class ExcelHandler
 
             var sb = new StringBuilder();
             RenderShape(sb, shape);
+<<<<<<< HEAD
             result.Add((fromRow, toRow, fromCol, toCol, sb.ToString()));
+=======
+            // 0 offset: shapes fill their anchor box via the overlay loop's
+            // whole-column sum (no sub-column remainder threaded for shapes).
+            result.Add((fromRow, toRow, fromCol, toCol, 0.0, sb.ToString()));
+>>>>>>> upstream/main
         }
 
         return result;

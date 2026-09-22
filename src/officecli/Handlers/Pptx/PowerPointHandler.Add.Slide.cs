@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -65,7 +69,11 @@ public partial class PowerPointHandler
                 // Add content text if provided
                 if (properties.TryGetValue("text", out var contentText))
                 {
+<<<<<<< HEAD
                     XmlTextValidator.ValidateOrThrow(contentText, "text");
+=======
+                    XmlTextValidator.ValidateOrThrow(contentText, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                     // Symmetry with the title path above: title carries
                     // <p:ph type="title"/>, so content carries
                     // <p:ph type="body" idx="1"/> — both bind to layout
@@ -110,6 +118,16 @@ public partial class PowerPointHandler
                     SetAdvanceClick(newSlidePart.Slide, IsTruthy(advClick));
                 if (properties.TryGetValue("hidden", out var hiddenVal) && IsTruthy(hiddenVal))
                     newSlidePart.Slide.Show = false;
+<<<<<<< HEAD
+=======
+                // cSld@name — same target as Set's slide-level "name" case.
+                if (properties.TryGetValue("name", out var slideName) && !string.IsNullOrEmpty(slideName))
+                {
+                    XmlTextValidator.ValidateOrThrow(slideName, "name");
+                    var csd = newSlidePart.Slide.CommonSlideData;
+                    if (csd != null) csd.Name = slideName;
+                }
+>>>>>>> upstream/main
 
                 newSlidePart.Slide.Save();
 

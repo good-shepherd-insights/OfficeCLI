@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "xlsx",
   "element": "formulacf",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["formula", "expression"],
+>>>>>>> upstream/main
   "parent": "sheet",
   "operations": {"add": true, "get": true},
   "paths": {"positional": ["/SheetName/cf[N]"]},

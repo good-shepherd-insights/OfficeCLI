@@ -68,14 +68,24 @@
 
 ```bash
 # Before my fix:
+<<<<<<< HEAD
 officecli blank test.docx
 officecli add test.docx picture --prop "path=photo-2x1.png" --prop "width=10cm"
+=======
+officecli create test.docx
+officecli add test.docx /body --type picture --prop "path=photo-2x1.png" --prop "width=10cm"
+>>>>>>> upstream/main
 officecli query test.docx picture
 # → height: "10.2cm"  ❌ 错(硬编码 4 英寸 fallback)
 
 # After my fix:
+<<<<<<< HEAD
 officecli blank test.docx
 officecli add test.docx picture --prop "path=photo-2x1.png" --prop "width=10cm"
+=======
+officecli create test.docx
+officecli add test.docx /body --type picture --prop "path=photo-2x1.png" --prop "width=10cm"
+>>>>>>> upstream/main
 officecli query test.docx picture
 # → height: "5.0cm"   ✓ 对(根据 2:1 像素比例自动计算)
 ```
@@ -89,8 +99,13 @@ officecli query test.docx picture
 >
 > 如何触发:
 > ```bash
+<<<<<<< HEAD
 > officecli blank demo.docx
 > officecli add demo.docx paragraph --prop "style=Heading1" --prop "text=Chapter One"
+=======
+> officecli create demo.docx
+> officecli add demo.docx /body --type paragraph --prop "style=Heading1" --prop "text=Chapter One"
+>>>>>>> upstream/main
 > officecli watch demo.docx
 > ```
 

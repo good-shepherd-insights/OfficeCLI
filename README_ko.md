@@ -6,7 +6,11 @@
 
 오픈소스. 단일 바이너리. Office 설치 불필요. 의존성 제로. 모든 플랫폼 지원.
 
+<<<<<<< HEAD
 **에이전트 친화적 렌더링 엔진 내장** — 에이전트가 자신이 만든 것을 "볼" 수 있고, Office 불필요. `.docx` / `.xlsx` / `.pptx`를 HTML 또는 PNG로 렌더링하며, *렌더링 → 보기 → 수정* 루프는 바이너리가 실행되는 어디서나 닫힙니다.
+=======
+**OfficeCLI의 내장 HTML 렌더링 엔진은 문서를 고충실도로 재현합니다 — 이것이 AI에게 "눈"을 줍니다.** `.docx` / `.xlsx` / `.pptx`를 HTML 또는 PNG로 렌더링하여 *렌더링 → 보기 → 수정* 루프를 닫습니다.
+>>>>>>> upstream/main
 
 [![GitHub Release](https://img.shields.io/github/v/release/iOfficeAI/OfficeCLI)](https://github.com/iOfficeAI/OfficeCLI/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -14,7 +18,11 @@
 [English](README.md) | [中文](README_zh.md) | [日本語](README_ja.md) | **한국어**
 
 <p align="center">
+<<<<<<< HEAD
   <strong>💬 커뮤니티:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord</a>
+=======
+  <strong>🌐 공식 웹사이트:</strong> <a href="https://officecli.ai" target="_blank">officecli.ai</a> &nbsp;|&nbsp; <strong>💬 커뮤니티:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord</a>
+>>>>>>> upstream/main
 </p>
 
 <p align="center">
@@ -87,7 +95,7 @@ officecli install
 ## 개발자용 — 30초 만에 라이브로 확인
 
 ```bash
-# 1. 설치 (macOS / Linux)
+# 1. 설치 (macOS / Linux) — 또는: brew install officecli / npm install -g @officecli/officecli
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 # Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 
@@ -210,6 +218,19 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 ```
 
+**또는 패키지 매니저로 설치:**
+
+```bash
+# Homebrew (macOS / Linux)
+brew install officecli
+
+# Scoop (Windows)
+scoop install officecli
+
+# npm (모든 플랫폼 — 설치 시 플랫폼에 맞는 네이티브 바이너리를 받아옵니다)
+npm install -g @officecli/officecli
+```
+
 **또는 수동 다운로드** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases):
 
 | 플랫폼 | 바이너리 |
@@ -238,9 +259,15 @@ officecli            # 직접 실행으로도 설치 트리거
 
 OfficeCLI는 자체 포함입니다. 아래 기능은 모두 바이너리 내장 — **Office 불필요**.
 
+<<<<<<< HEAD
 #### 렌더링 엔진
 
 처음부터 구현한 에이전트 친화적 렌더링 엔진이 바이너리 자체에 포함되어, 도형, 차트 (추세선, 오차 막대, 워터폴, 캔들스틱, 스파크라인), 수식 (OMML → MathJax 호환), Three.js로 렌더링되는 3D `.glb` 모델, 모프 전환, 슬라이드 줌, 도형 효과를 커버합니다. 페이지별 PNG 스크린샷은 렌더링된 HTML을 헤드리스 브라우저로 캡처해 생성됩니다. 세 가지 모드:
+=======
+#### 렌더링 엔진 — 고충실도, 내장
+
+OfficeCLI의 핵심: 처음부터 구현한 고충실도 HTML 렌더링 엔진으로, AI 에이전트가 DOM으로 추측하는 대신 렌더링된 문서를 "볼" 수 있게 합니다. 도형, 차트 (추세선, 오차 막대, 워터폴, 캔들스틱, 스파크라인), 수식 (OMML → LaTeX, KaTeX로 렌더링), Three.js로 렌더링되는 3D `.glb` 모델, 모프 전환, 슬라이드 줌, 도형 효과를 커버합니다. 페이지별 PNG 스크린샷은 렌더링된 HTML을 헤드리스 브라우저로 캡처해 생성됩니다. 세 가지 모드:
+>>>>>>> upstream/main
 
 - **`view html`** — 독립형 HTML 파일, 에셋 인라인. 모든 브라우저에서 열 수 있습니다.
 - **`view screenshot`** — 페이지별 PNG, 멀티모달 에이전트용.
@@ -256,7 +283,11 @@ officecli watch deck.pptx                            # http://localhost:26315
 
 #### 수식 & 피벗 엔진
 
+<<<<<<< HEAD
 150+ Excel 함수가 작성 시 자동 평가 — `=SUM(A1:A2)`를 작성하고, 셀을 `get` 하면, 값이 이미 거기. Office에서 재계산하는 라운드트립 불필요. 동적 배열 함수 (`FILTER` / `UNIQUE` / `SORT` / `SEQUENCE`, `_xlfn.` 자동 접두사), `VLOOKUP` / `INDEX` / `MATCH`, 날짜 & 텍스트 함수 등 140+ 함수 커버.
+=======
+350+ Excel 함수가 작성 시 자동 평가 — `=SUM(A1:A2)`를 작성하고, 셀을 `get` 하면, 값이 이미 거기. Office에서 재계산하는 라운드트립 불필요. 스필되는 동적 배열 (`FILTER` / `SORT` / `UNIQUE` / `SEQUENCE` / `LET` / `LAMBDA`, `_xlfn.` 자동 접두사), `VLOOKUP` / `XLOOKUP` / `INDEX` / `MATCH`, 재무·채권 함수, 통계 분포·검정·회귀, 날짜 & 텍스트 함수 등 커버.
+>>>>>>> upstream/main
 
 또한 소스 범위에서 단일 명령으로 네이티브 OOXML 피벗 테이블 — 멀티 필드 행/열/필터, 10가지 집계, `showDataAs` 모드, 날짜 그룹화, 계산 필드, Top-N, 레이아웃. 피벗 캐시 + 정의가 OOXML에 기록되어 Excel은 집계가 채워진 상태로 파일을 엽니다:
 
@@ -272,17 +303,30 @@ officecli add sales.xlsx '/Sheet1' --type pivottable \
 `merge`는 모든 `.docx` / `.xlsx` / `.pptx`의 `{{key}}` 자리표시자를 JSON 데이터로 교체 — 단락, 표 셀, 도형, 머리글/바닥글, 차트 제목 전체에서 작동. 에이전트가 한 번 레이아웃을 설계 (비싸다), 프로덕션 코드가 N번 채운다 (싸고, 결정론적, 토큰 비용 제로). 에이전트가 각 보고서를 처음부터 재생성하여 N개의 일관성 없는 레이아웃을 만드는 실패 모드를 피합니다.
 
 ```bash
+<<<<<<< HEAD
 officecli merge invoice-template.docx out-001.docx '{"client":"Acme","total":"$5,200"}'
 officecli merge q4-template.pptx q4-acme.pptx data.json
+=======
+officecli merge invoice-template.docx out-001.docx --data '{"client":"Acme","total":"$5,200"}'
+officecli merge q4-template.pptx q4-acme.pptx --data data.json
+>>>>>>> upstream/main
 ```
 
 #### Dump 라운드트립 — 기존 문서에서 학습
 
+<<<<<<< HEAD
 `dump`는 모든 `.docx`를 — 전체 문서 **또는 임의의 서브트리** (단일 단락, 표, styles, numbering, theme, settings) — 재생 가능한 batch JSON으로 직렬화하고, `batch`가 재생합니다. 사용자가 모방하고 싶은 샘플 문서가 주어지면, 에이전트는 원시 OOXML XML이 아닌 구조화된 사양을 읽고, 변경하여 재생합니다. "기존 템플릿이 있다"와 "100개 변형을 생성해 줘" 사이의 다리.
+=======
+`dump`는 모든 `.docx`, `.pptx`, `.xlsx`를 — 전체 문서 **또는 임의의 서브트리** (단일 단락, 표, 슬라이드, 워크시트, styles, numbering, theme, settings) — 재생 가능한 batch JSON으로 직렬화하고, `batch`가 재생합니다. 사용자가 모방하고 싶은 샘플 문서가 주어지면, 에이전트는 원시 OOXML XML이 아닌 구조화된 사양을 읽고, 변경하여 재생합니다. "기존 템플릿이 있다"와 "100개 변형을 생성해 줘" 사이의 다리.
+>>>>>>> upstream/main
 
 ```bash
 officecli dump existing.docx -o blueprint.json                  # 전체 문서
 officecli dump existing.docx /body/tbl[1] -o table.json         # 임의의 서브트리
+<<<<<<< HEAD
+=======
+officecli dump existing.xlsx /Sheet1 -o sheet.json              # 단일 워크시트
+>>>>>>> upstream/main
 officecli batch new.docx --input blueprint.json
 ```
 
@@ -387,9 +431,15 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 - **점진적 복잡도 (L1 → L2 → L3)** — 에이전트는 읽기 전용 뷰부터 시작해, DOM 작업으로 에스컬레이트, 필요할 때만 raw XML로 폴백. 토큰 사용을 최소화.
 - **자가 치유 워크플로우** — `validate`, `view issues`, 그리고 구조화된 에러 코드 (`not_found`, `invalid_value`, `unsupported_property`) 가 suggestion과 유효 범위를 반환합니다. 에이전트는 사람의 개입 없이 자가 수정.
 - **내장 에이전트 친화적 렌더링 엔진** — `view html` / `view screenshot` / `watch`가 네이티브로 HTML과 PNG를 출력. Office 불필요. 에이전트는 CI / Docker / 헤드리스 환경에서도 자신의 출력을 "보고" 레이아웃 문제를 수정할 수 있습니다.
+<<<<<<< HEAD
 - **내장 수식 & 피벗 엔진** — 150+ Excel 함수 작성 시 자동 평가; 소스 범위에서 단일 명령으로 네이티브 OOXML 피벗 테이블. 에이전트는 Office에서 재계산할 필요 없이 계산값과 집계 결과를 즉시 읽습니다.
 - **템플릿 병합** — 에이전트가 한 번 레이아웃을 설계, 다운스트림 코드가 `{{key}}` 자리표시자를 N번 채움. 각 보고서를 재생성하며 토큰을 태우는 것을 방지.
 - **라운드트립 Dump** — `dump`가 모든 `.docx`를 재생 가능한 batch JSON으로. 에이전트는 raw OOXML XML이 아닌 구조화된 사양을 읽어 인간이 작성한 샘플에서 학습.
+=======
+- **내장 수식 & 피벗 엔진** — 350+ Excel 함수 작성 시 자동 평가 (스필되는 동적 배열, 재무·채권·통계 함수군 포함); 소스 범위에서 단일 명령으로 네이티브 OOXML 피벗 테이블. 에이전트는 Office에서 재계산할 필요 없이 계산값과 집계 결과를 즉시 읽습니다.
+- **템플릿 병합** — 에이전트가 한 번 레이아웃을 설계, 다운스트림 코드가 `{{key}}` 자리표시자를 N번 채움. 각 보고서를 재생성하며 토큰을 태우는 것을 방지.
+- **라운드트립 Dump** — `dump`가 모든 `.docx`, `.pptx`, `.xlsx`를 재생 가능한 batch JSON으로. 에이전트는 raw OOXML XML이 아닌 구조화된 사양을 읽어 인간이 작성한 샘플에서 학습.
+>>>>>>> upstream/main
 - **내장 도움말** — 속성명이나 값 형식이 헷갈릴 때, 에이전트는 추측하지 않고 `officecli <format> set <element>`를 실행.
 - **자동 설치** — OfficeCLI는 AI 도구 (Claude Code, Cursor, VS Code…) 를 감지하고 자가 구성합니다. 수동 skill 파일 설정 불필요.
 
@@ -398,10 +448,9 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 속성 이름을 모를 때, 계층형 도움말로 확인:
 
 ```bash
-officecli pptx set              # 모든 설정 가능한 요소와 속성
-officecli pptx set shape        # 특정 요소 유형의 세부사항
-officecli pptx set shape.fill   # 단일 속성 형식과 예시
-officecli docx query            # 셀렉터 참조: 속성, :contains, :has() 등
+officecli help pptx set              # 모든 설정 가능한 요소와 속성
+officecli help pptx set shape        # 특정 요소 유형의 세부사항
+officecli help docx query            # 셀렉터 참조: 속성, :contains, :has() 등
 ```
 
 `pptx`를 `docx`나 `xlsx`로 대체 가능. 동사는 `view`, `get`, `query`, `set`, `add`, `raw`.
@@ -506,7 +555,7 @@ officecli get report.docx /body --depth 1 --json
 | `close` | 저장하고 레지던트 모드 종료 |
 | [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | 바이너리 + 스킬 + MCP 설치 (`all`, `claude`, `cursor` 등) |
 | `config` | 설정 가져오기 또는 변경 |
-| `<format> <command>` | [내장 도움말](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference) (예: `officecli pptx set shape`) |
+| `help <format> <command>` | [내장 도움말](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference) (예: `officecli help pptx set shape`) |
 
 ## 엔드투엔드 워크플로우 예시
 
@@ -559,10 +608,11 @@ officecli get deck.pptx / --depth 2 --json
 officecli batch budget.xlsx --input updates.json --json
 
 # CSV 데이터를 Excel 시트로 가져오기
-officecli add budget.xlsx / --type sheet --prop name="Q1 Data" --prop csv=sales.csv
+officecli add budget.xlsx / --type sheet --prop name="Q1 Data"
+officecli import budget.xlsx "/Q1 Data" sales.csv --header
 
 # 템플릿 병합으로 보고서 일괄 생성
-officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total":"$5,200"}'
+officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme","total":"$5,200"}'
 
 # 납품 전 문서 품질 확인
 officecli validate report.docx && officecli view report.docx issues --json

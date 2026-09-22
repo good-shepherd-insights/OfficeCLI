@@ -16,15 +16,44 @@
       "/slide[N]/shape[M]/p[K]/r[L]"
     ]
   },
+<<<<<<< HEAD
   "note": "Appends a:r inside a:p. Font properties live on a:rPr. Colors get #-prefixed on readback via ParseHelpers.FormatHexColor. effective.* keys behave as documented in pptx/shape.json (no effective.direction on runs).",
+=======
+  "note": "Appends a:r inside a:p. Font properties live on a:rPr. Colors get #-prefixed on readback via ParseHelpers.FormatHexColor. effective.* keys behave as documented in pptx/shape.json (no effective.direction on runs). Run-level formatting can also be applied by character offset without addressing individual runs: `set <shape-or-paragraph-path> --prop range=START:END --prop bold=true` splits the run(s) covering each span and applies the format props to just that slice — the offset-based sibling of `find` (which locates the span by text). Several disjoint spans as `range=6:11,20:25`. Offsets are relative to the concatenated run text of the path scope: a shape path spans all its paragraphs, a /paragraph[P] path is that paragraph only. Mind the two bases: the path `[N]` positions are 1-based (XPath-style, `/shape[2]` = 2nd shape); range START:END are 0-based half-open (`range=0:1` = first character). `find` and `range` are mutually exclusive on one call; `range` currently applies formatting only (no text= yet).",
+>>>>>>> upstream/main
   "extends": [
     "_shared/run",
     "_shared/run.docx-pptx"
   ],
   "properties": {
+<<<<<<< HEAD
     "baseline": {
       "type": "string",
       "description": "vertical alignment in % of font height. Accepts 'super' (≡ +30), 'sub' (≡ -25), 'none'/'false'/'0', or a signed number. Get readback is the numeric percentage.",
+=======
+    "font": {
+      "type": "string",
+      "description": "bare font family — write-only convenience that sets the latin/ea/cs script slots to the same value. Get normalizes the readback to per-script canonical keys (font.latin / font.ea / font.cs) so a get→set round-trip preserves divergent slot values.",
+      "aliases": [
+        "fontname",
+        "fontFamily",
+        "font.name"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop font=Calibri",
+        "--prop font=\"Arial\"",
+        "--prop font=\"Times New Roman\""
+      ],
+      "readback": "see font.latin / font.ea / font.cs",
+      "enforcement": "strict"
+    },
+    "baseline": {
+      "type": "string",
+      "description": "vertical alignment in % of font height. Accepts 'super' (≡ +30), 'sub' (≡ -25), 'none'/'false'/'0', or a signed number. Get readback is the %-suffixed percentage.",
+>>>>>>> upstream/main
       "add": true,
       "set": true,
       "get": true,
@@ -33,9 +62,29 @@
         "--prop baseline=sub",
         "--prop baseline=-25"
       ],
+<<<<<<< HEAD
       "readback": "signed number (e.g. 30, -25, 0)",
       "enforcement": "strict"
     },
+=======
+      "readback": "signed percentage with % suffix (e.g. \"30%\", \"-25%\", \"0%\")",
+      "enforcement": "strict"
+    },
+    "highlight": {
+      "type": "color",
+      "description": "text highlight color behind the glyphs (a:highlight). Unlike Word's fixed named-color list, accepts any color (hex, named, rgb(), scheme names like accent1). 'none'/'false' removes the highlight on set.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop highlight=FFFF00",
+        "--prop highlight=accent1",
+        "--prop highlight=none"
+      ],
+      "readback": "#RRGGBB hex (or scheme color name)",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "kern": {
       "type": "int",
       "description": "minimum font size (in hundredths of a point) at which character kerning is applied. ECMA-376 §21.1.2.3.9 a:rPr/@kern. 0 disables; 1 enables for all sizes; e.g. 1200 = kern from 12pt up.",

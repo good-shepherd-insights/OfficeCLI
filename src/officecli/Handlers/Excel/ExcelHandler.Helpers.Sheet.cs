@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Reflection;
@@ -89,7 +93,20 @@ public partial class ExcelHandler
     /// Sheet1!A:A → /Sheet1/col[A]   (whole column)
     /// Paths already starting with '/' are returned unchanged.
     /// </summary>
+<<<<<<< HEAD
     internal static string NormalizeExcelPath(string path)
+=======
+    // Excel-quoted sheet name: 'My Data (2024)'!A1 — strip one pair of single
+    // quotes and un-double embedded quotes ('It''s'!A1 → It's). Excel REQUIRES
+    // the quoted form for names with spaces/punctuation, so refs pasted from
+    // formulas arrive quoted. Unquoted names pass through unchanged.
+    internal static string UnquoteSheetName(string s)
+        => s.Length >= 2 && s[0] == '\'' && s[^1] == '\''
+            ? s[1..^1].Replace("''", "'")
+            : s;
+
+    internal string NormalizeExcelPath(string path)
+>>>>>>> upstream/main
     {
         // Reject malformed segment separators that previously slipped past
         // the regex matchers and exposed raw OOXML local names. DOCX already
@@ -100,6 +117,7 @@ public partial class ExcelHandler
             throw new ArgumentException($"Invalid path '{path}': leading '//' is not allowed.");
         if (path.Contains("//"))
             throw new ArgumentException($"Invalid path '{path}': empty path segment ('//') is not allowed.");
+<<<<<<< HEAD
         // Handle "/Sheet1!A1" — strip leading '/' when '!' is present so native notation is parsed correctly
         if (path.StartsWith('/') && path.Contains('!'))
             path = path[1..];
@@ -110,6 +128,49 @@ public partial class ExcelHandler
         {
             var sheet = path[..bang];
             var selector = path[(bang + 1)..];
+=======
+        // Handle "/Sheet1!A1" — strip leading '/' when '!' is present so native
+        // notation is parsed correctly. EXCEPT when the first slash segment
+        // names an existing sheet: '!' is legal inside a sheet NAME (Excel
+        // forbids only : \ / ? * [ ]), and reinterpreting "/Q1!Results" as
+        // bang notation made such a sheet permanently unaddressable.
+        if (path.StartsWith('/') && path.Contains('!'))
+        {
+            var seg0 = path[1..];
+            var seg0Slash = seg0.IndexOf('/');
+            var first = seg0Slash < 0 ? seg0 : seg0[..seg0Slash];
+            if (!GetWorksheets().Any(w => w.Name.Equals(first, StringComparison.OrdinalIgnoreCase)))
+                path = path[1..];
+        }
+        if (path.Equals("/workbook", StringComparison.OrdinalIgnoreCase)) return "/";
+        if (path.StartsWith('/')) return path;
+        // Excel-quoted sheet ref: 'My Data'!A1 — the '!' separator is the one
+        // FOLLOWING the closing quote (the name itself may contain '!').
+        string? qSheet = null; var rest = "";
+        if (path.StartsWith('\''))
+        {
+            int qi = 1;
+            while (qi < path.Length)
+            {
+                if (path[qi] == '\'')
+                {
+                    if (qi + 1 < path.Length && path[qi + 1] == '\'') { qi += 2; continue; }
+                    break;
+                }
+                qi++;
+            }
+            if (qi < path.Length - 1 && path[qi + 1] == '!')
+            {
+                qSheet = UnquoteSheetName(path[..(qi + 1)]);
+                rest = path[(qi + 2)..];
+            }
+        }
+        var bang = qSheet != null ? 0 : path.IndexOf('!');
+        if (qSheet != null || bang > 0)
+        {
+            var sheet = qSheet ?? path[..bang];
+            var selector = qSheet != null ? rest : path[(bang + 1)..];
+>>>>>>> upstream/main
 
             // Whole-row notation: "1:1" or "3:3"
             var wholeRow = System.Text.RegularExpressions.Regex.Match(selector, @"^(\d+):\1$");
@@ -167,10 +228,28 @@ public partial class ExcelHandler
     /// </summary>
     private void FlushDirtyParts()
     {
+<<<<<<< HEAD
         foreach (var part in _dirtyWorksheets)
         {
             ReorderWorksheetChildren(GetSheet(part));
             GetSheet(part).Save();
+=======
+        // Reconcile any formula caches that went stale since they were written
+        // (e.g. a SUMIFS authored before its data was imported). Runs before the
+        // dirty-part flush so cells it touches are picked up by the loop below.
+        RefreshStaleFormulaCaches();
+        // Re-seed chart numCache/strCache from current cell values so offline
+        // consumers (dump/batch, view html) don't read stale series data and
+        // dump→replay stays idempotent. Runs after the formula sweep so charts
+        // referencing formula cells see the reconciled values.
+        RefreshStaleChartCaches();
+        foreach (var part in _dirtyWorksheets)
+        {
+            var ws = GetSheet(part);
+            SyncSheetDimension(ws);
+            ReorderWorksheetChildren(ws);
+            ws.Save();
+>>>>>>> upstream/main
         }
         _dirtyWorksheets.Clear();
         if (_dirtyStylesheet)
@@ -181,6 +260,53 @@ public partial class ExcelHandler
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Bring <c>&lt;dimension ref&gt;</c> back in line with the rows and cells that
+    /// actually exist. Excel treats the element as advisory, but readers such as
+    /// openpyxl in read_only mode and dimension-driven Java/JS parsers use it as
+    /// the iteration bound — a row appended past the declared range is invisible
+    /// to them even though it is in sheetData. Runs once per dirty worksheet at
+    /// flush time, so every mutation path (row/col insert or delete, cell
+    /// auto-vivify, import) is covered by the same walk. Only maintained when
+    /// the source already carries one: officecli's own blanks never write the
+    /// (optional) element and readers fall back to scanning sheetData for it.
+    /// </summary>
+    private static void SyncSheetDimension(Worksheet ws)
+    {
+        var dim = ws.GetFirstChild<SheetDimension>();
+        if (dim == null) return;
+        var sheetData = ws.GetFirstChild<SheetData>();
+        uint minRow = 0, maxRow = 0;
+        int minCol = 0, maxCol = 0;
+        if (sheetData != null)
+        {
+            foreach (var row in sheetData.Elements<Row>())
+            {
+                var r = row.RowIndex?.Value ?? 0u;
+                if (r == 0) continue;
+                if (minRow == 0 || r < minRow) minRow = r;
+                if (r > maxRow) maxRow = r;
+                foreach (var cell in row.Elements<Cell>())
+                {
+                    if (cell.CellReference?.Value is not { } cref) continue;
+                    var c = ColumnNameToIndex(ParseCellReference(cref).Column);
+                    if (minCol == 0 || c < minCol) minCol = c;
+                    if (c > maxCol) maxCol = c;
+                }
+            }
+        }
+        if (maxRow == 0) { dim.Reference = "A1"; return; } // empty sheet, as Excel writes it
+        if (maxCol == 0) { minCol = maxCol = 1; }           // rows exist but hold no cells
+        var first = $"{IndexToColumnName(minCol)}{minRow}";
+        var last = $"{IndexToColumnName(maxCol)}{maxRow}";
+        var reference = first == last ? first : $"{first}:{last}";
+        if (!string.Equals(dim.Reference?.Value, reference, StringComparison.Ordinal))
+            dim.Reference = reference;
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Delete the calculation chain part if present.
     /// Excel will recalculate and recreate it on next open.
     /// This avoids stale calc chain references after cell/formula mutations.
@@ -193,6 +319,7 @@ public partial class ExcelHandler
     }
 
     /// <summary>
+<<<<<<< HEAD
     /// Reorder worksheet children to match OpenXML schema sequence.
     /// Schema: sheetPr, dimension, sheetViews, sheetFormatPr, cols, sheetData,
     ///   autoFilter, sortState, mergeCells, conditionalFormatting,
@@ -216,6 +343,42 @@ public partial class ExcelHandler
         var children = ws.ChildElements.ToList();
         var sorted = children
             .OrderBy(c => order.TryGetValue(c.LocalName, out var idx) ? idx : 50)
+=======
+    /// Reorder worksheet children to match the CT_Worksheet schema sequence
+    /// (ECMA-376 §18.3.1.99). Runs on every dirty sheet at save.
+    /// </summary>
+    // The full CT_Worksheet sequence. This MUST be complete: an element missing
+    // from the table falls to the "unknown" slot after tableParts, and Excel
+    // refuses to open a sheet whose children are out of order. The table used
+    // to stop at drawing/legacyDrawing/tableParts, so a sheet holding a chart
+    // plus <ignoredErrors> (or cellWatches, customProperties, smartTags,
+    // picture, oleObjects, controls, …) came out of ANY edit with those
+    // elements after <drawing> and prompted a repair — issue #389.
+    private static readonly string[] s_ctWorksheetOrder =
+    {
+        "sheetPr", "dimension", "sheetViews", "sheetFormatPr", "cols", "sheetData",
+        "sheetCalcPr", "sheetProtection", "protectedRanges", "scenarios", "autoFilter",
+        "sortState", "dataConsolidate", "customSheetViews", "mergeCells", "phoneticPr",
+        "conditionalFormatting", "dataValidations", "hyperlinks", "printOptions",
+        "pageMargins", "pageSetup", "headerFooter", "rowBreaks", "colBreaks",
+        "customProperties", "cellWatches", "ignoredErrors", "smartTags", "drawing",
+        "legacyDrawing", "legacyDrawingHF", "drawingHF", "picture", "oleObjects",
+        "controls", "webPublishItems", "tableParts", "extLst",
+    };
+
+    private static readonly Dictionary<string, int> s_ctWorksheetRank =
+        s_ctWorksheetOrder.Select((name, i) => (name, i)).ToDictionary(p => p.name, p => p.i);
+
+    private static void ReorderWorksheetChildren(Worksheet ws)
+    {
+        // Unknown (foreign / mc:) children sort just before extLst, keeping their
+        // relative order — OrderBy is stable. Ranks are doubled so the unknown
+        // slot can sit strictly between tableParts and extLst.
+        int unknownRank = s_ctWorksheetRank["extLst"] * 2 - 1;
+        var children = ws.ChildElements.ToList();
+        var sorted = children
+            .OrderBy(c => s_ctWorksheetRank.TryGetValue(c.LocalName, out var idx) ? idx * 2 : unknownRank)
+>>>>>>> upstream/main
             .ToList();
 
         bool needsReorder = false;

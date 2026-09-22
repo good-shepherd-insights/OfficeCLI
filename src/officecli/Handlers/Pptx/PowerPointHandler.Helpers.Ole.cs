@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -36,7 +40,11 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count) return false;
 
+<<<<<<< HEAD
         var slidePart = slideParts[slideIdx - 1];
+=======
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         DocumentFormat.OpenXml.Packaging.OpenXmlPart? part = null;
         try { part = slidePart.GetPartById(relId); } catch { /* not on slide */ }
         if (part == null) return false;

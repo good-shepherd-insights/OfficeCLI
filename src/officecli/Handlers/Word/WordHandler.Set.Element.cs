@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -16,6 +20,21 @@ namespace OfficeCli.Handlers;
 // becomes a thin dispatcher. Mechanically extracted, no behavior change.
 public partial class WordHandler
 {
+<<<<<<< HEAD
+=======
+    // OOXML CT_TblPPr @w:*FromText is ST_TwipsMeasure (unsigned int) but the
+    // SDK exposes the property as `short` so we must reject values that
+    // overflow that range before the (short) cast. Pre-fix code silently
+    // wrapped 32768 → -32768. Used by all four *FromText Set cases.
+    private static short ParseTblpFromTextShort(string value, string key)
+    {
+        var twips = ParseTwips(value);
+        if (twips > 32767)
+            throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must be 0..32767 twips (OOXML ST_TwipsMeasure short range).");
+        return (short)twips;
+    }
+
+>>>>>>> upstream/main
     private List<string> SetElementBookmark(BookmarkStart bkStart, Dictionary<string, string> properties)
     {
         var unsupported = new List<string>();
@@ -86,6 +105,22 @@ public partial class WordHandler
                 case "date":
                     comment.Date = DateTime.Parse(value);
                     break;
+<<<<<<< HEAD
+=======
+                case "done":
+                case "resolved":
+                {
+                    // Resolved-state lives in word/commentsExtended.xml (w15:done),
+                    // keyed by the comment's first-paragraph w14:paraId.
+                    var fp = comment.Descendants<Paragraph>().FirstOrDefault();
+                    if (fp != null)
+                    {
+                        if (string.IsNullOrEmpty(fp.ParagraphId?.Value)) AssignParaId(fp);
+                        UpsertCommentEx(fp.ParagraphId!.Value!, null, IsTruthy(value));
+                    }
+                    break;
+                }
+>>>>>>> upstream/main
             }
         }
         ApplyCommentFormatKeys(comment, properties, unsupported);
@@ -155,6 +190,65 @@ public partial class WordHandler
                         ?.GetFirstChild<ShowingPlaceholder>();
                     plcHdr?.Remove();
                     break;
+<<<<<<< HEAD
+=======
+                // P1 (sdt post-creation mutation): checkbox state, list choices,
+                // combo/dropdown/date current values, and placeholder markers are
+                // all settable after the control exists. `type` stays immutable
+                // (schema set:false) — changing the content-type element would
+                // corrupt the control; recreate it instead. Wrong-control-type
+                // targets throw a clear error rather than silently no-op.
+                case "checked":
+                    SetSdtChecked(element, sdtProps, IsTruthy(value));
+                    break;
+                case "items" or "choices":
+                    SetSdtItems(sdtProps, value);
+                    break;
+                case "dropdown.lastvalue":
+                    RequireSdtType<SdtContentDropDownList>(sdtProps, "dropDown.lastValue", "dropdown").LastValue = value;
+                    break;
+                case "combobox.lastvalue":
+                    RequireSdtType<SdtContentComboBox>(sdtProps, "comboBox.lastValue", "combobox").LastValue = value;
+                    break;
+                case "format":
+                    RequireSdtType<SdtContentDate>(sdtProps, "format", "date").DateFormat = new DateFormat { Val = value };
+                    break;
+                case "date.fulldate":
+                    if (!DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                            out var fdVal))
+                        throw new ArgumentException($"Invalid date.fullDate '{value}'. Expected ISO-8601 (e.g. 2026-01-01T00:00:00Z).");
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.fullDate", "date").FullDate = fdVal;
+                    break;
+                case "date.calendar":
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.calendar", "date").Calendar =
+                        new Calendar { Val = new EnumValue<CalendarValues>(new CalendarValues(value)) };
+                    break;
+                case "date.lid":
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.lid", "date").LanguageId = new LanguageId { Val = value };
+                    break;
+                case "date.storemappeddataas":
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.storeMappedDataAs", "date").SdtDateMappingType =
+                        new SdtDateMappingType { Val = new EnumValue<DateFormatValues>(new DateFormatValues(value)) };
+                    break;
+                case "placeholder":
+                    var existingPlc = sdtProps.GetFirstChild<ShowingPlaceholder>();
+                    if (IsTruthy(value))
+                    {
+                        if (existingPlc == null) InsertSdtPropSchemaOrdered(sdtProps, new ShowingPlaceholder());
+                    }
+                    else existingPlc?.Remove();
+                    break;
+                case "placeholdertext":
+                    var existingDocPart = sdtProps.GetFirstChild<SdtPlaceholder>();
+                    if (string.IsNullOrEmpty(value)) existingDocPart?.Remove();
+                    else if (existingDocPart != null)
+                        existingDocPart.DocPartReference = new DocPartReference { Val = value };
+                    else
+                        InsertSdtPropSchemaOrdered(sdtProps,
+                            new SdtPlaceholder { DocPartReference = new DocPartReference { Val = value } });
+                    break;
+>>>>>>> upstream/main
                 default:
                     unsupported.Add(key);
                     break;
@@ -164,6 +258,72 @@ public partial class WordHandler
         return unsupported;
     }
 
+<<<<<<< HEAD
+=======
+    // P1 sdt helpers. Mirror the Add-side builders (ApplySdtExtraProps /
+    // BuildSdtCheckBox / ParseSdtItems in WordHandler.Add.Misc.cs) so Set and
+    // Add produce the identical OOXML shape; the difference is mutate-in-place
+    // vs build-fresh.
+
+    /// <summary>Fetch the content-type child that a typed prop requires; throw a
+    /// clear error when the control is a different variant (type is immutable).</summary>
+    private static T RequireSdtType<T>(SdtProperties sdtProps, string prop, string typeName)
+        where T : OpenXmlElement
+    {
+        return sdtProps.GetFirstChild<T>()
+            ?? throw new ArgumentException(
+                $"'{prop}' applies only to a {typeName} content control; this control is a different type " +
+                "(type cannot be changed after creation — recreate the control instead).");
+    }
+
+    /// <summary>Insert an sdtPr child before the type-content element per CT_SdtPr
+    /// schema order (placeholder / showingPlcHdr / dataBinding precede the type).</summary>
+    private static void InsertSdtPropSchemaOrdered(SdtProperties sdtProps, OpenXmlElement el)
+    {
+        var typeElement = sdtProps.LastChild;
+        bool typeIsContent = typeElement is SdtContentDate or SdtContentComboBox
+            or SdtContentDropDownList or SdtContentText
+            or SdtContentGroup or SdtContentPicture
+            or DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox;
+        if (typeIsContent) sdtProps.InsertBefore(el, typeElement);
+        else sdtProps.AppendChild(el);
+    }
+
+    /// <summary>Flip a checkbox control's checked flag and repaint its glyph run
+    /// (☒ checked / ☐ unchecked) so `view text` and Word both reflect the state.</summary>
+    private void SetSdtChecked(OpenXmlElement element, SdtProperties sdtProps, bool isChecked)
+    {
+        var checkBox = RequireSdtType<DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox>(
+            sdtProps, "checked", "checkbox");
+        checkBox.Checked ??= new DocumentFormat.OpenXml.Office2010.Word.Checked();
+        checkBox.Checked.Val = isChecked
+            ? DocumentFormat.OpenXml.Office2010.Word.OnOffValues.One
+            : DocumentFormat.OpenXml.Office2010.Word.OnOffValues.Zero;
+
+        // Repaint the box glyph only when the content run currently holds a box
+        // glyph (☒/☐) — never clobber user-typed content beside the checkbox.
+        var glyph = isChecked ? "☒" : "☐";
+        var content = (OpenXmlElement?)(element as SdtBlock)?.SdtContentBlock
+            ?? (element as SdtRun)?.SdtContentRun;
+        foreach (var t in content?.Descendants<Text>() ?? Enumerable.Empty<Text>())
+            if (t.Text is "☒" or "☐") t.Text = glyph;
+    }
+
+    /// <summary>Replace the list choices on a dropdown/combobox control.</summary>
+    private void SetSdtItems(SdtProperties sdtProps, string items)
+    {
+        OpenXmlElement list = (OpenXmlElement?)sdtProps.GetFirstChild<SdtContentDropDownList>()
+            ?? sdtProps.GetFirstChild<SdtContentComboBox>()
+            ?? throw new ArgumentException(
+                "'items' applies only to a dropdown or combobox content control; this control is a different type " +
+                "(type cannot be changed after creation — recreate the control instead).");
+        // LastValue (a combo/dropdown attribute) lives on the list element, not a
+        // child; RemoveAllChildren clears only the ListItem set, preserving it.
+        foreach (var li in list.Elements<ListItem>().ToList()) li.Remove();
+        foreach (var li in ParseSdtItems(items)) list.AppendChild(li);
+    }
+
+>>>>>>> upstream/main
     private List<string> SetElementRun(Run run, Dictionary<string, string> properties)
     {
         var unsupported = new List<string>();
@@ -255,11 +415,24 @@ public partial class WordHandler
                     // injecting text would corrupt the OOXML structure
                     // (e.g. <w:t> next to <w:instrText> breaks PAGE field
                     // rendering). Reject so the caller sees `unsupported`.
+<<<<<<< HEAD
                     if (isSpecialRun)
+=======
+                    //
+                    // BUG #335: a run holding a drawing / VML picture / embedded
+                    // object also has no <w:t>; without this guard the update
+                    // below (which only writes when a <w:t> already exists)
+                    // reported success while writing nothing. Reject instead.
+                    if (isSpecialRun || RunCarriesNonText(run))
+>>>>>>> upstream/main
                     {
                         unsupported.Add(key);
                         break;
                     }
+<<<<<<< HEAD
+=======
+                    OfficeCli.Core.ParseHelpers.ValidateXmlText(value, "text");
+>>>>>>> upstream/main
                     var textEl = run.GetFirstChild<Text>();
                     if (textEl != null) textEl.Text = value;
                     // CONSISTENCY(field-cache-stale): if this run sits between
@@ -281,6 +454,27 @@ public partial class WordHandler
                     }
                     else unsupported.Add(key);
                     break;
+<<<<<<< HEAD
+=======
+                case "decorative":
+                    // Accessibility flag stored as an adec:decorative docPr extension.
+                    // Symmetric with `alt` (both operate on <wp:docPr>).
+                    var drawingDec = run.GetFirstChild<Drawing>();
+                    if (drawingDec != null)
+                    {
+                        var docPropsDec = drawingDec.Descendants<DW.DocProperties>().FirstOrDefault();
+                        if (docPropsDec != null)
+                        {
+                            if (IsTruthy(value)) SetPictureDecorative(docPropsDec);
+                            else docPropsDec.GetFirstChild<A.NonVisualDrawingPropertiesExtensionList>()?
+                                .Elements<A.Extension>()
+                                .Where(e => string.Equals(e.Uri?.Value, DecorativeExtUri, StringComparison.OrdinalIgnoreCase))
+                                .ToList().ForEach(e => e.Remove());
+                        }
+                    }
+                    else unsupported.Add(key);
+                    break;
+>>>>>>> upstream/main
                 case "width":
                 {
                     var drawingW = run.GetFirstChild<Drawing>();
@@ -409,7 +603,11 @@ public partial class WordHandler
                     // the backing embedded part and (if needed) update
                     // the ProgID automatically from the new extension.
                     // This is the symmetric counterpart to AddOle — the
+<<<<<<< HEAD
                     // part-cleanup rule from CLAUDE.md's Known API
+=======
+                    // part-cleanup rule from the project conventions's Known API
+>>>>>>> upstream/main
                     // Quirks ("always delete old ImagePart to avoid
                     // storage bloat") applies equally to OLE payloads.
                     var ole = run.GetFirstChild<EmbeddedObject>();
@@ -489,7 +687,11 @@ public partial class WordHandler
                     }
                     // Replace the v:imagedata r:id with a new ImagePart, and
                     // delete the old ImagePart to avoid storage bloat
+<<<<<<< HEAD
                     // (mirrors Set src cleanup rule in CLAUDE.md Known
+=======
+                    // (mirrors Set src cleanup rule in the project conventions Known
+>>>>>>> upstream/main
                     // API Quirks for picture/blip replacement).
                     var oleIcon = run.GetFirstChild<EmbeddedObject>();
                     var shapeIcon = oleIcon?.Descendants().FirstOrDefault(e => e.LocalName == "shape");
@@ -601,7 +803,15 @@ public partial class WordHandler
                         // relative refs are intra-document and stay open.
                         if (isAbs)
                             Core.HyperlinkUriValidator.RequireSafeScheme(value, key);
+<<<<<<< HEAD
                         var uri = isAbs ? absUri! : new Uri(value, UriKind.Relative);
+=======
+                        // OPC requires RFC 3986 encoded URIs in .rels — percent-
+                        // encode non-ASCII chars in absolute Uris before write.
+                        var uri = isAbs
+                            ? new Uri(PercentEncodeUri(value), UriKind.Absolute)
+                            : new Uri(value, UriKind.Relative);
+>>>>>>> upstream/main
                         var isFragment = !string.IsNullOrEmpty(value) && value.StartsWith('#');
                         var newRelId = hostPart3.AddHyperlinkRelationship(uri, isExternal: !isFragment).Id;
                         if (run.Parent is Hyperlink existingHl)
@@ -636,7 +846,11 @@ public partial class WordHandler
                 case "formula":
                 {
                     // Replace this run with an inline oMath in the same position
+<<<<<<< HEAD
                     var mathContent = FormulaParser.Parse(value);
+=======
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
+>>>>>>> upstream/main
                     M.OfficeMath oMath = mathContent is M.OfficeMath dm
                         ? dm : new M.OfficeMath(mathContent.CloneNode(true));
                     run.InsertAfterSelf(oMath);
@@ -798,7 +1012,15 @@ public partial class WordHandler
                     // URIs are scheme-gated; fragment/relative stay open.
                     if (isAbs)
                         Core.HyperlinkUriValidator.RequireSafeScheme(value, k);
+<<<<<<< HEAD
                     var uri = isAbs ? absUri! : new Uri(value, UriKind.Relative);
+=======
+                    // OPC: percent-encode non-ASCII in absolute Uris before
+                    // writing the .rels target.
+                    var uri = isAbs
+                        ? new Uri(PercentEncodeUri(value), UriKind.Absolute)
+                        : new Uri(value, UriKind.Relative);
+>>>>>>> upstream/main
                     var isFragment = !string.IsNullOrEmpty(value) && value.StartsWith('#');
                     var newRelId = hostPartHl.AddHyperlinkRelationship(uri, isExternal: !isFragment).Id;
                     hl.Id = newRelId;
@@ -880,7 +1102,11 @@ public partial class WordHandler
                     // Clear existing oMath children and rebuild from new formula
                     foreach (var child in mPara.ChildElements.ToList())
                         child.Remove();
+<<<<<<< HEAD
                     var mathContent = FormulaParser.Parse(value);
+=======
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
+>>>>>>> upstream/main
                     M.OfficeMath oMath = mathContent is M.OfficeMath dm
                         ? dm : new M.OfficeMath(mathContent.CloneNode(true));
                     mPara.AppendChild(oMath);
@@ -899,8 +1125,21 @@ public partial class WordHandler
                         if (hostPara != null && inner != null)
                         {
                             var clone = (M.OfficeMath)inner.CloneNode(true);
+<<<<<<< HEAD
                             hostPara.InsertBefore(clone, mPara);
                             mPara.Remove();
+=======
+                            // Insert into mPara's ACTUAL parent — for a hyperlink-
+                            // nested equation that parent is the w:hyperlink, not
+                            // hostPara, so hostPara.InsertBefore threw "not a child
+                            // of this element". Non-hyperlink: Parent == hostPara.
+                            mPara.Parent!.InsertBefore(clone, mPara);
+                            mPara.Remove();
+                            // R4-bt-1: the equation MOVED (oMathPara → bare
+                            // oMath). Report the new resolvable path so the CLI
+                            // "Updated …" line points at a path that resolves.
+                            LastSetNewPath = ComputeMathElementPath(clone);
+>>>>>>> upstream/main
                         }
                     }
                     else if (modeNorm == "display")
@@ -928,10 +1167,193 @@ public partial class WordHandler
         return unsupported;
     }
 
+<<<<<<< HEAD
+=======
+    // An INLINE equation resolves to a bare m:oMath sitting directly inside a
+    // w:p (no m:oMathPara wrapper). The display form is m:oMathPara wrapping
+    // m:oMath; SetElementMPara owns the m:oMathPara (display) case, so this
+    // helper owns the inline case. BUG-BT3: a `set mode=display` on an inline
+    // equation previously fell through SetElement with no matching arm,
+    // returning an empty unsupported list — the CLI printed "Updated … exit 0"
+    // while writing nothing (a silent no-op). Implement inline→display by
+    // wrapping the m:oMath in an m:oMathPara in place.
+    private List<string> SetElementOMath(M.OfficeMath oMath, Dictionary<string, string> properties)
+    {
+        var unsupported = new List<string>();
+        foreach (var (key, value) in properties)
+        {
+            var k = key.ToLowerInvariant();
+            switch (k)
+            {
+                case "formula":
+                {
+                    // Rebuild the equation contents from the new formula, keeping
+                    // it inline (mirrors the run-level formula set path).
+                    foreach (var child in oMath.ChildElements.ToList())
+                        child.Remove();
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
+                    if (mathContent is M.OfficeMath parsed)
+                        foreach (var c in parsed.ChildElements.ToList())
+                            oMath.AppendChild(c.CloneNode(true));
+                    else
+                        oMath.AppendChild(mathContent.CloneNode(true));
+                    break;
+                }
+                case "mode":
+                {
+                    var modeNorm = value.ToLowerInvariant();
+                    if (modeNorm == "display")
+                    {
+                        // Wrap the inline m:oMath in an m:oMathPara so it renders
+                        // as a centered display block. m:oMathPara is the only
+                        // legal parent that gives display placement.
+                        var mPara = new M.Paragraph();
+                        oMath.InsertBeforeSelf(mPara);
+                        oMath.Remove();
+                        mPara.AppendChild(oMath);
+                        // R4-bt-1: the equation MOVED (bare oMath → oMathPara).
+                        // Report the new resolvable path (the wrapping
+                        // m:oMathPara is the new target).
+                        LastSetNewPath = ComputeMathElementPath(mPara);
+                    }
+                    else if (modeNorm == "inline")
+                    {
+                        // Already inline — no-op.
+                    }
+                    else
+                    {
+                        unsupported.Add($"mode (valid: inline, display)");
+                    }
+                    break;
+                }
+                default:
+                    unsupported.Add(unsupported.Count == 0
+                        ? $"{key} (valid equation props: formula, mode)"
+                        : key);
+                    break;
+            }
+        }
+
+        var affectedPara = oMath.Ancestors<Paragraph>().FirstOrDefault();
+        if (affectedPara != null)
+            affectedPara.TextId = GenerateParaId();
+        SaveDoc();
+        return unsupported;
+    }
+
+    // Apply the paragraph-MARK tracked-change revisions the dump carries as the
+    // .author/.date/.id namespaces — paraMarkIns (<w:pPr><w:rPr><w:ins/>),
+    // paraMarkDel (<w:del/>) and numPrIns (<w:numPr><w:ins/>) — onto a paragraph's
+    // pPr, returning the keys it consumed. CONSISTENCY(add-set-symmetry): mirrors
+    // the AddParagraph blocks (BUG-DUMP-R44-6 / R49-1). The dump emits these as
+    // `set` ops on table-cell paragraphs the table build already created, so the
+    // modify path must accept them too or the ¶-mark insertion/deletion (and the
+    // tracked numbering assignment) round-trip back as UNSUPPORTED and are dropped.
+    private HashSet<string> ApplyParagraphMarkRevisionNamespaces(
+        ParagraphProperties pProps, Dictionary<string, string> properties)
+    {
+        var consumed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        static DateTime ParseRev(string? s) =>
+            !string.IsNullOrEmpty(s)
+            && DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d)
+                ? d : DateTime.UtcNow;
+
+        if (properties.TryGetValue("paraMarkIns.author", out var iA)
+            | properties.TryGetValue("paraMarkIns.date", out var iD)
+            | properties.TryGetValue("paraMarkIns.id", out var iI))
+        {
+            consumed.UnionWith(new[] { "paraMarkIns.author", "paraMarkIns.date", "paraMarkIns.id" });
+            var rpr = pProps.ParagraphMarkRunProperties
+                      ?? pProps.AppendChild(new ParagraphMarkRunProperties());
+            // BUG-DUMP-R71-PARAMARK-INSDEL-ORDER: place via the schema-order
+            // helper, not PrependChild. When a paragraph mark carries BOTH ins
+            // and del (mark inserted by one reviewer, deleted by another), two
+            // blind prepends leave them in execution order (del ends up first);
+            // CT_ParaRPr requires ins before del. InsertRunPropInSchemaOrder
+            // seats each at its CT_ParaRPr slot regardless of application order.
+            if (rpr.GetFirstChild<Inserted>() == null)
+                InsertRunPropInSchemaOrder(rpr, new Inserted
+                {
+                    Author = string.IsNullOrEmpty(iA) ? "OfficeCLI" : iA!,
+                    Date = ParseRev(iD),
+                    Id = !string.IsNullOrEmpty(iI) ? iI : GenerateRevisionId(),
+                });
+        }
+        if (properties.TryGetValue("paraMarkDel.author", out var dA)
+            | properties.TryGetValue("paraMarkDel.date", out var dD)
+            | properties.TryGetValue("paraMarkDel.id", out var dI))
+        {
+            consumed.UnionWith(new[] { "paraMarkDel.author", "paraMarkDel.date", "paraMarkDel.id" });
+            var rpr = pProps.ParagraphMarkRunProperties
+                      ?? pProps.AppendChild(new ParagraphMarkRunProperties());
+            if (rpr.GetFirstChild<Deleted>() == null)
+                InsertRunPropInSchemaOrder(rpr, new Deleted
+                {
+                    Author = string.IsNullOrEmpty(dA) ? "OfficeCLI" : dA!,
+                    Date = ParseRev(dD),
+                    Id = !string.IsNullOrEmpty(dI) ? dI : GenerateRevisionId(),
+                });
+        }
+        // numPrIns lands inside an existing <w:numPr> (CT_NumPr order: ilvl?, numId?,
+        // ins?), so it only applies when the paragraph already carries numbering.
+        if (properties.TryGetValue("numPrIns.author", out var nA)
+            | properties.TryGetValue("numPrIns.date", out var nD)
+            | properties.TryGetValue("numPrIns.id", out var nI))
+        {
+            consumed.UnionWith(new[] { "numPrIns.author", "numPrIns.date", "numPrIns.id" });
+            var numPr = pProps.NumberingProperties;
+            if (numPr != null && numPr.GetFirstChild<Inserted>() == null)
+                numPr.AppendChild(new Inserted
+                {
+                    Author = string.IsNullOrEmpty(nA) ? "OfficeCLI" : nA!,
+                    Date = ParseRev(nD),
+                    Id = !string.IsNullOrEmpty(nI) ? nI : GenerateRevisionId(),
+                });
+        }
+        return consumed;
+    }
+
+>>>>>>> upstream/main
     private List<string> SetElementParagraph(Paragraph para, Dictionary<string, string> properties)
     {
         var unsupported = new List<string>();
         var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
+<<<<<<< HEAD
+=======
+        // Consume paragraph-mark tracked-change namespaces up front so the per-key
+        // loop below doesn't reject them as unsupported (add-set-symmetry).
+        var markRevConsumed = ApplyParagraphMarkRevisionNamespaces(pProps, properties);
+        // BUG-DUMP-MARKRPR-VERBATIM (Set parity / add-set-symmetry): when the dump
+        // emits the WHOLE ¶-mark <w:rPr> verbatim (markRPr.xml), apply it as the
+        // authoritative mark rPr ONCE here and skip the redundant per-property
+        // markRPr.* dotted keys below. AddParagraph already did this, but the dump
+        // round-trips a table-cell paragraph via `set` (the table build creates
+        // the paragraph, then sets its props), and Set previously had no
+        // markRPr.xml handler — so the key fell into the dotted markrpr.* case as
+        // sub="xml" and was dropped, losing every mark-rPr child that no dotted key
+        // covers. Most consequentially a paragraph-mark <w:vanish/> (a hidden ¶
+        // that merges the paragraph with the next) was lost, so the hidden break
+        // re-appeared as a visible blank line and pushed content down.
+        bool markRPrVerbatimApplied = false;
+        if ((properties.TryGetValue("markRPr.xml", out var setMarkRPrXml)
+                || properties.TryGetValue("markrpr.xml", out setMarkRPrXml))
+            && !string.IsNullOrEmpty(setMarkRPrXml) && setMarkRPrXml.StartsWith("<"))
+        {
+            try
+            {
+                var pmRprVerbatim = new ParagraphMarkRunProperties(setMarkRPrXml);
+                pProps.RemoveAllChildren<ParagraphMarkRunProperties>();
+                // CT_PPr schema order: ParagraphMarkRunProperties precedes
+                // sectPr / pPrChange — insert before the first of those, else append.
+                OpenXmlElement? pmSuccessor = pProps.ChildElements
+                    .FirstOrDefault(c => c is SectionProperties || c is ParagraphPropertiesChange);
+                if (pmSuccessor != null) pmSuccessor.InsertBeforeSelf(pmRprVerbatim);
+                else pProps.AppendChild(pmRprVerbatim);
+                markRPrVerbatimApplied = true;
+            }
+            catch { /* malformed fragment — fall back to the dotted keys below */ }
+        }
+>>>>>>> upstream/main
         // CONSISTENCY(markRPr-pre-existed-snapshot): captured ONCE before
         // the property iteration starts. The per-iteration pmrpExisting
         // check inside the bare-key case below otherwise flipped to non-
@@ -942,6 +1364,10 @@ public partial class WordHandler
         bool markRPrPreExisted = pProps.ParagraphMarkRunProperties != null;
         foreach (var (key, value) in properties)
         {
+<<<<<<< HEAD
+=======
+            if (markRevConsumed.Contains(key)) continue;
+>>>>>>> upstream/main
             var k = key.ToLowerInvariant();
             if (ApplyParagraphLevelProperty(pProps, key, value, LastSetWarnings))
             {
@@ -968,7 +1394,11 @@ public partial class WordHandler
                     foreach (var child in para.ChildElements
                         .Where(c => c is not ParagraphProperties).ToList())
                         child.Remove();
+<<<<<<< HEAD
                     var mathContent = FormulaParser.Parse(value);
+=======
+                    var mathContent = FormulaParser.ParseLenient(value, LastUnrecognizedLatex);
+>>>>>>> upstream/main
                     M.OfficeMath oMath = mathContent is M.OfficeMath dm
                         ? dm : new M.OfficeMath(mathContent.CloneNode(true));
                     para.AppendChild(new M.Paragraph(oMath));
@@ -996,7 +1426,29 @@ public partial class WordHandler
                     var pmrp = EnsureMarkRunProperties(pProps);
                     pmrp.RemoveAllChildren<RunStyle>();
                     pmrp.PrependChild(new RunStyle { Val = value });
+<<<<<<< HEAD
                     foreach (var pRun in para.Descendants<Run>())
+=======
+                    // BUG-DUMP-R28-RSTYLE-SEED: mirror the bare run-formatting
+                    // seed path. The dump collapses a single-run cell paragraph
+                    // into ONE `set` whose `rStyle` may be iterated BEFORE the
+                    // `text` key creates the run. On a still-empty paragraph the
+                    // Descendants<Run>() loop below then finds no run, so the
+                    // character-style binding reached only the ¶ mark and the
+                    // visible text rendered without the style (an italic table
+                    // placeholder bound via rStyle="…-Italics" lost its slant).
+                    // Seed an empty run when this Set will create one; the later
+                    // `text` case preserves the seeded run's rPr (RunStyle).
+                    var rStyleRuns = para.Descendants<Run>().ToList();
+                    if (rStyleRuns.Count == 0
+                        && (properties.ContainsKey("text") || properties.ContainsKey("formula")))
+                    {
+                        var seedRun = new Run(new RunProperties());
+                        para.AppendChild(seedRun);
+                        rStyleRuns.Add(seedRun);
+                    }
+                    foreach (var pRun in rStyleRuns)
+>>>>>>> upstream/main
                     {
                         var pRP = EnsureRunProperties(pRun);
                         pRP.RemoveAllChildren<RunStyle>();
@@ -1013,6 +1465,13 @@ public partial class WordHandler
                 // form by stripping the prefix.
                 case var mk when mk.StartsWith("markrpr.", StringComparison.OrdinalIgnoreCase):
                 {
+<<<<<<< HEAD
+=======
+                    // Verbatim ¶-mark subtree already applied (markRPr.xml) — the
+                    // dotted keys (and the markRPr.xml key itself) are redundant
+                    // with it; skip to avoid double-apply / clobbering.
+                    if (markRPrVerbatimApplied) break;
+>>>>>>> upstream/main
                     var sub = key.Substring("markRPr.".Length);
                     var markOnlyRPr = EnsureMarkRunProperties(pProps);
                     // CONSISTENCY(markRPr-explicit-false): the dotted markRPr.*
@@ -1069,7 +1528,29 @@ public partial class WordHandler
                   // belong on the paragraph mark when no runs exist yet.
                   // ApplyRunFormatting handles each individually.
                   or "kern" or "bdr" or "lang" or "lang.latin" or "lang.val"
+<<<<<<< HEAD
                   or "lang.ea" or "lang.eastasia" or "lang.cs" or "lang.bidi":
+=======
+                  or "lang.ea" or "lang.eastasia" or "lang.cs" or "lang.bidi"
+                  // <w:rFonts w:hint> is run-bound: falling through to the
+                  // dotted pPr fallback wrote it on the paragraph MARK only,
+                  // so a CJK run lost its eastAsia hint (different font
+                  // metrics, re-wrapped table rows) while the mark gained a
+                  // phantom one. charspacing/charscale are rPr-bound too.
+                  or "font.hint" or "charspacing" or "charscale" or "w"
+                  // BUG-DUMP-R46-SCAPS: run on/off typography toggles. The
+                  // single-run-collapse dump folds these into `set <paragraph>`,
+                  // but they were absent from this run-key case and fell through
+                  // to the dotted-pPr fallback (applied to the ¶ mark only, never
+                  // the visible runs) — so a small-caps / caps / vanish table
+                  // header lost its effect on round-trip. ApplyRunFormatting
+                  // handles each; route them to the runs like bold/italic. (rtl /
+                  // shading omitted — those carry paragraph-level meaning and are
+                  // handled by ApplyParagraphLevelProperty / the direction cascade.)
+                  or "caps" or "smallcaps" or "vanish" or "dstrike"
+                  or "outline" or "shadow" or "emboss" or "imprint"
+                  or "noproof" or "superscript" or "subscript":
+>>>>>>> upstream/main
                     // Apply run-level formatting to all runs in the paragraph.
                     var allParaRuns = para.Descendants<Run>().ToList();
                     // Paragraph-mark run properties (<w:rPr> inside <w:pPr>)
@@ -1129,6 +1610,7 @@ public partial class WordHandler
                     }
                     break;
                 case "text":
+<<<<<<< HEAD
                     // Set text on paragraph: update first run or create one.
                     // CONSISTENCY(text-breaks): route through AppendTextWithBreaks
                     // so \n/\t in value become <w:br/>/<w:tab/>, matching Add behavior.
@@ -1137,11 +1619,33 @@ public partial class WordHandler
                     {
                         // Preserve RunProperties from first run, drop all prior text/break/tab children.
                         var keepRun = existingRuns[0];
+=======
+                    // Set text on paragraph: update first TEXT run or create one.
+                    // CONSISTENCY(text-breaks): route through AppendTextWithBreaks
+                    // so \n/\t in value become <w:br/>/<w:tab/>, matching Add behavior.
+                    //
+                    // BUG #334: only text-bearing runs are replaced. A run that
+                    // carries a drawing / VML picture / mc:AlternateContent shape /
+                    // embedded object / field is preserved verbatim — wiping or
+                    // removing it silently destroyed every graphic anchored in the
+                    // paragraph (floating textboxes, floating + inline pictures).
+                    // Text-only paragraphs behave exactly as before (all runs are
+                    // text runs). Run-level `set /body/p[N]/r[M] --prop text=` was
+                    // already non-destructive and is unchanged.
+                    var runsForTextSet = para.Elements<Run>().ToList();
+                    var textRuns = runsForTextSet.Where(r => !RunCarriesNonText(r)).ToList();
+                    if (textRuns.Count > 0)
+                    {
+                        // Preserve RunProperties from the first text run, drop its
+                        // prior text/break/tab children, keep every non-text run.
+                        var keepRun = textRuns[0];
+>>>>>>> upstream/main
                         var keepRProps = keepRun.RunProperties;
                         keepRun.RemoveAllChildren();
                         if (keepRProps != null)
                             keepRun.AppendChild(keepRProps);
                         AppendTextWithBreaks(keepRun, value);
+<<<<<<< HEAD
                         for (int i = 1; i < existingRuns.Count; i++) existingRuns[i].Remove();
                     }
                     else
@@ -1149,6 +1653,24 @@ public partial class WordHandler
                         // Use paragraph mark run properties as default for new run
                         var newRun = new Run();
                         var markProps = pProps.ParagraphMarkRunProperties;
+=======
+                        for (int i = 1; i < textRuns.Count; i++) textRuns[i].Remove();
+                    }
+                    else
+                    {
+                        // Use paragraph mark run properties as default for new run.
+                        // EXCEPT when this same Set call carries explicit
+                        // markRPr.* keys: those are mark-ONLY by definition
+                        // (the dump emits them for a ¶ mark whose formatting
+                        // the visible runs deliberately don't share), and the
+                        // mark may have been created by an earlier iteration
+                        // of this very call — cloning it would leak mark bold
+                        // onto the rebuilt text run.
+                        bool setHasMarkKeys = properties.Keys.Any(pk =>
+                            pk.StartsWith("markRPr.", StringComparison.OrdinalIgnoreCase));
+                        var newRun = new Run();
+                        var markProps = setHasMarkKeys ? null : pProps.ParagraphMarkRunProperties;
+>>>>>>> upstream/main
                         if (markProps != null)
                         {
                             var cloned = new RunProperties();
@@ -1160,6 +1682,163 @@ public partial class WordHandler
                         para.AppendChild(newRun);
                     }
                     break;
+<<<<<<< HEAD
+=======
+                case "framepr.w":
+                case "framepr.h":
+                {
+                    // OOXML w:framePr/@w:w and @w:h are ST_TwipsMeasure (unsigned,
+                    // MaxInclusive=31680). CONSISTENCY(length-units): accept pt/cm/in
+                    // (bare = twips) via SpacingConverter, then enforce the bound on
+                    // the resolved twips. Mirrors Add.Text.cs FrameTwips.
+                    uint fpUInt;
+                    try { fpUInt = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value); }
+                    catch (ArgumentException) { throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to a twips length (bare number, or a pt/cm/in value)."); }
+                    if (fpUInt > 31680)
+                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to 0..31680 twips (bare number, or a pt/cm/in length).");
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    if (k == "framepr.w") fp.Width = fpUInt.ToString();
+                    else fp.Height = fpUInt;
+                    break;
+                }
+                case "framepr.x":
+                case "framepr.y":
+                {
+                    // ST_SignedTwipsMeasure: -31680 <= v <= 31680.
+                    int fpSigned;
+                    try { fpSigned = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(value); }
+                    catch (ArgumentException) { throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to a twips length (bare number, or a pt/cm/in value)."); }
+                    if (fpSigned < -31680 || fpSigned > 31680)
+                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to -31680..31680 twips (bare number, or a pt/cm/in length).");
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    if (k == "framepr.x") fp.X = fpSigned.ToString();
+                    else fp.Y = fpSigned.ToString();
+                    break;
+                }
+                case "framepr.hspace":
+                case "framepr.vspace":
+                {
+                    // ST_TwipsMeasure unsigned, MaxInclusive=31680.
+                    uint fpSp;
+                    try { fpSp = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value); }
+                    catch (ArgumentException) { throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to a twips length (bare number, or a pt/cm/in value)."); }
+                    if (fpSp > 31680)
+                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to 0..31680 twips (bare number, or a pt/cm/in length).");
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    if (k == "framepr.hspace") fp.HorizontalSpace = fpSp.ToString();
+                    else fp.VerticalSpace = fpSp.ToString();
+                    break;
+                }
+                case "framepr.wrap":
+                {
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    fp.Wrap = value.ToLowerInvariant() switch
+                    {
+                        "auto"      => TextWrappingValues.Auto,
+                        "around"    => TextWrappingValues.Around,
+                        "none"      => TextWrappingValues.None,
+                        "notbeside" => TextWrappingValues.NotBeside,
+                        "through"   => TextWrappingValues.Through,
+                        _ => throw new ArgumentException($"Invalid 'framePr.wrap' value: '{value}'. Valid values: auto, around, none, notBeside, through."),
+                    };
+                    break;
+                }
+                case "framepr.hanchor":
+                {
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    fp.HorizontalPosition = value.ToLowerInvariant() switch
+                    {
+                        "page"   => HorizontalAnchorValues.Page,
+                        "margin" => HorizontalAnchorValues.Margin,
+                        "text"   => HorizontalAnchorValues.Text,
+                        _ => throw new ArgumentException($"Invalid 'framePr.hAnchor' value: '{value}'. Valid values: page, margin, text."),
+                    };
+                    break;
+                }
+                case "framepr.vanchor":
+                {
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    fp.VerticalPosition = value.ToLowerInvariant() switch
+                    {
+                        "page"   => VerticalAnchorValues.Page,
+                        "margin" => VerticalAnchorValues.Margin,
+                        "text"   => VerticalAnchorValues.Text,
+                        _ => throw new ArgumentException($"Invalid 'framePr.vAnchor' value: '{value}'. Valid values: page, margin, text."),
+                    };
+                    break;
+                }
+                case "framepr.xalign":
+                {
+                    // OOXML ST_XAlign enum; mirror Add.Text.cs.
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    fp.XAlign = value.ToLowerInvariant() switch
+                    {
+                        "left"    => HorizontalAlignmentValues.Left,
+                        "center"  => HorizontalAlignmentValues.Center,
+                        "right"   => HorizontalAlignmentValues.Right,
+                        "inside"  => HorizontalAlignmentValues.Inside,
+                        "outside" => HorizontalAlignmentValues.Outside,
+                        _ => throw new ArgumentException($"Invalid 'framePr.xAlign' value: '{value}'. Valid values: left, center, right, inside, outside."),
+                    };
+                    break;
+                }
+                case "framepr.yalign":
+                {
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    fp.YAlign = value.ToLowerInvariant() switch
+                    {
+                        "inline"  => VerticalAlignmentValues.Inline,
+                        "top"     => VerticalAlignmentValues.Top,
+                        "center"  => VerticalAlignmentValues.Center,
+                        "bottom"  => VerticalAlignmentValues.Bottom,
+                        "inside"  => VerticalAlignmentValues.Inside,
+                        "outside" => VerticalAlignmentValues.Outside,
+                        _ => throw new ArgumentException($"Invalid 'framePr.yAlign' value: '{value}'. Valid values: inline, top, center, bottom, inside, outside."),
+                    };
+                    break;
+                }
+                case "framepr.dropcap":
+                {
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    fp.DropCap = value.ToLowerInvariant() switch
+                    {
+                        "none"   => DropCapLocationValues.None,
+                        "drop"   => DropCapLocationValues.Drop,
+                        "margin" => DropCapLocationValues.Margin,
+                        _ => throw new ArgumentException($"Invalid 'framePr.dropCap' value: '{value}'. Valid values: none, drop, margin."),
+                    };
+                    break;
+                }
+                case "framepr.lines":
+                {
+                    // Drop-cap line span: Word UI exposes 1..10; mirror
+                    // Add.Text.cs validation so Set rejects the same range.
+                    if (!int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out var fpLinesInt)
+                        || fpLinesInt < 1 || fpLinesInt > 10)
+                        throw new ArgumentException($"Invalid 'framePr.lines' value: '{value}'. Must be an integer 1..10 (drop-cap line span).");
+                    var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
+                    fp.Lines = fpLinesInt;
+                    break;
+                }
+                case "ind.firstline":
+                {
+                    // OOXML w:ind firstLine and hanging are mutually exclusive.
+                    // The canonical `firstlineindent` key already cross-clears
+                    // hanging; the ind.* form previously fell through to
+                    // TypedAttributeFallback which left a stale hanging behind.
+                    // Route through ApplyParagraphLevelProperty (its
+                    // "firstlineindent" case nulls hanging and uses
+                    // SpacingConverter for lenient cm/in/pt/twips input).
+                    ApplyParagraphLevelProperty(pProps, "firstlineindent", value, LastSetWarnings);
+                    break;
+                }
+                case "ind.hanging":
+                {
+                    ApplyParagraphLevelProperty(pProps, "hangingindent", value, LastSetWarnings);
+                    break;
+                }
+>>>>>>> upstream/main
                 default:
                     // Generic dotted "element.attr=value" fallback first.
                     // Probe pPr (where most paragraph attrs live: ind.*,
@@ -1373,7 +2052,15 @@ public partial class WordHandler
                     // Consumed by the cellrevision.type case (sibling lookups).
                     break;
                 case "text":
+<<<<<<< HEAD
                     // Defer text handling until after formatting is applied
+=======
+                    // Defer text handling until after formatting is applied.
+                    // Validate up-front though — the deferred run constructor
+                    // below uses `new Text(deferredText)` without a guard so
+                    // an XML-illegal char would otherwise leak to save time.
+                    OfficeCli.Core.ParseHelpers.ValidateXmlText(value, "text");
+>>>>>>> upstream/main
                     deferredText = value;
                     break;
                 case "font":
@@ -1425,7 +2112,11 @@ public partial class WordHandler
                         ApplyDirectionCascade(cellPara, cellRtl);
                     break;
                 }
+<<<<<<< HEAD
                 case "shd" or "shading" or "fill":
+=======
+                case "shd" or "shading" or "fill" or "cellshading":
+>>>>>>> upstream/main
                     var shdParts = value.Split(';');
                     if (shdParts.Length >= 3 && shdParts[0].Equals("gradient", StringComparison.OrdinalIgnoreCase))
                     {
@@ -1449,6 +2140,7 @@ public partial class WordHandler
                     {
                         // Remove any existing gradient
                         RemoveCellGradient(tcPr);
+<<<<<<< HEAD
                         var shd = new Shading();
                         if (shdParts.Length == 1)
                         {
@@ -1468,6 +2160,13 @@ public partial class WordHandler
                             }
                         }
                         tcPr.Shading = shd;
+=======
+                        // Route through the shared ParseShadingValue so a cell's
+                        // themeFill=/themeFillTint=/themeFillShade= theme-linkage
+                        // tail round-trips (the dump applies cell shading via this
+                        // Set path); the old hand-rolled split dropped it.
+                        tcPr.Shading = ParseShadingValue(value);
+>>>>>>> upstream/main
                     }
                     break;
                 case "align" or "alignment" or "halign":
@@ -1524,7 +2223,11 @@ public partial class WordHandler
                     {
                         // BUG-R4-05: accept unit-qualified widths (cm/in/pt/dxa) in
                         // addition to bare twips. Mirrors the cross-handler width
+<<<<<<< HEAD
                         // contract (root CLAUDE.md). Strip a trailing "dxa" suffix
+=======
+                        // contract (the project conventions). Strip a trailing "dxa" suffix
+>>>>>>> upstream/main
                         // (the form Get now emits) so the bare-twips path still works.
                         var rawWidth = value;
                         long? parsedTwips = null;
@@ -1619,7 +2322,11 @@ public partial class WordHandler
                     break;
                 case "padding":
                 {
+<<<<<<< HEAD
                     var dxa = ParseHelpers.SafeParseUint(value, "padding").ToString();
+=======
+                    var dxa = ((int)OfficeCli.Core.SpacingConverter.ParseWordSpacing(value)).ToString();
+>>>>>>> upstream/main
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
                     mar.TopMargin = new TopMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
                     mar.BottomMargin = new BottomMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
@@ -1630,37 +2337,54 @@ public partial class WordHandler
                 case "padding.top":
                 {
                     // BUG-R1-07: negative w:tcMar values are invalid OOXML.
+<<<<<<< HEAD
                     var ptv = ParseHelpers.SafeParseInt(value, "padding.top");
                     if (ptv < 0) throw new ArgumentException($"Invalid 'padding.top' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
+=======
+                    var ptv = (int)OfficeCli.Core.SpacingConverter.ParseWordSpacing(value);
+>>>>>>> upstream/main
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
                     mar.TopMargin = new TopMargin { Width = ptv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "padding.bottom":
                 {
+<<<<<<< HEAD
                     var pbv = ParseHelpers.SafeParseInt(value, "padding.bottom");
                     if (pbv < 0) throw new ArgumentException($"Invalid 'padding.bottom' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
+=======
+                    var pbv = (int)OfficeCli.Core.SpacingConverter.ParseWordSpacing(value);
+>>>>>>> upstream/main
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
                     mar.BottomMargin = new BottomMargin { Width = pbv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "padding.left":
                 {
+<<<<<<< HEAD
                     var plv = ParseHelpers.SafeParseInt(value, "padding.left");
                     if (plv < 0) throw new ArgumentException($"Invalid 'padding.left' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
+=======
+                    var plv = (int)OfficeCli.Core.SpacingConverter.ParseWordSpacing(value);
+>>>>>>> upstream/main
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
                     mar.LeftMargin = new LeftMargin { Width = plv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "padding.right":
                 {
+<<<<<<< HEAD
                     var prv = ParseHelpers.SafeParseInt(value, "padding.right");
                     if (prv < 0) throw new ArgumentException($"Invalid 'padding.right' value: '{value}'. Cell margins must be non-negative (OOXML w:tcMar).");
+=======
+                    var prv = (int)OfficeCli.Core.SpacingConverter.ParseWordSpacing(value);
+>>>>>>> upstream/main
                     var mar = tcPr.TableCellMargin ?? (tcPr.TableCellMargin = new TableCellMargin());
                     mar.RightMargin = new RightMargin { Width = prv.ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 }
                 case "textdirection" or "textdir":
+<<<<<<< HEAD
                     tcPr.TextDirection = new TextDirection
                     {
                         Val = value.ToLowerInvariant() switch
@@ -1674,6 +2398,16 @@ public partial class WordHandler
                             _ => throw new ArgumentException($"Invalid textDirection value: '{value}'. Valid values: lrtb, btlr, tbrl, horizontal, vertical.")
                         }
                     };
+=======
+                    // Reuse the shared section parser so the cell path also accepts
+                    // the canonical OOXML InnerText forms the dump emits (tbLrV /
+                    // tbRlV / lrTbV — the rotated vertical variants). The previous
+                    // local switch only accepted the *-r/*-rotated aliases, so a
+                    // dump→batch replay of a vertical-text header cell hit
+                    // "Invalid textDirection value: 'tbLrV'" and dropped the
+                    // orientation, reflowing the whole table.
+                    tcPr.TextDirection = new TextDirection { Val = ParseSectionTextDirection(value) };
+>>>>>>> upstream/main
                     break;
                 case "nowrap":
                     tcPr.NoWrap = IsTruthy(value) ? new NoWrap() : null;
@@ -1707,7 +2441,15 @@ public partial class WordHandler
                     // the element entirely so the cell stands alone.
                     var vmLower = value.ToLowerInvariant();
                     bool isRestart = vmLower == "restart";
+<<<<<<< HEAD
                     bool isContinue = vmLower == "continue";
+=======
+                    // Accept truthy synonyms (true/yes/on/1) for continue —
+                    // pre-fix code silently coerced anything non-restart/non-
+                    // remove to the bare <w:vMerge/> continuation glyph and
+                    // existing tests / dump→batch use vMerge=true to mean it.
+                    bool isContinue = vmLower is "continue" or "true" or "yes" or "on" or "1";
+>>>>>>> upstream/main
                     bool isRemove = vmLower is "none" or "clear" or "remove" or "false" or "0" or "no" or "off" or "";
 
                     // BUG-R5-table-merge BUG-9: continuation vMerge in the first
@@ -1728,6 +2470,11 @@ public partial class WordHandler
                             "vmerge=continue on a cell in the first row has no restart anchor above it; Word may render the cell as invisible. Use vmerge=restart if a merge was intended.");
                     }
 
+<<<<<<< HEAD
+=======
+                    if (!isRestart && !isContinue && !isRemove)
+                        throw new ArgumentException($"Invalid 'vMerge' value: '{value}'. Valid: restart, continue, none.");
+>>>>>>> upstream/main
                     if (isRemove)
                         tcPr.VerticalMerge = null;
                     else if (isRestart)
@@ -1776,7 +2523,12 @@ public partial class WordHandler
                     }
                     break;
                 case var k when k.StartsWith("border"):
+<<<<<<< HEAD
                     ApplyCellBorders(tcPr, key, value);
+=======
+                    if (!ApplyCellBorders(tcPr, key, value))
+                        unsupported.Add(key);
+>>>>>>> upstream/main
                     break;
                 case "gridspan" or "colspan":
                     var newSpan = ParseHelpers.SafeParseInt(value, "gridspan");
@@ -2105,6 +2857,23 @@ public partial class WordHandler
                     else
                         trPr.RemoveAllChildren<Hidden>();
                     break;
+<<<<<<< HEAD
+=======
+                // BUG-DUMP-R62-ROWCELLSPACING: row-level <w:tblCellSpacing> (the
+                // inter-cell gap for this row, CT_TrPr). Mirrors the table-level
+                // cellspacing case (SetElementTable) but on the row's trPr; same
+                // dxa width parse. CT_TblWidth shape — Type must be Dxa for a
+                // twips width to take effect.
+                case "cellspacing":
+                    trPr.RemoveAllChildren<TableCellSpacing>();
+                    if (!string.IsNullOrEmpty(value))
+                        trPr.AppendChild(new TableCellSpacing
+                        {
+                            Width = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value).ToString(),
+                            Type = TableWidthUnitValues.Dxa
+                        });
+                    break;
+>>>>>>> upstream/main
                 case "cnfstyle":
                 {
                     // ST_Cnf @val bitmask (see ValidateCnfStyleBitmask). cnfStyle
@@ -2178,7 +2947,19 @@ public partial class WordHandler
                             ?? rowCells[cIdx - 1].AppendChild(new Paragraph());
                         targetPara.RemoveAllChildren<Run>();
                         if (!string.IsNullOrEmpty(value))
+<<<<<<< HEAD
                             targetPara.AppendChild(new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve }));
+=======
+                        {
+                            // CONSISTENCY(escape-sequences): route cell text through
+                            // AppendTextWithBreaks so `\n`→<w:br/> and `\t`→<w:tab/>
+                            // exactly like --prop text=, instead of storing a literal
+                            // backslash-n. The two text-input paths must not diverge.
+                            var cellRun = new Run();
+                            AppendTextWithBreaks(cellRun, value);
+                            targetPara.AppendChild(cellRun);
+                        }
+>>>>>>> upstream/main
                     }
                     else if (key.Contains('.')
                         && Core.TypedAttributeFallback.TrySet(trPr, key, value))
@@ -2264,7 +3045,13 @@ public partial class WordHandler
                 case "width":
                     if (value.EndsWith('%'))
                     {
+<<<<<<< HEAD
                         var pct = ParseHelpers.SafeParseInt(value.TrimEnd('%'), "width") * 50; // OOXML pct = percent * 50
+=======
+                        // OOXML pct = percent * 50; double parse keeps fractional
+                        // percentages (14.4%) exact, mirroring the cell-width branch.
+                        var pct = (int)Math.Round(ParseHelpers.SafeParseDouble(value.TrimEnd('%'), "width") * 50);
+>>>>>>> upstream/main
                         tblPr.TableWidth = new TableWidth { Width = pct.ToString(), Type = TableWidthUnitValues.Pct };
                     }
                     else
@@ -2272,30 +3059,63 @@ public partial class WordHandler
                         // CONSISTENCY(spacing-units): accept unit-qualified lengths
                         // ('10cm', '5in', '12pt') alongside bare twips, matching
                         // Add and the cross-handler convention from
+<<<<<<< HEAD
                         // root CLAUDE.md "Spacing input is lenient". Previous
+=======
+                        // the project conventions "Spacing input is lenient". Previous
+>>>>>>> upstream/main
                         // SafeParseUint-only path rejected '10cm'.
                         var twips = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value);
                         tblPr.TableWidth = new TableWidth { Width = twips.ToString(), Type = TableWidthUnitValues.Dxa };
                     }
                     break;
                 case "indent":
+<<<<<<< HEAD
                     tblPr.TableIndentation = new TableIndentation { Width = ParseHelpers.SafeParseInt(value, "indent"), Type = TableWidthUnitValues.Dxa };
                     break;
                 case "cellspacing":
                     tblPr.TableCellSpacing = new TableCellSpacing { Width = ParseHelpers.SafeParseUint(value, "cellspacing").ToString(), Type = TableWidthUnitValues.Dxa };
+=======
+                    // BUG-DUMP-R34-TBLIND: honour a pct-typed indent ("2%") so it
+                    // round-trips as <w:tblInd w:type="pct"> rather than collapsing
+                    // to dxa twips (which shifts the whole table horizontally).
+                    // CONSISTENCY(length-units): non-pct indent accepts pt/cm/in
+                    // (bare = twips) via SpacingConverter, matching Add + tc padding.
+                    tblPr.TableIndentation = value.TrimEnd().EndsWith("%", StringComparison.Ordinal)
+                        ? new TableIndentation { Width = (int)Math.Round(ParseHelpers.SafeParseDouble(value.TrimEnd().TrimEnd('%'), "indent") * 50), Type = TableWidthUnitValues.Pct }
+                        : new TableIndentation { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(value), Type = TableWidthUnitValues.Dxa };
+                    break;
+                case "cellspacing":
+                    tblPr.TableCellSpacing = new TableCellSpacing { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value).ToString(), Type = TableWidthUnitValues.Dxa };
+>>>>>>> upstream/main
                     break;
                 case "layout":
                     tblPr.TableLayout = new TableLayout
                     {
+<<<<<<< HEAD
                         Type = value.ToLowerInvariant() == "fixed" ? TableLayoutValues.Fixed : TableLayoutValues.Autofit
+=======
+                        Type = value.ToLowerInvariant() switch
+                        {
+                            "fixed"   => TableLayoutValues.Fixed,
+                            "autofit" or "auto" => TableLayoutValues.Autofit,
+                            _ => throw new ArgumentException($"Invalid 'layout' value: '{value}'. Valid values: fixed, autofit."),
+                        }
+>>>>>>> upstream/main
                     };
                     break;
                 case "padding":
                 {
                     // BUG-R1-07: negative w:tblCellMar values are invalid OOXML.
+<<<<<<< HEAD
                     var paddingVal = ParseHelpers.SafeParseInt(value, "padding");
                     if (paddingVal < 0)
                         throw new ArgumentException($"Invalid 'padding' value: '{value}'. Table cell margins must be non-negative (OOXML w:tblCellMar).");
+=======
+                    // Lenient input: accepts "5pt"/"0.2cm"/"0.1in" as well as bare
+                    // twips. SpacingConverter throws on negatives.
+                    var paddingVal = (int)OfficeCli.Core.SpacingConverter.ParseWordSpacing(value);
+>>>>>>> upstream/main
                     var dxa = paddingVal.ToString();
                     var cm = EnsureTableCellMarginDefault(tblPr);
                     cm.TopMargin = new TopMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
@@ -2304,6 +3124,7 @@ public partial class WordHandler
                     cm.TableCellRightMargin = new TableCellRightMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                     break;
                 }
+<<<<<<< HEAD
                 case "shd" or "shading" or "fill":
                 {
                     // BUG-R2-P3-10: table-level shd was falling through to
@@ -2335,6 +3156,17 @@ public partial class WordHandler
                         }
                     }
                     tblPr.Shading = tShd;
+=======
+                case "shd" or "shading" or "fill" or "cellshading":
+                {
+                    // BUG-R2-P3-10: table-level shd was falling through to
+                    // GenericXmlQuery.TryCreateTypedChild which stamped the
+                    // raw color into w:val instead of w:fill. Route through the
+                    // shared ParseShadingValue so VAL;FILL;COLOR plus the
+                    // themeFill=/themeFillTint=/themeFillShade= theme tail all
+                    // round-trip. CONSISTENCY(set-shd-parser).
+                    tblPr.Shading = ParseShadingValue(value);
+>>>>>>> upstream/main
                     break;
                 }
                 case "tbllook":
@@ -2359,6 +3191,11 @@ public partial class WordHandler
                 case "lastcol" or "lastcolumn":
                 case "bandrow" or "bandedrows" or "bandrows":
                 case "bandcol" or "bandedcols" or "bandcols":
+<<<<<<< HEAD
+=======
+                case "nohband" or "nohorizontalband":
+                case "novband" or "noverticalband":
+>>>>>>> upstream/main
                 {
                     var tblLook = tblPr.GetFirstChild<TableLook>();
                     if (tblLook == null)
@@ -2370,6 +3207,7 @@ public partial class WordHandler
                         InsertTblPrChildInOrder(tblPr, tblLook);
                     }
                     var bv = IsTruthy(value);
+<<<<<<< HEAD
                     switch (key.ToLowerInvariant())
                     {
                         case "firstrow": tblLook.FirstRow = bv; break;
@@ -2378,6 +3216,39 @@ public partial class WordHandler
                         case "lastcol" or "lastcolumn": tblLook.LastColumn = bv; break;
                         case "bandrow" or "bandedrows" or "bandrows": tblLook.NoHorizontalBand = !bv; break;
                         case "bandcol" or "bandedcols" or "bandcols": tblLook.NoVerticalBand = !bv; break;
+=======
+                    // "no*Band" carries the inverted sense of band*.
+                    var (bit, bitOn) = key.ToLowerInvariant() switch
+                    {
+                        "firstrow" => (0x0020, bv),
+                        "lastrow" => (0x0040, bv),
+                        "firstcol" or "firstcolumn" => (0x0080, bv),
+                        "lastcol" or "lastcolumn" => (0x0100, bv),
+                        "bandrow" or "bandedrows" or "bandrows" => (0x0200, !bv),
+                        "bandcol" or "bandedcols" or "bandcols" => (0x0400, !bv),
+                        "nohband" or "nohorizontalband" => (0x0200, bv),
+                        _ => (0x0400, bv), // novband / noverticalband
+                    };
+                    switch (bit)
+                    {
+                        case 0x0020: tblLook.FirstRow = bitOn; break;
+                        case 0x0040: tblLook.LastRow = bitOn; break;
+                        case 0x0080: tblLook.FirstColumn = bitOn; break;
+                        case 0x0100: tblLook.LastColumn = bitOn; break;
+                        case 0x0200: tblLook.NoHorizontalBand = bitOn; break;
+                        case 0x0400: tblLook.NoVerticalBand = bitOn; break;
+                    }
+                    // R53-fuzz-3: w:val is the authoritative bitmask — Word
+                    // ignores the decomposed boolean attrs when both are
+                    // present, so leaving the old hex made the facet Set
+                    // silently ineffective in real Word. Recompute the bit.
+                    if (int.TryParse(tblLook.Val?.Value ?? "04A0",
+                            System.Globalization.NumberStyles.HexNumber,
+                            System.Globalization.CultureInfo.InvariantCulture, out var lookBits))
+                    {
+                        lookBits = bitOn ? lookBits | bit : lookBits & ~bit;
+                        tblLook.Val = lookBits.ToString("X4", System.Globalization.CultureInfo.InvariantCulture);
+>>>>>>> upstream/main
                     }
                     break;
                 }
@@ -2456,18 +3327,38 @@ public partial class WordHandler
                     break;
                 }
                 case "position.hanchor" or "position.horizontalanchor":
+<<<<<<< HEAD
                 {
+=======
+                case "tblp.horzanchor" or "tblp.horizontalanchor":
+                case "tblppr.horzanchor" or "tblppr.horizontalanchor":
+                {
+                    // tblp.horzAnchor is the canonical Get-readback key
+                    // (Navigation.cs:2957). Mirror its vocabulary on Set so
+                    // dump→batch round-trip works without going through the
+                    // generic TypedAttributeFallback (which silently accepts
+                    // any string into the StringValue-typed SDK attribute).
+>>>>>>> upstream/main
                     var tpp = EnsureTablePositionProperties(tblPr);
                     tpp.HorizontalAnchor = value.ToLowerInvariant() switch
                     {
                         "margin" => HorizontalAnchorValues.Margin,
                         "page" => HorizontalAnchorValues.Page,
                         "text" => HorizontalAnchorValues.Text,
+<<<<<<< HEAD
                         _ => throw new ArgumentException($"Invalid horizontalAnchor: '{value}'. Valid: margin, page, text.")
+=======
+                        _ => throw new ArgumentException($"Invalid 'tblp.horzAnchor' value: '{value}'. Valid: margin, page, text.")
+>>>>>>> upstream/main
                     };
                     break;
                 }
                 case "position.vanchor" or "position.verticalanchor":
+<<<<<<< HEAD
+=======
+                case "tblp.vertanchor" or "tblp.verticalanchor":
+                case "tblppr.vertanchor" or "tblppr.verticalanchor":
+>>>>>>> upstream/main
                 {
                     var tpp = EnsureTablePositionProperties(tblPr);
                     tpp.VerticalAnchor = value.ToLowerInvariant() switch
@@ -2475,35 +3366,63 @@ public partial class WordHandler
                         "margin" => VerticalAnchorValues.Margin,
                         "page" => VerticalAnchorValues.Page,
                         "text" => VerticalAnchorValues.Text,
+<<<<<<< HEAD
                         _ => throw new ArgumentException($"Invalid verticalAnchor: '{value}'. Valid: margin, page, text.")
+=======
+                        _ => throw new ArgumentException($"Invalid 'tblp.vertAnchor' value: '{value}'. Valid: margin, page, text.")
+>>>>>>> upstream/main
                     };
                     break;
                 }
                 case "position.leftfromtext" or "position.left":
                 {
                     var tpp = EnsureTablePositionProperties(tblPr);
+<<<<<<< HEAD
                     tpp.LeftFromText = (short)ParseTwips(value);
+=======
+                    tpp.LeftFromText = ParseTblpFromTextShort(value, key);
+>>>>>>> upstream/main
                     break;
                 }
                 case "position.rightfromtext" or "position.right":
                 {
                     var tpp = EnsureTablePositionProperties(tblPr);
+<<<<<<< HEAD
                     tpp.RightFromText = (short)ParseTwips(value);
+=======
+                    tpp.RightFromText = ParseTblpFromTextShort(value, key);
+>>>>>>> upstream/main
                     break;
                 }
                 case "position.topfromtext" or "position.top":
                 {
                     var tpp = EnsureTablePositionProperties(tblPr);
+<<<<<<< HEAD
                     tpp.TopFromText = (short)ParseTwips(value);
+=======
+                    tpp.TopFromText = ParseTblpFromTextShort(value, key);
+>>>>>>> upstream/main
                     break;
                 }
                 case "position.bottomfromtext" or "position.bottom":
                 {
                     var tpp = EnsureTablePositionProperties(tblPr);
+<<<<<<< HEAD
                     tpp.BottomFromText = (short)ParseTwips(value);
                     break;
                 }
                 case "overlap":
+=======
+                    tpp.BottomFromText = ParseTblpFromTextShort(value, key);
+                    break;
+                }
+                // BUG-DUMP-H89: `tbloverlap.val` is the Get readback key; accept it
+                // (and bare `tbloverlap`) as aliases for `overlap` so dump→batch
+                // round-trips instead of silently ignoring the emitted key.
+                case "overlap":
+                case "tbloverlap.val":
+                case "tbloverlap":
+>>>>>>> upstream/main
                 {
                     tblPr.RemoveAllChildren<TableOverlap>();
                     if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
@@ -2666,6 +3585,18 @@ public partial class WordHandler
                     if (key.Contains('.')
                         && Core.TypedAttributeFallback.TrySet(tblPr, key, value))
                         break;
+<<<<<<< HEAD
+=======
+                    // Row/cell-scoped props at table level (issue #178): name the
+                    // scoped alternative instead of the generic valid-props list,
+                    // so an agent can self-correct. Mirrors the Add-side hints in
+                    // StyleUnsupportedHints.
+                    if (Core.StyleUnsupportedHints.TryGetHint(key, out var scopedHint))
+                    {
+                        unsupported.Add($"{key} ({scopedHint})");
+                        break;
+                    }
+>>>>>>> upstream/main
                     if (!GenericXmlQuery.TryCreateTypedChild(tblPr, key, value))
                         unsupported.Add(unsupported.Count == 0
                             ? $"{key} (valid table props: width, alignment, style, indent, cellspacing, layout, padding, border*, colWidths, firstRow, lastRow, firstCol, lastCol, bandedRows, bandedCols, caption, description)"
@@ -2691,6 +3622,7 @@ public partial class WordHandler
     // pass-through is closed for good.
     private List<string> SetElementTextBoxContent(TextBoxContent txbx, Dictionary<string, string> properties)
     {
+<<<<<<< HEAD
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
@@ -2703,12 +3635,412 @@ public partial class WordHandler
                         $"enclosing <wp:anchor>, not on <w:txbxContent>). " +
                         $"Add the textbox at the desired position via " +
                         $"`add /body --type textbox --prop posH=… posV=…` instead.");
+=======
+        // Position keys live on the enclosing <wp:anchor>, not the txbxContent —
+        // reject them up-front (unchanged behaviour). Everything else routes to
+        // the shared spPr mutator on the wsp that wraps this txbxContent, so the
+        // textbox supports the same Set surface (fill/line/width/height/geometry)
+        // as a bare shape.
+        if (properties.Keys.Any(k => k.ToLowerInvariant() is "hposition" or "posh" or "vposition" or "posv"))
+            throw new ArgumentException(
+                $"Setting position keys (posH/posV/hposition/vposition) on " +
+                $"/body/textbox[N] is not supported (the position lives on the " +
+                $"enclosing <wp:anchor>, not on <w:txbxContent>). " +
+                $"Add the textbox at the desired position via " +
+                $"`add /body --type textbox --prop posH=… posV=…` instead.");
+
+        var wsp = txbx.Ancestors()
+            .FirstOrDefault(e => e.LocalName == "wsp"
+                && e.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingShape");
+        if (wsp == null)
+            return properties.Keys.ToList();   // no shape parent → nothing applies
+        return SetShapeProps(wsp, properties);
+    }
+
+    /// <summary>
+    /// Set the curated spPr surface (fill / line / width / height / geometry) on
+    /// a <c>wps:wsp</c> shape. Shared by <c>/body/shape[N]</c> (the wsp itself)
+    /// and <c>/body/textbox[N]</c> (the wsp wrapping the txbxContent). Reuses the
+    /// exact Add-path builders (BuildLineXml, BuildSolidFillXml, SanitizeGeometry,
+    /// SanitizeHex, ParseDrawingSize) so Add and Set produce byte-identical XML.
+    /// Edits the spPr children in place, preserving CT_ShapeProperties element
+    /// order (xfrm, prstGeom, fill, ln). Width/height update BOTH the shape
+    /// <c>&lt;a:ext&gt;</c> and the layout <c>&lt;wp:extent&gt;</c>, mirroring Add.
+    /// Returns the unsupported keys (out-of-scope props: position/rotation/inset/
+    /// text/shadow/gradient/wrap), which the caller forwards as UNSUPPORTED.
+    /// </summary>
+    private List<string> SetShapeProps(OpenXmlElement wsp, Dictionary<string, string> properties)
+    {
+        var unsupported = new List<string>();
+
+        const string ANs = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        const string WpNs = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+
+        var spPr = wsp.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
+        if (spPr == null)
+            return properties.Keys.ToList();   // malformed shape — apply nothing
+
+        OpenXmlElement? AChild(OpenXmlElement parent, string local) =>
+            parent.ChildElements.FirstOrDefault(e => e.LocalName == local && e.NamespaceUri == ANs);
+
+        var xfrm = AChild(spPr, "xfrm");
+        var prstGeom = AChild(spPr, "prstGeom");
+
+        // Collect the curated keys (split-by-key parsing mirrors AddShape).
+        string? fillRaw = properties.GetValueOrDefault("fill") ?? properties.GetValueOrDefault("fillcolor");
+        string? geomRaw = properties.GetValueOrDefault("geometry") ?? properties.GetValueOrDefault("preset");
+        string? widthRaw = properties.GetValueOrDefault("width");
+        string? heightRaw = properties.GetValueOrDefault("height");
+
+        // line: composite "STYLE;SIZE;COLOR" OR split line.style/.width/.color.
+        string? lineCompact = properties.GetValueOrDefault("line");
+        bool hasLine = lineCompact != null
+            || properties.ContainsKey("line.style") || properties.ContainsKey("linestyle")
+            || properties.ContainsKey("line.width") || properties.ContainsKey("linewidth")
+            || properties.ContainsKey("line.color") || properties.ContainsKey("linecolor");
+        string? lineStyle = null, lineWidth = null, lineColor = null;
+        if (!string.IsNullOrEmpty(lineCompact)
+            && !string.Equals(lineCompact, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = lineCompact.Split(';');
+            if (parts.Length >= 1 && !string.IsNullOrEmpty(parts[0])) lineStyle = parts[0];
+            if (parts.Length >= 2 && !string.IsNullOrEmpty(parts[1])) lineWidth = parts[1];
+            if (parts.Length >= 3 && !string.IsNullOrEmpty(parts[2])) lineColor = parts[2];
+        }
+        else if (string.Equals(lineCompact, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            lineStyle = "none";
+        }
+        lineStyle ??= properties.GetValueOrDefault("line.style") ?? properties.GetValueOrDefault("linestyle");
+        lineWidth ??= properties.GetValueOrDefault("line.width") ?? properties.GetValueOrDefault("linewidth");
+        lineColor ??= properties.GetValueOrDefault("line.color") ?? properties.GetValueOrDefault("linecolor");
+
+        // --- geometry → replace prstGeom@prst ---
+        if (geomRaw != null && prstGeom != null)
+            prstGeom.SetAttribute(new OpenXmlAttribute("prst", "", SanitizeGeometry(geomRaw)));
+
+        // --- width / height → update <a:ext cx cy> and <wp:extent cx cy> ---
+        if ((widthRaw != null || heightRaw != null) && xfrm != null)
+        {
+            var ext = AChild(xfrm, "ext");
+            // Anchor wrapper carries the matching <wp:extent>.
+            var wpExtent = wsp.Ancestors()
+                .FirstOrDefault(e => e.LocalName == "anchor" || e.LocalName == "inline")
+                ?.Descendants().FirstOrDefault(e => e.LocalName == "extent" && e.NamespaceUri == WpNs);
+            if (widthRaw != null)
+            {
+                long cx = ParseDrawingSize(widthRaw, ReadUnqualifiedLong(ext, "cx") ?? 914_400);
+                ext?.SetAttribute(new OpenXmlAttribute("cx", "", cx.ToString()));
+                wpExtent?.SetAttribute(new OpenXmlAttribute("cx", "", cx.ToString()));
+            }
+            if (heightRaw != null)
+            {
+                long cy = ParseDrawingSize(heightRaw, ReadUnqualifiedLong(ext, "cy") ?? 914_400);
+                ext?.SetAttribute(new OpenXmlAttribute("cy", "", cy.ToString()));
+                wpExtent?.SetAttribute(new OpenXmlAttribute("cy", "", cy.ToString()));
+            }
+        }
+
+        // --- fill → replace solidFill / noFill / gradFill ---
+        if (fillRaw != null)
+        {
+            string fillXml =
+                string.IsNullOrEmpty(fillRaw) || string.Equals(fillRaw, "none", StringComparison.OrdinalIgnoreCase)
+                    ? "<a:noFill/>"
+                    : $"<a:solidFill><a:srgbClr val=\"{SanitizeHex(fillRaw)}\"/></a:solidFill>";
+            // Remove any existing fill element.
+            foreach (var f in spPr.ChildElements
+                .Where(e => e.NamespaceUri == ANs
+                    && e.LocalName is "noFill" or "solidFill" or "gradFill" or "blipFill" or "pattFill" or "grpFill")
+                .ToList())
+                f.Remove();
+            var newFill = ParseShapeFragment(fillXml);
+            // Schema order: fill follows prstGeom (or xfrm) and precedes ln.
+            InsertSpPrChildInOrder(spPr, newFill, ANs);
+        }
+
+        // --- line → replace a:ln ---
+        if (hasLine)
+        {
+            var existingLn = spPr.ChildElements
+                .FirstOrDefault(e => e.LocalName == "ln" && e.NamespaceUri == ANs);
+
+            // Merge with the existing outline so a `set line.width` alone keeps
+            // the current color/dash and vice versa — BuildLineXml rebuilds the
+            // whole <a:ln> from only the keys it's handed, so any sub-prop NOT
+            // in this call must be back-filled from the live <a:ln>. Skip the
+            // merge for the explicit `line=none` clear (lineStyle=="none"),
+            // which is meant to wipe the outline.
+            bool isExplicitClear = string.Equals(lineStyle, "none", StringComparison.OrdinalIgnoreCase);
+            if (!isExplicitClear && existingLn != null)
+                ReadExistingLine(existingLn, ANs, ref lineStyle, ref lineWidth, ref lineColor);
+
+            string lnXml = BuildLineXml(lineStyle, lineWidth, lineColor);
+            if (existingLn != null) existingLn.Remove();
+            if (!string.IsNullOrEmpty(lnXml))
+            {
+                var newLn = ParseShapeFragment(lnXml);
+                InsertSpPrChildInOrder(spPr, newLn, ANs);
+            }
+        }
+
+        // Forward genuinely out-of-scope keys as unsupported (position/rotation/
+        // inset/text/shadow/gradient/wrap/alt/etc — see Add path).
+        foreach (var key in properties.Keys)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "fill": case "fillcolor":
+                case "line": case "line.style": case "linestyle":
+                case "line.width": case "linewidth":
+                case "line.color": case "linecolor":
+                case "width": case "height":
+                case "geometry": case "preset":
+                    continue;
+>>>>>>> upstream/main
                 default:
                     unsupported.Add(key);
                     break;
             }
         }
+<<<<<<< HEAD
         return unsupported;
     }
 
+=======
+
+        SaveDoc();
+        return unsupported;
+    }
+
+    /// <summary>
+    /// Resize a wpg:wgp group (e.g. a `diagram`). Mirrors the pptx group: set the
+    /// group <c>&lt;a:ext&gt;</c> and the layout <c>&lt;wp:extent&gt;</c> while
+    /// leaving <c>&lt;a:chExt&gt;</c> as the child-coordinate baseline (so Word
+    /// compresses the children), then re-bake child font sizes by the net resize —
+    /// Word scales group geometry on open but does NOT re-bake font (only an
+    /// interactive drag does). fontRatio = min(width-ratio, height-ratio) so a
+    /// width-only shrink still scales font down and a one-dimension grow leaves it.
+    /// </summary>
+    private List<string> SetGroupProps(OpenXmlElement wgp, Dictionary<string, string> properties)
+    {
+        var unsupported = new List<string>();
+        const string ANs = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        const string WpNs = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+        OpenXmlElement? AChild(OpenXmlElement parent, string local) =>
+            parent.ChildElements.FirstOrDefault(e => e.LocalName == local && e.NamespaceUri == ANs);
+
+        // On the SET path an unparseable size is a caller error and must be
+        // rejected (mirrors the pptx group). ParseDrawingSize swallows the parse
+        // exception and returns the fallback — fine for ADD (fill in a default),
+        // but on SET that silently reports success while changing nothing.
+        long ParseSizeStrict(string raw, string label)
+        {
+            try { return ParseEmu(raw); }
+            catch
+            {
+                throw new ArgumentException(
+                    $"Invalid {label} '{raw}': expected a length like '6cm', '2in', '72pt' or a raw EMU integer.");
+            }
+        }
+
+        var grpSpPr = wgp.ChildElements.FirstOrDefault(e => e.LocalName == "grpSpPr");
+        var xfrm = grpSpPr != null ? AChild(grpSpPr, "xfrm") : null;
+        var ext = xfrm != null ? AChild(xfrm, "ext") : null;
+
+        string? widthRaw = properties.GetValueOrDefault("width");
+        string? heightRaw = properties.GetValueOrDefault("height");
+        if ((widthRaw != null || heightRaw != null) && ext != null)
+        {
+            long preCx = ReadUnqualifiedLong(ext, "cx") ?? 0;
+            long preCy = ReadUnqualifiedLong(ext, "cy") ?? 0;
+
+            long? newCx = widthRaw  != null ? ParseSizeStrict(widthRaw,  "width")  : null;
+            long? newCy = heightRaw != null ? ParseSizeStrict(heightRaw, "height") : null;
+            // Reject non-positive: a negative <a:ext> is dropped by the SDK and
+            // corrupts the file (schema MinInclusive); zero makes an invisible
+            // group. Mirrors the pptx group's rejection.
+            if (newCx is <= 0) throw new ArgumentException($"Invalid width '{widthRaw}': width must be a positive size.");
+            if (newCy is <= 0) throw new ArgumentException($"Invalid height '{heightRaw}': height must be a positive size.");
+            // keepAspect=true + a single dimension → scale the OTHER
+            // proportionally so a diagram group stays aspect-correct (a lone
+            // width/height stretch squashes a flowchart). Default honors exactly
+            // the axes the caller passed, matching `set width` on a plain shape
+            // (GitHub #237 — the lock must be opt-in; mirrors the pptx group).
+            bool keepAspect = properties.Any(kv =>
+                kv.Key.Equals("keepAspect", StringComparison.OrdinalIgnoreCase) && IsTruthy(kv.Value));
+            if (keepAspect && newCx != null && newCy == null && preCx > 0)
+                newCy = (long)Math.Round(preCy * (newCx.Value / (double)preCx));
+            else if (keepAspect && newCy != null && newCx == null && preCy > 0)
+                newCx = (long)Math.Round(preCx * (newCy.Value / (double)preCy));
+
+            // The anchor wrapper carries the matching <wp:extent> for the whole group.
+            var wpExtent = wgp.Ancestors()
+                .FirstOrDefault(e => e.LocalName == "anchor" || e.LocalName == "inline")
+                ?.Descendants().FirstOrDefault(e => e.LocalName == "extent" && e.NamespaceUri == WpNs);
+            if (newCx != null)
+            {
+                ext.SetAttribute(new OpenXmlAttribute("cx", "", newCx.Value.ToString()));
+                wpExtent?.SetAttribute(new OpenXmlAttribute("cx", "", newCx.Value.ToString()));
+            }
+            if (newCy != null)
+            {
+                ext.SetAttribute(new OpenXmlAttribute("cy", "", newCy.Value.ToString()));
+                wpExtent?.SetAttribute(new OpenXmlAttribute("cy", "", newCy.Value.ToString()));
+            }
+            if (preCx > 0 && preCy > 0)
+            {
+                double ratio = Math.Min((newCx ?? preCx) / (double)preCx, (newCy ?? preCy) / (double)preCy);
+                if (Math.Abs(ratio - 1.0) > 1e-6) ScaleGroupFontHalfPts(wgp, ratio);
+            }
+        }
+
+        // x / y reposition the whole floating group by updating the anchor's
+        // <wp:positionH>/<wp:positionV> <wp:posOffset> (matches the pptx group's
+        // set x/y, so an agent can move the diagram as a unit in either format).
+        string? xRaw = properties.GetValueOrDefault("x");
+        string? yRaw = properties.GetValueOrDefault("y");
+        if (xRaw != null || yRaw != null)
+        {
+            var anchor = wgp.Ancestors()
+                .FirstOrDefault(e => e.LocalName == "anchor" && e.NamespaceUri == WpNs)
+                as DW.Anchor;
+            if (anchor != null)
+            {
+                if (xRaw != null)
+                    SetAnchorAxisOffset(anchor.GetFirstChild<DW.HorizontalPosition>(),
+                        ParseSizeStrict(xRaw, "x"));
+                if (yRaw != null)
+                    SetAnchorAxisOffset(anchor.GetFirstChild<DW.VerticalPosition>(),
+                        ParseSizeStrict(yRaw, "y"));
+            }
+        }
+
+        foreach (var k in properties.Keys)
+            if (k.ToLowerInvariant() is not ("width" or "height" or "x" or "y" or "keepaspect"))
+                unsupported.Add(k);
+        SaveDoc();
+        return unsupported;
+    }
+
+    // Set a floating anchor axis (positionH/positionV) to an absolute EMU
+    // <wp:posOffset>, replacing any <wp:align> (align and posOffset are a schema
+    // choice — mutually exclusive). No-op if the axis element is absent.
+    private static void SetAnchorAxisOffset(OpenXmlElement? posAxis, long emu)
+    {
+        if (posAxis == null) return;
+        posAxis.ChildElements
+            .Where(e => e.LocalName is "align" or "posOffset")
+            .ToList().ForEach(e => e.Remove());
+        posAxis.AppendChild(new DW.PositionOffset(emu.ToString()));
+    }
+
+    // Multiply every child run's font size (w:sz / w:szCs, in half-points) by
+    // <paramref name="ratio"/>, floor 1pt (2 half-points).
+    private static void ScaleGroupFontHalfPts(OpenXmlElement wgp, double ratio)
+    {
+        foreach (var sz in wgp.Descendants<FontSize>())
+            if (int.TryParse(sz.Val?.Value, out var hp))
+                sz.Val = Math.Max(2, (int)Math.Round(hp * ratio)).ToString();
+        foreach (var sz in wgp.Descendants<FontSizeComplexScript>())
+            if (int.TryParse(sz.Val?.Value, out var hp))
+                sz.Val = Math.Max(2, (int)Math.Round(hp * ratio)).ToString();
+    }
+
+    /// <summary>
+    /// Insert a freshly-built spPr child (solidFill/noFill/ln) at the correct
+    /// CT_ShapeProperties position. Order is: xfrm, prstGeom (or custGeom), fill
+    /// (noFill/solidFill/gradFill/blipFill/pattFill/grpFill), ln, effectLst, …
+    /// We place fill before any existing ln; ln after any existing fill. Falls
+    /// back to append when no successor anchor is present.
+    /// </summary>
+    private static void InsertSpPrChildInOrder(OpenXmlElement spPr, OpenXmlElement child, string aNs)
+    {
+        bool isLn = child.LocalName == "ln";
+        if (isLn)
+        {
+            // ln goes after fill/prstGeom/xfrm but before effectLst/scene3d/…
+            var after = spPr.ChildElements.LastOrDefault(e => e.NamespaceUri == aNs
+                && e.LocalName is "noFill" or "solidFill" or "gradFill" or "blipFill" or "pattFill" or "grpFill"
+                    or "prstGeom" or "custGeom" or "xfrm");
+            if (after != null) { after.InsertAfterSelf(child); return; }
+            spPr.AppendChild(child);
+            return;
+        }
+        // fill: after prstGeom/xfrm, before ln (and anything later).
+        var lnEl = spPr.ChildElements.FirstOrDefault(e => e.LocalName == "ln" && e.NamespaceUri == aNs);
+        if (lnEl != null) { lnEl.InsertBeforeSelf(child); return; }
+        var geomOrXfrm = spPr.ChildElements.LastOrDefault(e => e.NamespaceUri == aNs
+            && e.LocalName is "prstGeom" or "custGeom" or "xfrm");
+        if (geomOrXfrm != null) { geomOrXfrm.InsertAfterSelf(child); return; }
+        spPr.AppendChild(child);
+    }
+
+    /// <summary>
+    /// Read the current outline (<c>a:ln</c>) sub-properties — width (as an
+    /// explicit "<emu>emu" string), dash style and color — into the
+    /// <paramref name="style"/>/<paramref name="width"/>/<paramref name="color"/>
+    /// slots, but ONLY where the caller left them null. Lets a partial
+    /// <c>set line.X</c> preserve the unspecified sub-props instead of letting
+    /// BuildLineXml reset them to its defaults (black solid, theme width).
+    /// </summary>
+    private static void ReadExistingLine(OpenXmlElement ln, string aNs,
+        ref string? style, ref string? width, ref string? color)
+    {
+        if (width == null)
+        {
+            var w = ReadUnqualifiedLong(ln, "w");
+            // FormatEmu-style explicit suffix so ParseEmu reads it back as raw
+            // EMU (a bare integer would be mis-read as points).
+            if (w is > 0) width = $"{w}emu";
+        }
+        if (style == null)
+        {
+            var dash = ln.ChildElements
+                .FirstOrDefault(e => e.LocalName == "prstDash" && e.NamespaceUri == aNs);
+            var dashVal = dash?.GetAttributes()
+                .FirstOrDefault(a => a.LocalName == "val" && string.IsNullOrEmpty(a.NamespaceUri)).Value;
+            if (!string.IsNullOrEmpty(dashVal)) style = dashVal;
+        }
+        if (color == null)
+        {
+            var solidFill = ln.ChildElements
+                .FirstOrDefault(e => e.LocalName == "solidFill" && e.NamespaceUri == aNs);
+            var srgb = solidFill?.ChildElements
+                .FirstOrDefault(e => e.LocalName == "srgbClr" && e.NamespaceUri == aNs);
+            var clrVal = srgb?.GetAttributes()
+                .FirstOrDefault(a => a.LocalName == "val" && string.IsNullOrEmpty(a.NamespaceUri)).Value;
+            if (!string.IsNullOrEmpty(clrVal)) color = clrVal;
+        }
+    }
+
+    /// <summary>Read an unqualified (no-namespace) integer attribute off an
+    /// element, returning null when absent/unparsable.</summary>
+    private static long? ReadUnqualifiedLong(OpenXmlElement? el, string name)
+    {
+        if (el == null) return null;
+        var attr = el.GetAttributes().FirstOrDefault(a => a.LocalName == name && string.IsNullOrEmpty(a.NamespaceUri));
+        return long.TryParse(attr.Value, out var v) ? v : (long?)null;
+    }
+
+    /// <summary>Parse a DrawingML spPr fragment (e.g. "&lt;a:solidFill&gt;…")
+    /// into an OpenXmlElement, keeping the a:/wps: namespace context alive.
+    /// Mirrors ParseDrawingFromXml's XmlReader-via-wrapper approach.</summary>
+    private static OpenXmlElement ParseShapeFragment(string fragment)
+    {
+        // Route through a w:p > w:r > w:drawing wrapper (same approach as
+        // ParseDrawingFromXml) so the a:/wps: prefixes resolve, then lift the
+        // built fragment out of the parsed spPr.
+        var wrapXml =
+            $@"<w:p xmlns:w=""http://schemas.openxmlformats.org/wordprocessingml/2006/main"" xmlns:wp=""http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"" xmlns:wps=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><w:r><w:drawing><wp:inline><a:graphic><a:graphicData uri=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wps:wsp><wps:spPr>{fragment}</wps:spPr></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>";
+        var p = new Paragraph(wrapXml);
+        var spPr = p.Descendants().FirstOrDefault(e => e.LocalName == "spPr"
+            && e.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingShape");
+        var first = spPr?.FirstChild
+            ?? throw new InvalidOperationException("Shape fragment parse failed");
+        first.Remove();
+        return first;
+    }
+
+>>>>>>> upstream/main
 }

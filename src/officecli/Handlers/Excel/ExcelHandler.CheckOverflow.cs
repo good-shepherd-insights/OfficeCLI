@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -124,8 +128,13 @@ public partial class ExcelHandler
         var sheetFmtPr = ws.GetFirstChild<SheetFormatProperties>();
         double defaultRowHeightPt = sheetFmtPr?.DefaultRowHeight?.Value ?? 15.0;
         double defaultColWidthPt = sheetFmtPr?.DefaultColumnWidth?.Value != null
+<<<<<<< HEAD
             ? sheetFmtPr.DefaultColumnWidth.Value * 7.0017 * 0.75
             : 8.43 * 7.0017 * 0.75;
+=======
+            ? sheetFmtPr.DefaultColumnWidth.Value * ColWidthCharToPt
+            : ExcelDefaultColWidthPt;
+>>>>>>> upstream/main
         return new OverflowContext(BuildMergeMap(ws), GetColumnWidths(ws), rowHeights,
             defaultRowHeightPt, defaultColWidthPt);
     }

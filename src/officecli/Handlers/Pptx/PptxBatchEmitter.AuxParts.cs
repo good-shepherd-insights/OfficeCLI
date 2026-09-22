@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 namespace OfficeCli.Handlers;
@@ -44,6 +48,10 @@ public static partial class PptxBatchEmitter
     private static readonly HashSet<string> AuxKnownEmittedExact = new(StringComparer.OrdinalIgnoreCase)
     {
         "/ppt/presentation.xml",
+<<<<<<< HEAD
+=======
+        "/ppt/tableStyles.xml",          // custom table-style catalogue — EmitTableStyles
+>>>>>>> upstream/main
         // OPC auto-managed
         "/docProps/core.xml",            // restamped by OfficeCliMetadata
         "/docProps/app.xml",             // restamped by OfficeCliMetadata
@@ -60,9 +68,17 @@ public static partial class PptxBatchEmitter
         "/ppt/notesMasters/",     // EmitNotesMasterRaw
         "/ppt/notesSlides/",      // EmitNotes per-slide
         "/ppt/media/",            // picture/media embed — EmitPicture / EmitMediaForSlide
+<<<<<<< HEAD
         "/ppt/embeddings/",       // chart xlsx / OLE payloads — EmitChart / EmitOleForSlide
         "/ppt/charts/",           // chart XML — EmitChart
         "/ppt/diagrams/",         // SmartArt — EmitSmartArtsForSlide
+=======
+        "/media/",                // package-root media — same picture/media carriers
+        "/ppt/embeddings/",       // chart xlsx / OLE payloads — EmitChart / EmitOleForSlide
+        "/ppt/charts/",           // chart XML — EmitChart
+        "/ppt/diagrams/",         // SmartArt — EmitSmartArtsForSlide
+        "/ppt/printerSettings/",  // presentation-level ExtendedPart — carried via add-part extpart (GetPresentationExtendedParts)
+>>>>>>> upstream/main
     };
 
     // Maps an unsupported part URI (or URI prefix) → human-readable reason.
@@ -85,7 +101,10 @@ public static partial class PptxBatchEmitter
         ("/ppt/tableStyles.xml",            "tableStyles",            "custom table-style catalogue dropped on dump"),
         ("/ppt/viewProps.xml",              "viewProps",              "view-pane / zoom / sorter settings dropped on dump"),
         ("/ppt/handoutMasters/",            "handoutMaster",          "handout master dropped on dump"),
+<<<<<<< HEAD
         ("/ppt/printerSettings/",           "printerSettings",        "printer-settings binary dropped on dump (also stripped by the OpenXml SDK on save)"),
+=======
+>>>>>>> upstream/main
         ("/ppt/customXml/",                 "customXml",              "customXml part dropped on dump (custom data store / content-control bindings)"),
         ("/customXml/",                     "customXml",              "customXml part dropped on dump (custom data store / content-control bindings)"),
         ("/ppt/fonts/",                     "embeddedFont",           "embedded font binary (.fntdata) dropped on dump"),

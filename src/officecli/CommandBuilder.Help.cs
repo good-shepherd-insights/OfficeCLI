@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -63,16 +67,30 @@ static partial class CommandBuilder
                 "  officecli skills <agent>                Install base SKILL.md to a specific agent",
                 "  officecli skills list                   List all available skills",
                 "",
+<<<<<<< HEAD
                 "Skills: pptx, word, excel, morph-ppt, pitch-deck, academic-paper, data-dashboard, financial-model",
                 "Agents: claude, copilot, codex, cursor, windsurf, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, all",
+=======
+                "Skills: pptx, word, excel, word-form, morph-ppt, morph-ppt-3d, pitch-deck, academic-paper, data-dashboard, financial-model",
+                "Agents: claude, copilot, codex, cursor, pi, windsurf, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, dsh, all",
+>>>>>>> upstream/main
             },
             ["load_skill"] = new[]
             {
                 "Usage:",
+<<<<<<< HEAD
                 "  officecli load_skill <name>   Print the named skill's SKILL.md to stdout (no install)",
                 "",
                 "Skills: pptx, word, excel, morph-ppt, morph-ppt-3d, pitch-deck, academic-paper, data-dashboard, financial-model",
                 "To install a skill on disk, run: officecli skills install <name>",
+=======
+                "  officecli load_skill                         List all skills with the triggers that say when to use each",
+                "  officecli load_skill <name>                 Print the skill's SKILL.md + a manifest of its bundled reference files",
+                "  officecli load_skill <name> --path <relpath> Print one bundled reference file (e.g. --path reference/decision-rules.md)",
+                "",
+                "Skills: pptx, word, excel, word-form, morph-ppt, morph-ppt-3d, pitch-deck, academic-paper, data-dashboard, financial-model",
+                "To install a skill (with binary assets) on disk, run: officecli skills install <name>",
+>>>>>>> upstream/main
             },
             ["install"] = new[]
             {
@@ -81,7 +99,11 @@ static partial class CommandBuilder
                 "  officecli install <target>  Install to a specific agent (claude, copilot, cursor, vscode, ...)",
                 "",
                 "Equivalent to: installing the binary, then `officecli skills install` and `officecli mcp <target>`.",
+<<<<<<< HEAD
                 "Targets: claude, copilot, codex, cursor, windsurf, vscode, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, all",
+=======
+                "Targets: claude, copilot, codex, cursor, pi, windsurf, vscode, minimax, opencode, openclaw, nanobot, zeroclaw, hermes, dsh, all",
+>>>>>>> upstream/main
             },
         };
 
@@ -293,6 +315,11 @@ static partial class CommandBuilder
             Console.WriteLine("  Aliases: word→docx, excel→xlsx, ppt/powerpoint→pptx");
             Console.WriteLine();
             Console.WriteLine("Tip: most shells expand [brackets] — quote paths: officecli get doc.docx \"/body/p[1]\"");
+<<<<<<< HEAD
+=======
+            Console.WriteLine();
+            Console.WriteLine("Exit codes: 0 = landed · 1 = failed (envelope carries error) · 2 = ran with caveats (warnings[]; read `success` — it may be false when every prop was refused)");
+>>>>>>> upstream/main
             return 0;
         }
 
@@ -327,6 +354,30 @@ static partial class CommandBuilder
             }
         }
 
+<<<<<<< HEAD
+=======
+        // Case 1c: `help <format> <command>` where the trailing token is a CLI
+        // command rather than a schema element (`help docx move`, `help pptx
+        // swap`). move/swap/validate/… have no element schema, so this used to
+        // fall to Case 3 and die with "unknown element 'move' — did you mean
+        // ole?" on stderr and nothing on stdout, which a help-forwarding caller
+        // showed the user as an empty reference. Route it to the command's own
+        // SCL help, the same output `officecli move --help` gives.
+        if (rootCommand != null
+            && SchemaHelpLoader.IsKnownFormat(format)
+            && verb == null
+            && element != null
+            && !HelpVerbs.Contains(element, StringComparer.OrdinalIgnoreCase)
+            && rootCommand.Subcommands.FirstOrDefault(
+                   c => string.Equals(c.Name, element, StringComparison.OrdinalIgnoreCase)
+                        && !c.Hidden && c.Name != "help") is { } cmd)
+        {
+            Console.WriteLine($"'{cmd.Name}' is a command, not a {SchemaHelpLoader.NormalizeFormat(format)} element — showing command help. Element reference: officecli help {SchemaHelpLoader.NormalizeFormat(format)} <element>");
+            Console.WriteLine();
+            return rootCommand.Parse(new[] { cmd.Name, "--help" }).Invoke();
+        }
+
+>>>>>>> upstream/main
         // Validate verb if supplied.
         if (verb != null && !HelpVerbs.Contains(verb, StringComparer.OrdinalIgnoreCase))
         {

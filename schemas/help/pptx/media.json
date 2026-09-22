@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "media",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["video", "audio"],
+>>>>>>> upstream/main
   "parent": "slide",
   "operations": {
     "add": true,

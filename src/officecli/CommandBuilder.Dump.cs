@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -12,13 +16,22 @@ static partial class CommandBuilder
 {
     private static Command BuildDumpCommand(Option<bool> jsonOption)
     {
+<<<<<<< HEAD
         var dumpFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx or .pptx)" };
+=======
+        var dumpFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .pptx, or .xlsx)" };
+>>>>>>> upstream/main
         var dumpPathArg = new Argument<string>("path")
         {
             Description = "DOM path of the subtree to dump. Defaults to '/' (whole document) when omitted. "
                         + "Supported docx subtree paths: /, /body, /body/p[N], /body/tbl[N], /theme, /settings, /numbering, /styles. "
                         + "Supported pptx subtree paths: /, /presentation, /slide[N], /theme, /notesMaster, /slideMaster[N], /slideLayout[N], /noteSlide[N]. "
+<<<<<<< HEAD
                         + "Subtree dumps do NOT include resources at sibling paths (styles/numbering/theme; pptx: master/layout/theme); replay target must already define referenced styles/numIds/layouts.",
+=======
+                        + "Supported xlsx subtree paths: /, /SheetName, /sheet[N]. "
+                        + "Subtree dumps do NOT include resources at sibling paths (styles/numbering/theme; pptx: master/layout/theme; xlsx: workbook settings/named ranges); replay target must already define referenced styles/numIds/layouts.",
+>>>>>>> upstream/main
             DefaultValueFactory = _ => "/"
         };
         var formatOpt = new Option<string>("--format")
@@ -38,7 +51,11 @@ static partial class CommandBuilder
         dumpCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(dumpFileArg)!;
+<<<<<<< HEAD
             var path = result.GetValue(dumpPathArg) ?? "/";
+=======
+            var path = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(dumpPathArg)) ?? "/";
+>>>>>>> upstream/main
             var format = (result.GetValue(formatOpt) ?? "batch").ToLowerInvariant();
             var outPath = result.GetValue(outOpt);
 
@@ -47,12 +64,21 @@ static partial class CommandBuilder
                     { Code = "invalid_format", ValidValues = ["batch"] };
 
             var ext = Path.GetExtension(file.FullName).ToLowerInvariant();
+<<<<<<< HEAD
             if (ext != ".docx" && ext != ".pptx")
                 throw new CliException($"dump currently supports .docx and .pptx (got {ext})")
                     { Code = "unsupported_format" };
 
             // CONSISTENCY(file-not-found): mirror the get/set/query format —
             // "File not found: <path>. Use 'officecli new <path>' to create a
+=======
+            if (ext != ".docx" && ext != ".pptx" && ext != ".xlsx")
+                throw new CliException($"dump currently supports .docx, .pptx and .xlsx (got {ext})")
+                    { Code = "unsupported_format" };
+
+            // CONSISTENCY(file-not-found): mirror the get/set/query format —
+            // "File not found: <path>. Use 'officecli create <path>' to create a
+>>>>>>> upstream/main
             // blank document, or check the file extension.". Without this
             // early guard the dump path falls through to the SDK opener whose
             // raw '.NET Could not find file' message disagrees with every
@@ -60,7 +86,11 @@ static partial class CommandBuilder
             if (!File.Exists(file.FullName))
                 throw new CliException(
                     $"File not found: {file.FullName}. " +
+<<<<<<< HEAD
                     $"Use 'officecli new {file.FullName}' to create a blank document, " +
+=======
+                    $"Use 'officecli create {file.FullName}' to create a blank document, " +
+>>>>>>> upstream/main
                     $"or check the file extension.")
                     { Code = "file_not_found" };
 
@@ -129,7 +159,11 @@ static partial class CommandBuilder
                     }
                 }
             }
+<<<<<<< HEAD
             else // .pptx
+=======
+            else if (ext == ".pptx")
+>>>>>>> upstream/main
             {
                 var ppt = (PowerPointHandler)handler;
                 var (pItems, pWarnings) = PptxBatchEmitter.EmitPptx(ppt, path);
@@ -152,6 +186,30 @@ static partial class CommandBuilder
                     }
                 }
             }
+<<<<<<< HEAD
+=======
+            else // .xlsx
+            {
+                var xl = (ExcelHandler)handler;
+                var (xItems, xWarnings) = ExcelBatchEmitter.EmitExcel(xl, path);
+                items = xItems;
+                if (xWarnings.Count > 0)
+                {
+                    dumpWarnings = new List<CliWarning>(xWarnings.Count);
+                    foreach (var w in xWarnings)
+                    {
+                        dumpWarnings.Add(new CliWarning
+                        {
+                            Message = $"skipped {w.Element} at {w.Path}: {w.Reason}",
+                            Code = "unsupported_element"
+                        });
+                        // CONSISTENCY(dump-text-clean-output): see docx branch.
+                        if (warnToStderr)
+                            Console.Error.WriteLine($"warning: skipped {w.Element} at {w.Path}: {w.Reason}");
+                    }
+                }
+            }
+>>>>>>> upstream/main
 
             // Compact JSON (single line) is the canonical batch wire form:
             // `batch run` consumes it directly and AI tooling pipes it through
@@ -159,6 +217,12 @@ static partial class CommandBuilder
             // constructed a JsonSerializerOptions{WriteIndented=true} that was
             // never threaded into Serialize — kept the compact behavior, just
             // dropped the dead options block.
+<<<<<<< HEAD
+=======
+            // NEWLINE-SEMANTICS-V2: stamp the dump version so replay knows
+            // '\v' (not '\n') encodes soft line breaks in text props.
+            items.Insert(0, OfficeCli.Core.BatchCompat.MetaItem());
+>>>>>>> upstream/main
             var output = JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
             // BUG-R4-FUZZ-3: Unix convention — `--out -` means stdout, not a
             // file literally named "-". Without this, running `dump --out -`

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
@@ -80,6 +84,7 @@ internal static class ParseHelpers
     };
 
     /// <summary>
+<<<<<<< HEAD
     /// Try to resolve a named color, <c>rgb()</c>, <c>rgba()</c>, <c>hsl()</c>,
     /// or <c>hsla()</c> notation to a 6-digit hex RGB plus an optional alpha
     /// byte. Returns <c>null</c> if the input is none of the above (callers
@@ -93,6 +98,32 @@ internal static class ParseHelpers
     ///   hsl(h s% l%)         hsla(h s% l% / a)     — CSS Level 4 space-separated
     /// Alpha forms: 0..1 float (CSS default) or 0..100% (CSS Level 4).
     /// </summary>
+=======
+    /// Resolve a named color (CSS keyword / OOXML a:prstClr preset that overlaps
+    /// the CSS set, e.g. <c>black</c>/<c>white</c>/<c>red</c>) to its 6-digit hex,
+    /// or <c>null</c> when the name is unknown. Used by pptx a:prstClr readback so
+    /// preset-color fills round-trip as concrete hex instead of being dropped.
+    /// </summary>
+    internal static string? TryGetNamedColorHex(string? name)
+        => !string.IsNullOrWhiteSpace(name) && NamedColors.TryGetValue(name.Trim(), out var hex)
+            ? hex
+            : null;
+
+    /// <summary>
+    /// Try to resolve a named color, <c>rgb()</c>, <c>rgba()</c>, <c>hsl()</c>,
+    /// or <c>hsla()</c> notation to a 6-digit hex RGB plus an optional alpha
+    /// byte. Returns <c>null</c> if the input is none of the above (callers
+    /// should then fall through to the bare-hex parsers).
+    ///
+    /// Accepted CSS forms (case-insensitive, leading/trailing whitespace
+    /// tolerated):
+    ///   rgb(r,g,b)           rgba(r,g,b,a)         — 0–255 ints or 0–100% percentages, mixable
+    ///   rgb(r g b)           rgba(r g b / a)       — CSS Level 4 space-separated
+    ///   hsl(h,s%,l%)         hsla(h,s%,l%,a)       — h: deg (or unitless = deg), s/l: %
+    ///   hsl(h s% l%)         hsla(h s% l% / a)     — CSS Level 4 space-separated
+    /// Alpha forms: 0..1 float (CSS default) or 0..100% (CSS Level 4).
+    /// </summary>
+>>>>>>> upstream/main
     private static (string Rgb, byte? Alpha)? TryResolveColorInput(string value)
     {
         var trimmed = value.Trim();
@@ -286,6 +317,65 @@ internal static class ParseHelpers
     };
 
     /// <summary>
+    /// Tolerance used when comparing SpreadsheetML @tint values. Get emits the
+    /// tint rounded to 2 decimal percent, so a replayed `accent1+tint80` has to
+    /// match the 0.79998168889431442 Excel actually wrote — otherwise every
+    /// dump→batch round-trip would append a near-duplicate fill/font.
+    /// Excel's own palette steps are 0.2 apart, so 0.005 cannot collide.
+    /// </summary>
+    public const double ExcelTintEpsilon = 0.005;
+
+    /// <summary>
+    /// Split a scheme color value carrying an optional SpreadsheetML tint
+    /// suffix: "accent1+tint40" → ("accent1", 0.40), "dk2+tint-25" →
+    /// ("dk2", -0.25). Values without a recognised `+tint…` suffix come back
+    /// unchanged with a null tint, so hex colors and plain names pass through.
+    ///
+    /// CONSISTENCY(scheme-color): the `name+transform` shape mirrors the pptx
+    /// color-transform suffix (`accent1+lumMod75`, see DrawingColorBuilder).
+    /// The value range differs on purpose — SpreadsheetML ST_Tint is SIGNED
+    /// (-1..1, negative darkens) whereas DrawingML a:tint is 0..100% only, so
+    /// this parser accepts -100..100 percent rather than reusing that parser.
+    /// </summary>
+    public static (string BaseName, double? Tint) SplitExcelColorTint(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return (value ?? "", null);
+        var plus = value.LastIndexOf('+');
+        if (plus <= 0) return (value, null);
+        var suffix = value[(plus + 1)..];
+        if (!suffix.StartsWith("tint", StringComparison.OrdinalIgnoreCase))
+            return (value, null);
+        var numText = suffix[4..].TrimStart('=');
+        if (!double.TryParse(numText, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var pct))
+            throw new ArgumentException(
+                $"Invalid tint '{suffix}': expected a percentage, e.g. 'accent1+tint40' or 'dk2+tint-25'.");
+        if (double.IsNaN(pct) || pct < -100 || pct > 100)
+            throw new ArgumentException(
+                $"Invalid tint '{suffix}': percentage must be between -100 and 100 (negative darkens, positive lightens).");
+        return (value[..plus], pct / 100.0);
+    }
+
+    /// <summary>
+    /// Inverse of <see cref="SplitExcelColorTint"/>: render a theme index plus
+    /// its stored tint as the canonical round-trip string. A zero/absent tint
+    /// emits the bare scheme name so existing output is unchanged.
+    /// </summary>
+    public static string? ExcelThemeNameWithTint(uint themeIndex, double? tint)
+    {
+        var name = ExcelThemeIndexToName(themeIndex);
+        if (name == null) return null;
+        if (tint is not { } t || Math.Abs(t) < ExcelTintEpsilon) return name;
+        var pct = Math.Round(t * 100.0, 2);
+        return name + "+tint" + pct.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Two SpreadsheetML @tint values are the same fill/font when they
+    /// agree within <see cref="ExcelTintEpsilon"/>; absent counts as zero.</summary>
+    public static bool ExcelTintMatches(double? a, double? b)
+        => Math.Abs((a ?? 0.0) - (b ?? 0.0)) < ExcelTintEpsilon;
+
+    /// <summary>
     /// Returns true if the value is a recognized boolean string and is truthy.
     /// Returns false for null, empty, or recognized falsy values ("false", "0", "no", "off").
     /// Throws <see cref="ArgumentException"/> for non-null values that are not recognized boolean strings.
@@ -412,11 +502,69 @@ internal static class ParseHelpers
     }
 
     /// <summary>
+    /// Parse a "start:end" character-range spec into 0-based, half-open offsets.
+    /// Colon separator mirrors the officecli range convention (Excel A1:B2).
+    /// Shared by the pptx and docx run-range formatting paths so the two never
+    /// diverge (CONSISTENCY(char-range)).
+    /// </summary>
+    public static (int Start, int End) ParseCharRange(string spec)
+    {
+        var parts = spec.Split(':');
+        if (parts.Length != 2
+            || !int.TryParse(parts[0].Trim(), CultureInfo.InvariantCulture, out var start)
+            || !int.TryParse(parts[1].Trim(), CultureInfo.InvariantCulture, out var end))
+            throw new ArgumentException(
+                $"Invalid range '{spec}'. Expected 'start:end' with 0-based integer " +
+                "character offsets (e.g. '6:11').");
+        if (start < 0 || end < 0)
+            throw new ArgumentException($"Invalid range '{spec}': offsets must be non-negative.");
+        if (end < start)
+            throw new ArgumentException($"Invalid range '{spec}': end ({end}) must be >= start ({start}).");
+        return (start, end);
+    }
+
+    /// <summary>
+    /// Parse a comma-separated list of "start:end" character ranges into 0-based,
+    /// half-open offset pairs (e.g. "6:11,20:25" → [(6,11),(20,25)]). A single
+    /// range needs no comma. This lets one range= command target several disjoint
+    /// spans — the same shape find's format path produces from multiple matches —
+    /// so range is a complete addressing alternative wherever the caller already
+    /// knows the offsets. Order is preserved; the caller applies them (format-only
+    /// run splitting does not shift character offsets, so any order is safe).
+    /// </summary>
+    public static List<(int Start, int End)> ParseCharRanges(string spec)
+    {
+        var result = new List<(int Start, int End)>();
+        foreach (var seg in spec.Split(','))
+        {
+            var trimmed = seg.Trim();
+            if (trimmed.Length == 0) continue;
+            result.Add(ParseCharRange(trimmed));
+        }
+        if (result.Count == 0)
+            throw new ArgumentException(
+                $"Invalid range '{spec}'. Expected one or more 'start:end' ranges " +
+                "(e.g. '6:11' or '6:11,20:25').");
+        // Normalize to ascending position order (by Start, then End) regardless of
+        // the order the caller listed them. This matches find, whose matches are
+        // inherently position-ordered, and lets a future text-mutating path process
+        // ranges back-to-front (descending) so earlier offsets stay valid — the same
+        // reason ProcessFindInParagraph iterates its matches in reverse.
+        result.Sort((a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.End.CompareTo(b.End));
+        return result;
+    }
+
+    /// <summary>
     /// Safely parse a string as double, throwing ArgumentException with a clear message on failure.
     /// </summary>
     public static double SafeParseDouble(string value, string propertyName)
     {
-        if (!double.TryParse(value, CultureInfo.InvariantCulture, out var result) || double.IsNaN(result) || double.IsInfinity(result))
+        // NumberStyles.Float (NOT the default Float|AllowThousands) — matches every
+        // other numeric parser in this file. AllowThousands would silently strip a
+        // decimal comma ("45,5" -> 455), producing a 10x/1000x-wrong value from a
+        // comma-decimal-locale input instead of rejecting it.
+        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result)
+            || double.IsNaN(result) || double.IsInfinity(result))
             throw new ArgumentException($"Invalid '{propertyName}' value '{value}'. Expected a finite number.");
         return result;
     }
@@ -439,6 +587,25 @@ internal static class ParseHelpers
     }
 
     /// <summary>
+<<<<<<< HEAD
+=======
+    /// Convert a linear-gradient angle in whole degrees to OOXML
+    /// ST_PositiveFixedAngle units (60000ths of a degree). The raw
+    /// `degrees * 60000` multiply overflows Int32 for |degrees| ≳ 35792
+    /// (e.g. 99999° wraps to a garbage 1.7e9 angle that real Excel refuses
+    /// with 0x800A03EC). Reducing modulo 360 first keeps the value in the
+    /// spec range [0, 21600000) — geometrically identical, overflow-proof,
+    /// and always producing a file Excel accepts. Shared by the shape and
+    /// chart gradient builders so their angle handling stays consistent.
+    /// </summary>
+    public static int GradientAngleToOoxmlUnits(int degrees)
+    {
+        var normalized = ((degrees % 360) + 360) % 360;
+        return normalized * 60000;
+    }
+
+    /// <summary>
+>>>>>>> upstream/main
     /// Safely parse a string as uint, throwing ArgumentException with a clear message on failure.
     /// </summary>
     public static uint SafeParseUint(string value, string propertyName)
@@ -584,7 +751,11 @@ internal static class ParseHelpers
             // dk/lt collapse to canonical dark/light (no separate user-facing
             // form). tx/bg map to text/background — the SDK distinguishes
             // SchemeColorValues.Text1 / Background1 from Dark1 / Light1, and
+<<<<<<< HEAD
             // CLAUDE.md ("scheme colors pass through unchanged") demands the
+=======
+            // the project conventions ("scheme colors pass through unchanged") demands the
+>>>>>>> upstream/main
             // user-supplied form survives Get; collapsing tx1→dark1 would
             // break that contract for text1/text2/background1/background2 set
             // by the user.
@@ -738,6 +909,7 @@ internal static class ParseHelpers
     }
 
     /// <summary>
+<<<<<<< HEAD
     /// Reject XML 1.0 illegal control characters before they reach the OOXML
     /// serializer. Without this, the resident process accepts the value into
     /// the in-memory DOM and only fails at close-time with "save failed —
@@ -745,16 +917,60 @@ internal static class ParseHelpers
     /// (0x0A), \r (0x0D). Rejected: 0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F.
     /// </summary>
     public static void ValidateXmlText(string? value, string propName)
+=======
+    /// Reject XML 1.0 illegal characters before they reach the OOXML
+    /// serializer. Without this, the resident process accepts the value into
+    /// the in-memory DOM and only fails at close-time with "save failed —
+    /// data may be lost", losing the user's work.
+    ///
+    /// XML 1.0 §2.2 Char := #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    /// Rejected: 0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F, lone UTF-16 surrogates
+    /// (U+D800–U+DFFF without a matching pair), and the U+FFFE / U+FFFF
+    /// noncharacters.
+    /// </summary>
+    public static void ValidateXmlText(string? value, string propName, bool allowSoftBreakChar = false)
+>>>>>>> upstream/main
     {
         if (value == null) return;
         for (int i = 0; i < value.Length; i++)
         {
             char c = value[i];
             if (c == '\t' || c == '\n' || c == '\r') continue;
+<<<<<<< HEAD
             if (c < 0x20)
                 throw new ArgumentException(
                     $"{propName} contains XML-illegal control character U+{(int)c:X4} at position {i}. " +
                     "Allowed control chars: \\t, \\n, \\r.");
+=======
+            // '\v' (0x0B) is XML-illegal as character data. It is allowed ONLY
+            // when the caller consumes it into a break ELEMENT before
+            // serialization (NEWLINE-SEMANTICS-V2: AppendTextWithBreaks turns
+            // '\v' into <w:br/>). Callers that write validated text verbatim
+            // into XML (chart titles, xlsx cell values, headers, ...) keep the
+            // strict default so '\v' can never reach raw character data.
+            if (c == '\v' && allowSoftBreakChar) continue;
+            if (c < 0x20)
+                throw new ArgumentException(
+                    $"{propName} contains XML-illegal control character U+{(int)c:X4} at position {i}. " +
+                    "Allowed control chars: \\t, \\n, \\r" +
+                    (allowSoftBreakChar ? ", \\v." : "."));
+            // UTF-16 surrogates only valid in pairs (high then low). A lone
+            // half is illegal in XML 1.0 character data.
+            if (char.IsHighSurrogate(c))
+            {
+                if (i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1]))
+                    throw new ArgumentException(
+                        $"{propName} contains an unpaired high surrogate U+{(int)c:X4} at position {i}. Use a complete UTF-16 surrogate pair.");
+                i++; // skip the matched low surrogate
+                continue;
+            }
+            if (char.IsLowSurrogate(c))
+                throw new ArgumentException(
+                    $"{propName} contains an unpaired low surrogate U+{(int)c:X4} at position {i}. Use a complete UTF-16 surrogate pair.");
+            if (c == 0xFFFE || c == 0xFFFF)
+                throw new ArgumentException(
+                    $"{propName} contains the XML-illegal noncharacter U+{(int)c:X4} at position {i}.");
+>>>>>>> upstream/main
         }
     }
 }

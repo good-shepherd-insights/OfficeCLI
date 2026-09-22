@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
@@ -25,7 +29,11 @@ static partial class CommandBuilder
     private static Command BuildSaveCommand(Option<bool> jsonOption)
     {
         var saveFileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
+<<<<<<< HEAD
         var saveCommand = new Command("save", "Flush the resident's in-memory document to disk without ending the session (requires an active resident; start one with `open`)");
+=======
+        var saveCommand = new Command("save", "Flush in-memory changes to disk, keeping the resident running. Run before a non-officecli program reads the file (officecli's own reads always see edits; a direct disk reader sees the pre-edit file until a flush). A live resident also auto-flushes shortly after going idle (adaptive 2-10s; see OFFICECLI_RESIDENT_FLUSH: each|auto|<seconds>|off). No-op if no resident is active.");
+>>>>>>> upstream/main
         saveCommand.Add(saveFileArg);
         saveCommand.Add(jsonOption);
 
@@ -39,12 +47,25 @@ static partial class CommandBuilder
             // TryResident auto-start path that other verbs use.
             if (!ResidentClient.TryConnect(filePath, out _))
             {
+<<<<<<< HEAD
                 var msg = $"No resident running for {file.Name}. Start one with 'officecli open {file.Name}' before calling save.";
                 if (json)
                     Console.WriteLine(OutputFormatter.WrapEnvelopeError(msg));
                 else
                     Console.Error.WriteLine($"Error: {msg}");
                 return 1;
+=======
+                // No resident session to flush. In the non-resident model the
+                // document on disk is already current (each mutation eager-saved),
+                // so save is a no-op SUCCESS rather than an error — keeping
+                // "edit, then save/close" a safe habit regardless of backend.
+                var msg = $"{file.Name} is already saved to disk.";
+                if (json)
+                    Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
+                else
+                    Console.WriteLine(msg);
+                return 0;
+>>>>>>> upstream/main
             }
 
             var request = new ResidentRequest { Command = "save", Json = json };

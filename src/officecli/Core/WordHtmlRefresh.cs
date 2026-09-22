@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml.Packaging;
@@ -24,8 +28,20 @@ internal static class WordHtmlRefresh
                 doc.MainDocumentPart!.Document!.Save();
             }
 
+<<<<<<< HEAD
             using (var handler = (Handlers.WordHandler)Handlers.DocumentHandlerFactory.Open(docx, editable: false))
                 htmlSnapshot = handler.ViewAsHtml(null);
+=======
+            using (var handler = Handlers.DocumentHandlerFactory.Open(docx, editable: false))
+            {
+                Handlers.Rendering.RenderingBootstrap.EnsureRegistered();
+                var renderer = Rendering.RendererRegistry.Default.Resolve(
+                    "docx", Rendering.RenderOutputKind.Html, Rendering.RenderMode.Static);
+                htmlSnapshot = renderer!.Render(
+                    new Handlers.Rendering.HandlerRenderInput(handler, "docx"),
+                    new Rendering.RenderOptions()).Text!;
+            }
+>>>>>>> upstream/main
 
             var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_refresh_{Guid.NewGuid():N}.html");
             HtmlScreenshot.PaginationResult? pagination;

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -24,7 +28,11 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts3.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts3.Count})");
 
+<<<<<<< HEAD
         var slidePart = slideParts3[slideIdx - 1];
+=======
+        var slidePart = slideParts3[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var pics = shapeTree.Elements<Picture>().ToList();
@@ -32,12 +40,33 @@ public partial class PowerPointHandler
             throw new ArgumentException($"Picture {picIdx} not found (total: {pics.Count})");
 
         var pic = pics[picIdx - 1];
+<<<<<<< HEAD
+=======
+        return ApplyPicturePropertiesCore(slidePart, pic, properties);
+    }
+
+    // Apply picture-set properties to a resolved Picture. Extracted from
+    // SetPictureByPath so the same vocabulary (position/size/src/crop/effects/
+    // link/…) works for a picture nested in a group — SetGroupInnerPictureByPath
+    // resolves the Picture inside the group and delegates here. Without a group
+    // route the deferred picture-effect sets (shadow/glow/brightness/contrast,
+    // schema add:false set:true) that EmitPicture emits for a grouped picture
+    // hit "Element not found" on replay.
+    private List<string> ApplyPicturePropertiesCore(SlidePart slidePart, Picture pic, Dictionary<string, string> properties)
+    {
+>>>>>>> upstream/main
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
             switch (key.ToLowerInvariant())
             {
+<<<<<<< HEAD
                 case "alt":
+=======
+                // CONSISTENCY(picture-alt): full alias set, matching shape Set
+                // (ShapeProperties.cs) and the shared picture schema contract.
+                case "alt" or "alttext" or "description":
+>>>>>>> upstream/main
                     var nvPicPr = pic.NonVisualPictureProperties?.NonVisualDrawingProperties;
                     if (nvPicPr != null) nvPicPr.Description = value;
                     break;
@@ -131,6 +160,37 @@ public partial class PowerPointHandler
                     xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
                     break;
                 }
+<<<<<<< HEAD
+=======
+                case "fliph":
+                {
+                    // CONSISTENCY(shape-picture-parity): mirror ShapeProperties
+                    // flip cases — set/clear xfrm @flipH on the picture's
+                    // Transform2D. Setting false clears the attribute.
+                    var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                    xfrm.HorizontalFlip = IsTruthy(value);
+                    break;
+                }
+                case "flipv":
+                {
+                    var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                    xfrm.VerticalFlip = IsTruthy(value);
+                    break;
+                }
+                case "geometry" or "shape":
+                {
+                    // CONSISTENCY(add-set-parity): Add.Media writes spPr/prstGeom
+                    // for picture geometry=; Set must mirror so the property
+                    // surface agrees across Add and Set.
+                    var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    spPr.RemoveAllChildren<Drawing.PresetGeometry>();
+                    spPr.AppendChild(
+                        new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(value) });
+                    break;
+                }
+>>>>>>> upstream/main
                 case "crop" or "cropleft" or "cropright" or "croptop" or "cropbottom":
                 {
                     // R10: tolerate trailing '%' on crop values — error message
@@ -343,6 +403,55 @@ public partial class PowerPointHandler
                     ApplyGlow(spPrGl, value);
                     break;
                 }
+<<<<<<< HEAD
+=======
+                case "softedge":
+                {
+                    // CONSISTENCY(shape-picture-parity): a picture's spPr carries
+                    // the same effectLst as a shape's. Reuse the shape helper so
+                    // the input vocabulary (e.g. softEdge=10pt) matches exactly.
+                    var spPrSe = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    ApplySoftEdge(spPrSe, value);
+                    break;
+                }
+                case "reflection":
+                {
+                    var spPrRe = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    ApplyReflection(spPrRe, value);
+                    break;
+                }
+                case "bevel" or "beveltop":
+                {
+                    var spPrBv = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    ApplyBevel(spPrBv, value, top: true);
+                    break;
+                }
+                case "bevelbottom":
+                {
+                    var spPrBb = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    ApplyBevel(spPrBb, value, top: false);
+                    break;
+                }
+                case "recolor":
+                {
+                    // <a:grayscl/> under a:blip — Picture Format → Color → Recolor
+                    // → Grayscale. Only "grayscale" is supported (the only fully
+                    // parameter-free recolor); other recolor presets map to
+                    // duotone= which already has its own case.
+                    var rcBlip = pic.BlipFill?.GetFirstChild<Drawing.Blip>();
+                    if (rcBlip == null) { unsupported.Add(key); break; }
+                    rcBlip.RemoveAllChildren<Drawing.Grayscale>();
+                    if (value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                        || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+                        break;
+                    if (!value.Equals("grayscale", StringComparison.OrdinalIgnoreCase)
+                        && !value.Equals("grayscl", StringComparison.OrdinalIgnoreCase)
+                        && !value.Equals("greyscale", StringComparison.OrdinalIgnoreCase))
+                        throw new ArgumentException($"Invalid 'recolor' value: '{value}'. Supported: grayscale, none.");
+                    rcBlip.AppendChild(new Drawing.Grayscale());
+                    break;
+                }
+>>>>>>> upstream/main
                 case "brightness" or "contrast":
                 {
                     // Per OOXML CT_Blip (ECMA-376 §20.1.8.13) the only luminance
@@ -455,7 +564,11 @@ public partial class PowerPointHandler
         var zmSlideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > zmSlideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {zmSlideParts.Count})");
+<<<<<<< HEAD
         var zmSlidePart = zmSlideParts[slideIdx - 1];
+=======
+        var zmSlidePart = zmSlideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var zmShapeTree = GetSlide(zmSlidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
         var zoomElements = GetZoomElements(zmShapeTree);
@@ -612,7 +725,11 @@ public partial class PowerPointHandler
         var m3dSlideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > m3dSlideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {m3dSlideParts.Count})");
+<<<<<<< HEAD
         var m3dSlidePart = m3dSlideParts[slideIdx - 1];
+=======
+        var m3dSlidePart = m3dSlideParts[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var m3dShapeTree = GetSlide(m3dSlidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
         var model3dElements = GetModel3DElements(m3dShapeTree);
@@ -878,7 +995,11 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts4.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts4.Count})");
 
+<<<<<<< HEAD
         var slidePart = slideParts4[slideIdx - 1];
+=======
+        var slidePart = slideParts4[PathIndex.ToArrayIndex(slideIdx)];
+>>>>>>> upstream/main
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
 
@@ -901,9 +1022,16 @@ public partial class PowerPointHandler
         {
             switch (key.ToLowerInvariant())
             {
+<<<<<<< HEAD
                 case "alt":
                 {
                     // CONSISTENCY(media-alt): mirror picture Set (Set.Media.cs:40).
+=======
+                case "alt" or "alttext" or "description":
+                {
+                    // CONSISTENCY(media-alt): mirror picture Set (Set.Media.cs:40).
+                    // CONSISTENCY(picture-alt): full alias set with it too.
+>>>>>>> upstream/main
                     // ViewAsIssues flags missing alt on audio/video <p:pic> too,
                     // so they must be settable through the same surface.
                     var nvDr = pic.NonVisualPictureProperties?.NonVisualDrawingProperties;

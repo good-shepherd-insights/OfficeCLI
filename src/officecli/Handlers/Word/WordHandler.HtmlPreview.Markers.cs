@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
@@ -105,9 +109,22 @@ public partial class WordHandler
             if (ratio > 0)
                 parts.Add($"line-height:{ratio:0.####}");
         }
+<<<<<<< HEAD
         if (rpr.GetFirstChild<Bold>() != null)
             parts.Add("font-weight:bold");
         if (rpr.GetFirstChild<Italic>() != null)
+=======
+        // Bold/Italic are OnOff toggles: ON when the element is present with
+        // no val or a true val, OFF when val is "0"/false. The marker level rPr
+        // commonly carries <w:i w:val="0"/> to turn OFF an italic inherited from
+        // the surrounding context — treating the element's mere presence as ON
+        // wrongly italicized an upright numbered marker. Mirror the run path.
+        var markerBold = rpr.GetFirstChild<Bold>();
+        if (markerBold != null && (markerBold.Val == null || markerBold.Val.Value))
+            parts.Add("font-weight:bold");
+        var markerItalic = rpr.GetFirstChild<Italic>();
+        if (markerItalic != null && (markerItalic.Val == null || markerItalic.Val.Value))
+>>>>>>> upstream/main
             parts.Add("font-style:italic");
         return string.Join(";", parts);
     }
@@ -330,6 +347,14 @@ public partial class WordHandler
         if (inst == null) return null;
         var ovr = inst.Elements<LevelOverride>()
             .FirstOrDefault(o => o.LevelIndex?.Value == ilvl);
+<<<<<<< HEAD
+=======
+        // ECMA-376 §17.9.7: a lvlOverride that embeds a full <w:lvl> replaces
+        // the entire level definition (including its own <w:start>), and the
+        // startOverride is ignored. Defer to the embedded level's start (read
+        // via GetStartValue) by reporting "no override" here.
+        if (ovr?.GetFirstChild<Level>() != null) return null;
+>>>>>>> upstream/main
         return ovr?.StartOverrideNumberingValue?.Val?.Value;
     }
 
@@ -346,14 +371,188 @@ public partial class WordHandler
         if (!fmt.Equals("bullet", StringComparison.OrdinalIgnoreCase)) return null;
         var text = GetLevelText(numId, ilvl);
         if (string.IsNullOrEmpty(text)) return null;
+<<<<<<< HEAD
         // Already covered by the existing disc/circle/square switch in the
         // main render path — don't override those.
         if (text == "•" || text == "o" || text == "▪"
             || text == "◦" /* ◦ */ || text == "▪" /* ▪ */
             || text == "" /* Wingdings square */)
             return null;
+=======
+        // A LOW (non-PUA) code point under a SYMBOL font (Wingdings / Symbol /
+        // Webdings) must render through the custom list-style-type string +
+        // ::marker font-family, so the browser draws the symbol font's glyph at
+        // that slot. The disc/circle/square keyword switch maps low ASCII by its
+        // LATIN meaning (e.g. "o" → circle), which is wrong for a symbol font
+        // where the 'o' slot is a checkbox ☐. PUA bullets that HAVE a keyword
+        // entry (U+F0B7 • → disc, U+F0A7 ▪ → square) keep that mapping: routing
+        // them to disc/square is intentional (cleaner marker metrics). PUA
+        // checkbox/checkmark slots with no keyword (U+F0A8/F0FE/F0FD/F0FC/F0FB)
+        // fall through to TranslateSymbolPuaGlyph below and become portable
+        // Unicode ☐/☒/☑/✓/✗. So only skip the keyword early-return for a
+        // low-code symbol-font bullet.
+        var symbolLowCode = text![0] < 0xF000
+                            && IsSymbolBulletFont(GetBulletFontName(numId, ilvl));
+        if (!symbolLowCode)
+        {
+            // Already covered by the standard disc/circle/square switch in the
+            // main render path — don't override those.
+            if (BulletGlyphToCssKeyword(text!) != null) return null;
+        }
+        // Translate Symbol/Wingdings private-use code points that map to a
+        // real Unicode glyph but have no CSS list-style-type keyword (e.g.
+        // Symbol 0x2D minus → en-dash bullet). Otherwise the raw PUA char
+        // lands in the CSS string literal and renders as tofu (□).
+        text = TranslateSymbolPuaGlyph(text!);
+>>>>>>> upstream/main
         // Escape ' and \ for CSS string literal.
         var escaped = text!.Replace("\\", "\\\\").Replace("'", "\\'");
         return $"'{escaped} '";
     }
+<<<<<<< HEAD
+=======
+
+    /// <summary>
+    /// Resolve a numbering level's bullet font name from its
+    /// NumberingSymbolRunProperties rFonts (ascii → hAnsi → eastAsia), or null
+    /// when the level has no symbol run properties / no font.
+    /// </summary>
+    private string? GetBulletFontName(int numId, int ilvl)
+    {
+        var rf = GetLevel(numId, ilvl)?.NumberingSymbolRunProperties?.GetFirstChild<RunFonts>();
+        return rf?.Ascii?.Value ?? rf?.HighAnsi?.Value ?? rf?.EastAsia?.Value;
+    }
+
+    // CONSISTENCY(bullet-glyph-map): a "symbol font" is one whose bullet glyph
+    // is selected purely by code point in the font's private encoding (the
+    // letter "o" in Wingdings is a checkbox ☐, not the Latin o). When the
+    // level's bullet font is one of these, the lvlText code point must be
+    // rendered with that font on the marker — at ANY code point, high PUA
+    // (U+F0xx) or low ASCII (U+006F) — never downgraded to a disc/circle/square
+    // keyword. Single source of truth for the symbol-font test, shared by
+    // GetCustomListStyleString (CSS ::marker path) and GetUlListStyleTypeCss
+    // (inline body/table list-style-type).
+    private static bool IsSymbolBulletFont(string? fontName)
+    {
+        if (string.IsNullOrEmpty(fontName)) return false;
+        return fontName!.StartsWith("Wingdings", StringComparison.OrdinalIgnoreCase)
+            || fontName.Equals("Symbol", StringComparison.OrdinalIgnoreCase)
+            || fontName.Equals("Webdings", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// CONSISTENCY(bullet-glyph-map): compute the inline <c>list-style-type</c>
+    /// value for a <c>ul</c> bullet, shared by the body and table-cell render
+    /// paths. For a symbol-font bullet (Wingdings/Symbol/Webdings) returns the
+    /// custom string literal (e.g. <c>'o '</c>) so it matches the
+    /// <c>li.marker-N-K</c> CSS class's list-style-type and the browser draws
+    /// the symbol glyph via the ::marker font-family — an inline keyword
+    /// (disc/circle) would otherwise win over the class and drop the symbol.
+    /// For non-symbol fonts returns the disc/circle/square keyword (default
+    /// disc), preserving existing behaviour for ordinary bullets.
+    /// </summary>
+    private string GetUlListStyleTypeCss(int numId, int ilvl, string? lvlText)
+    {
+        // Mirror GetCustomListStyleString: a low-code symbol-font bullet renders
+        // via the custom glyph string so the inline list-style-type matches the
+        // li.marker-N-K class (whose ::marker font-family draws the symbol). PUA
+        // and non-symbol bullets keep the disc/circle/square keyword.
+        if (!string.IsNullOrEmpty(lvlText) && lvlText![0] < 0xF000
+            && IsSymbolBulletFont(GetBulletFontName(numId, ilvl)))
+        {
+            var custom = GetCustomListStyleString(numId, ilvl);
+            if (custom != null) return custom;
+        }
+        return BulletGlyphToCssKeyword(lvlText ?? "") ?? "disc";
+    }
+
+    // CONSISTENCY(bullet-glyph-map): single source of truth mapping a Word
+    // bullet lvlText glyph to a CSS list-style-type keyword. Called from all
+    // three ul render paths so they never diverge:
+    //   - GetCustomListStyleString (above): non-null => glyph is "standard",
+    //     so skip the custom 'X ' list-style-type string override.
+    //   - WordHandler.HtmlPreview.cs (body ul switch)
+    //   - WordHandler.HtmlPreview.Tables.cs (table-cell ul switch)
+    // Returns null when the glyph is not a recognized standard bullet; the
+    // body/table callers then default to "disc". Covers Word's default
+    // Wingdings round bullet U+F0B7 (the most common default) -> disc.
+    private static string? BulletGlyphToCssKeyword(string lvlText) => lvlText switch
+    {
+        "•" => "disc",        // • BULLET
+        "" => "disc",        // Wingdings round bullet (Word default)
+        "o" => "circle",
+        "◦" => "circle",      // ◦ WHITE BULLET (Word outline level 1)
+        "" => "square",      // Wingdings square
+        "▪" => "square",      // ▪ BLACK SMALL SQUARE
+        _ => null
+    };
+
+    // CONSISTENCY(bullet-glyph-map): Symbol/Wingdings private-use bullet code
+    // points that resolve to a real Unicode glyph with NO CSS list-style-type
+    // keyword (so they can't go through BulletGlyphToCssKeyword). Word renders
+    // the font's glyph at that slot; the HTML preview must substitute the
+    // matching Unicode char or the raw PUA code point lands in the CSS string
+    // literal / plain text and renders as tofu (□) on any host without the
+    // symbol font installed (Wingdings/Symbol are not web-safe).
+    //
+    // Mappings follow the published Wingdings/Symbol -> Unicode glyph
+    // tables. The PUA slots (U+F0xx) are the F000-shifted form of the font's
+    // 8-bit code (e.g. Wingdings 0xFE -> U+F0FE); the low-code slot is the bare
+    // 8-bit code under a symbol font (Wingdings 'o' = U+006F = empty box).
+    //   - U+F02D = Symbol font slot 0x2D (minus/hyphen) -> en-dash (U+2013).
+    //   - Wingdings checkbox/checkmark slots used by "to-do" list markers, so a
+    //     host with no Wingdings font still shows a real box/check, not tofu:
+    //       0xA8 / U+F0A8 -> U+2610 empty ballot box
+    //       'o'  / U+006F -> U+2610 empty ballot box (Wingdings 'o' slot)
+    //       0xFE / U+F0FE -> U+2611 ballot box with check
+    //       0xFD / U+F0FD -> U+2612 ballot box with X
+    //       0xFC / U+F0FC -> U+2713 check mark
+    //       0xFB / U+F0FB -> U+2717 ballot X
+    // (Wingdings 0xA7 / U+F0A7 square and 0xB7 / U+F0B7 round bullet already
+    //  resolve to the square/disc CSS keyword via BulletGlyphToCssKeyword, so
+    //  they never reach here and need no entry.)
+    // Single source of truth, applied by GetCustomListStyleString (HTML ::marker
+    // string literal) and BulletGlyphForText (plain-text walker). Real Unicode
+    // equivalents are preferred (most portable); a slot with no equivalent keeps
+    // the raw char and the caller adds font-family:'Wingdings' as fallback.
+    private static string TranslateSymbolPuaGlyph(string lvlText) => lvlText switch
+    {
+        "\uf02d" => "\u2013", // Symbol 0x2D minus -> en-dash bullet
+        "\uf0a8" => "\u2610", // Wingdings 0xA8 -> empty ballot box
+        "o" => "\u2610",      // Wingdings 'o' (low-code) -> empty ballot box
+        "\uf0fe" => "\u2611", // Wingdings 0xFE -> ballot box with check
+        "\uf0fd" => "\u2612", // Wingdings 0xFD -> ballot box with X
+        "\uf0fc" => "\u2713", // Wingdings 0xFC -> check mark
+        "\uf0fb" => "\u2717", // Wingdings 0xFB -> ballot X
+        _ => lvlText
+    };
+
+    // CONSISTENCY(bullet-glyph-map): plain-text counterpart of
+    // BulletGlyphToCssKeyword. `view text` must show the SAME bullet Word
+    // renders, which for a custom lvlText glyph (★ ▶ ● …) is the glyph itself —
+    // the old code collapsed every bullet to "•", so custom glyphs vanished and
+    // text disagreed with both the HTML preview (which passes them through via
+    // list-style-type) and Word. Map the recognized standard bullets to their
+    // visible glyph, pass real Unicode glyphs through verbatim, and fall back to
+    // "•" for an empty lvlText or an unmapped private-use (Wingdings/Symbol)
+    // code point that would render as tofu in plain text.
+    private static string BulletGlyphForText(string? lvlText)
+    {
+        switch (BulletGlyphToCssKeyword(lvlText ?? ""))
+        {
+            case "disc": return "•";
+            case "circle": return "◦";
+            case "square": return "▪";
+        }
+        if (string.IsNullOrEmpty(lvlText)) return "•";
+        // Symbol/Wingdings PUA slots with a known real-glyph equivalent
+        // (e.g. F02D → en-dash) translate before the generic-disc fallback so
+        // plain text matches Word and the HTML ::marker string.
+        var translated = TranslateSymbolPuaGlyph(lvlText!);
+        if (!ReferenceEquals(translated, lvlText)) return translated;
+        var c = lvlText![0];
+        if (c >= 0xF000 && c <= 0xF0FF) return "•"; // unmapped PUA -> generic disc
+        return lvlText;
+    }
+>>>>>>> upstream/main
 }

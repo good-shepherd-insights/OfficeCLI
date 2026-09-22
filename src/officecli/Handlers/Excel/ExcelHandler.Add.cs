@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -17,8 +21,15 @@ namespace OfficeCli.Handlers;
 public partial class ExcelHandler
 {
     public string Add(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+<<<<<<< HEAD
     {
         Modified = true;
+=======
+        => MarkModified(() => AddCore(parentPath, type, position, properties));
+
+    private string AddCore(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+    {
+>>>>>>> upstream/main
         var index = position?.Index;
         // Normalize to case-insensitive lookup so camelCase keys (e.g. minColor) match lowercase lookups.
         // Preserve TrackingPropertyDictionary so handler-as-truth read
@@ -120,6 +131,15 @@ public partial class ExcelHandler
 
             case "chart":
                 return AddChart(parentPath, type, position, properties);
+<<<<<<< HEAD
+=======
+
+            // BUG-002: schema chart-series.json declares operations.add on a
+            // chart parent, but only pptx had a dispatch entry ("series").
+            // Accept the schema element name and the pptx alias alike.
+            case "series" or "chart-series" or "chartseries":
+                return AddChartSeries(parentPath, properties);
+>>>>>>> upstream/main
 
             case "pivottable" or "pivot":
                 return AddPivotTable(parentPath, type, position, properties);
@@ -210,6 +230,14 @@ public partial class ExcelHandler
             if (ReferenceEquals(afterAnchor, sheetEl) || ReferenceEquals(beforeAnchor, sheetEl))
                 return $"/{sheetName}";
 
+<<<<<<< HEAD
+=======
+            // localSheetId on <definedName> is a 0-based position into
+            // <sheets>; capture the pre-move order so scoped names can be
+            // remapped to the sheets' new positions after the reorder.
+            var preMoveOrder = sheets.Elements<Sheet>().ToList();
+
+>>>>>>> upstream/main
             sheetEl.Remove();
 
             if (afterAnchor != null)
@@ -229,6 +257,31 @@ public partial class ExcelHandler
                 else
                     sheets.AppendChild(sheetEl);
             }
+<<<<<<< HEAD
+=======
+
+            // Remap sheet-scoped defined names (printArea, print titles,
+            // scoped named ranges) from old positions to new ones — an
+            // unremapped localSheetId silently rebinds the name to whatever
+            // sheet now occupies the old position.
+            var postMoveOrder = sheets.Elements<Sheet>().ToList();
+            var definedNames = workbook.GetFirstChild<DefinedNames>();
+            if (definedNames != null)
+            {
+                foreach (var dn in definedNames.Elements<DefinedName>())
+                {
+                    var lid = dn.LocalSheetId?.Value;
+                    if (lid == null || lid >= preMoveOrder.Count) continue;
+                    var newIdx = postMoveOrder.IndexOf(preMoveOrder[(int)lid.Value]);
+                    if (newIdx >= 0 && newIdx != lid.Value) dn.LocalSheetId = (uint)newIdx;
+                }
+            }
+
+            // Mark the document modified so Dispose flushes it. Without this,
+            // a `using (h) h.Move(...)` (no explicit Save) is silently dropped
+            // by the !Modified byte-preserving discard path in Dispose.
+            Modified = true;
+>>>>>>> upstream/main
             workbook.Save();
             return $"/{sheetName}";
         }
@@ -263,7 +316,7 @@ public partial class ExcelHandler
             var rowIdx = int.Parse(rowMatch.Groups[1].Value);
             // Try ordinal lookup first (Nth row element), then fall back to RowIndex
             var allRows = sheetData.Elements<Row>().ToList();
-            var row = (rowIdx >= 1 && rowIdx <= allRows.Count ? allRows[rowIdx - 1] : null)
+            var row = (rowIdx >= 1 && rowIdx <= allRows.Count ? allRows[PathIndex.ToArrayIndex(rowIdx)] : null)
                 ?? sheetData.Elements<Row>().FirstOrDefault(r => r.RowIndex?.Value == (uint)rowIdx)
                 ?? throw new ArgumentException($"Row {rowIdx} not found");
 
@@ -321,6 +374,12 @@ public partial class ExcelHandler
             if (targetSheetData != sheetData)
                 tgtOldIdx = targetSheetData.Elements<Row>().ToDictionary(r => r, r => (int)(r.RowIndex?.Value ?? 0));
 
+<<<<<<< HEAD
+=======
+            // Mark modified before the first irreversible mutation so Dispose
+            // flushes (the !Modified path would otherwise discard the move).
+            Modified = true;
+>>>>>>> upstream/main
             row.Remove();
 
             if (targetIndex.HasValue)
@@ -428,6 +487,13 @@ public partial class ExcelHandler
                 return $"/{sheetName}/col[{srcColLetter}]";
             }
 
+<<<<<<< HEAD
+=======
+            // Mark modified before mutating so Dispose flushes (past the no-op
+            // early return above; the !Modified path would else discard the move).
+            Modified = true;
+
+>>>>>>> upstream/main
             // Build the col renumber map. Two cases:
             //   src < target: cols (src+1)..(target-1) shift left by 1; src moves to (target-1).
             //   src > target: cols target..(src-1) shift right by 1; src moves to target.
@@ -529,19 +595,43 @@ public partial class ExcelHandler
     private void ApplyRowRenumberToSheet(WorksheetPart worksheet, string sheetName, IReadOnlyDictionary<int, int> map)
     {
         if (map.Count == 0) return;
+<<<<<<< HEAD
         ApplySheetRangeMutations(
             worksheet, sheetName,
             refMapper: r => RemapRowsInRangeRef(r, map),
             formulaTextMapper: f => Core.FormulaRefShifter.ApplyRowRenumberMap(f, sheetName, sheetName, map));
+=======
+        // Drawing markers use 0-based row indices; the renumber map is keyed by
+        // 1-based row indices. Translate so anchored pictures/charts follow the
+        // rows they sit on (parity with insert/delete's rowMarkerShift).
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => RemapRowsInRangeRef(r, map),
+            formulaTextMapper: f => Core.FormulaRefShifter.ApplyRowRenumberMap(f, sheetName, sheetName, map),
+            rowMarkerShift: m => map.TryGetValue(m + 1, out var n) ? n - 1 : m,
+            crossSheetFormulaMapper: (other, f) => Core.FormulaRefShifter.ApplyRowRenumberMap(f, other, sheetName, map));
+>>>>>>> upstream/main
     }
 
     private void ApplyColRenumberToSheet(WorksheetPart worksheet, string sheetName, IReadOnlyDictionary<int, int> map)
     {
         if (map.Count == 0) return;
+<<<<<<< HEAD
         ApplySheetRangeMutations(
             worksheet, sheetName,
             refMapper: r => RemapColsInRangeRef(r, map),
             formulaTextMapper: f => Core.FormulaRefShifter.ApplyColRenumberMap(f, sheetName, sheetName, map));
+=======
+        // Drawing markers use 0-based column indices; the renumber map is keyed
+        // by 1-based column indices. Translate so anchored objects follow the
+        // columns they sit on (parity with insert/delete's colMarkerShift).
+        ApplySheetRangeMutations(
+            worksheet, sheetName,
+            refMapper: r => RemapColsInRangeRef(r, map),
+            formulaTextMapper: f => Core.FormulaRefShifter.ApplyColRenumberMap(f, sheetName, sheetName, map),
+            colMarkerShift: m => map.TryGetValue(m + 1, out var n) ? n - 1 : m,
+            crossSheetFormulaMapper: (other, f) => Core.FormulaRefShifter.ApplyColRenumberMap(f, other, sheetName, map));
+>>>>>>> upstream/main
     }
 
     private static string? RemapColsInRangeRef(string? refStr, IReadOnlyDictionary<int, int> map)
@@ -658,31 +748,30 @@ public partial class ExcelHandler
         var row2 = (idx2 >= 1 && idx2 <= allRows.Count ? allRows[idx2 - 1] : null)
             ?? throw new ArgumentException($"Row {idx2} not found");
 
-        // Swap RowIndex values and cell references
         var rowIndex1 = row1.RowIndex?.Value ?? (uint)idx1;
         var rowIndex2 = row2.RowIndex?.Value ?? (uint)idx2;
-        row1.RowIndex = new DocumentFormat.OpenXml.UInt32Value(rowIndex2);
-        row2.RowIndex = new DocumentFormat.OpenXml.UInt32Value(rowIndex1);
 
-        // Update cell references (e.g. A1→A3, B1→B3)
-        foreach (var cell in row1.Elements<Cell>())
-        {
-            if (cell.CellReference?.Value != null)
-            {
-                var colRef = Regex.Match(cell.CellReference.Value, @"^([A-Z]+)").Groups[1].Value;
-                cell.CellReference = $"{colRef}{rowIndex2}";
-            }
-        }
-        foreach (var cell in row2.Elements<Cell>())
-        {
-            if (cell.CellReference?.Value != null)
-            {
-                var colRef = Regex.Match(cell.CellReference.Value, @"^([A-Z]+)").Groups[1].Value;
-                cell.CellReference = $"{colRef}{rowIndex1}";
-            }
-        }
+        // Snapshot every row's old RowIndex before the swap so we can build the
+        // oldToNew renumber map afterwards. This routes the swap through the
+        // same machinery as Move (ApplyRowRenumberToSheet): external formulas,
+        // CF/DV sqref, mergeCells, chart series refs and drawing anchors all
+        // follow the swapped content, and formula caches are refreshed at flush
+        // so cachedValue stays consistent with the formula.
+        var oldIdx = sheetData.Elements<Row>().ToDictionary(r => r, r => (int)(r.RowIndex?.Value ?? 0));
 
+        // Mark modified before the swap so Dispose flushes it (the !Modified
+        // byte-preserving discard path would otherwise drop the whole swap).
+        Modified = true;
+
+        // Physically exchange the two rows in document order, then renumber by
+        // document order — mirrors Move's reposition + RenumberRowsAndCellRefs.
         PowerPointHandler.SwapXmlElements(row1, row2);
+        RenumberRowsAndCellRefs(sheetData);
+
+        var map = BuildRowRenumberMap(oldIdx);
+        ApplyRowRenumberToSheet(worksheet, sheetName, map);
+
+        DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);
 
         return ($"/{sheetName}/row[{rowIndex2}]", $"/{sheetName}/row[{rowIndex1}]");
@@ -845,6 +934,12 @@ public partial class ExcelHandler
                 }
             }
 
+<<<<<<< HEAD
+=======
+            // Mark modified so Dispose flushes the copy (the !Modified
+            // byte-preserving discard path would otherwise drop it).
+            Modified = true;
+>>>>>>> upstream/main
             SaveWorksheet(tgtWorksheet);
             return $"{targetParentPath}/row[{newRowIndex}]";
         }
@@ -994,6 +1089,12 @@ public partial class ExcelHandler
                 tgtMergeCells.Count = (uint)tgtMergeCells.Elements<MergeCell>().Count();
             }
 
+<<<<<<< HEAD
+=======
+            // Mark modified so Dispose flushes the copy (the !Modified
+            // byte-preserving discard path would otherwise drop it).
+            Modified = true;
+>>>>>>> upstream/main
             DeleteCalcChainIfPresent();
             SaveWorksheet(tgtWorksheet);
             return $"{targetParentPath}/col[{targetColLetter}]";
@@ -1052,9 +1153,294 @@ public partial class ExcelHandler
                 var chartIdx = drawingsPart.ChartParts.ToList().IndexOf(chartPart);
                 return (relId, $"/{sheetName}/chart[{chartIdx + 1}]");
 
+            case "drawing-group":
+            {
+                // Verbatim DrawingML group carrier for xlsx dump→batch.
+                // The full hosting anchor is preserved because flattening a
+                // <xdr:grpSp> loses the child coordinate system, z-order,
+                // styles and the fact that the objects are grouped. Only
+                // hyperlink relationships are carried here; dump falls back
+                // to semantic leaf shapes when a group references package
+                // parts such as images/charts.
+                var groupSheetName = parentPartPath.TrimStart('/');
+                var groupWorksheet = FindWorksheet(groupSheetName)
+                    ?? throw new ArgumentException(
+                        $"Sheet not found: {groupSheetName}. drawing-group must be added under a sheet.");
+                properties ??= new Dictionary<string, string>();
+                var anchorXml = properties.GetValueOrDefault("anchor-xml")
+                    ?? throw new ArgumentException(
+                        "'anchor-xml' property is required for drawing-group (verbatim xdr anchor XML)");
+
+                XDR.TwoCellAnchor groupAnchor;
+                try
+                {
+                    groupAnchor = new XDR.TwoCellAnchor(anchorXml);
+                }
+                catch (Exception ex)
+                {
+                    throw new ArgumentException(
+                        $"drawing-group anchor XML is not a valid xdr:twoCellAnchor: {ex.Message}", ex);
+                }
+                if (groupAnchor.GetFirstChild<XDR.GroupShape>() == null)
+                    throw new ArgumentException(
+                        "drawing-group anchor XML must contain a top-level xdr:grpSp.");
+
+                List<DumpDrawingHyperlinkSpec> groupHyperlinks;
+                try
+                {
+                    groupHyperlinks = DecodeDumpDrawingHyperlinks(
+                        properties.GetValueOrDefault("hyperlinks") ?? "");
+                }
+                catch (FormatException ex)
+                {
+                    throw new ArgumentException(
+                        $"drawing-group 'hyperlinks' carrier is invalid: {ex.Message}", ex);
+                }
+
+                Modified = true;
+                var groupDrawingsPart = groupWorksheet.DrawingsPart
+                    ?? groupWorksheet.AddNewPart<DrawingsPart>();
+                if (groupDrawingsPart.WorksheetDrawing == null)
+                {
+                    groupDrawingsPart.WorksheetDrawing = new XDR.WorksheetDrawing();
+                    groupDrawingsPart.WorksheetDrawing.Save();
+                }
+                var groupSheet = GetSheet(groupWorksheet);
+                if (groupSheet.GetFirstChild<SpreadsheetDrawing>() == null)
+                {
+                    var drawingRelId = groupWorksheet.GetIdOfPart(groupDrawingsPart);
+                    groupSheet.Append(new SpreadsheetDrawing { Id = drawingRelId });
+                    SaveWorksheet(groupWorksheet);
+                }
+
+                // Relationship IDs are scoped to the destination drawing part.
+                // Create fresh IDs (avoids collisions with pictures/charts
+                // emitted earlier), then rewrite every r:id/r:embed/r:link in
+                // the verbatim group anchor that referenced the source ID.
+                foreach (var hyperlink in groupHyperlinks)
+                {
+                    if (string.IsNullOrEmpty(hyperlink.Id) || string.IsNullOrEmpty(hyperlink.Target))
+                        throw new ArgumentException(
+                            "drawing-group hyperlink entries require non-empty Id and Target.");
+                    var uri = new Uri(hyperlink.Target, UriKind.RelativeOrAbsolute);
+                    var replayRel = groupDrawingsPart.AddHyperlinkRelationship(
+                        uri, hyperlink.IsExternal);
+                    RemapDrawingRelationshipId(groupAnchor, hyperlink.Id, replayRel.Id);
+                }
+
+                groupDrawingsPart.WorksheetDrawing.AppendChild(groupAnchor);
+                groupDrawingsPart.WorksheetDrawing.Save();
+                var groupIndex = groupDrawingsPart.WorksheetDrawing
+                    .Elements<XDR.TwoCellAnchor>()
+                    .Count(a => a.GetFirstChild<XDR.GroupShape>() != null);
+                return ("group", $"/{groupSheetName}/group[{groupIndex}]");
+            }
+
+            case "chartex":
+            {
+                // Extended (cx:) chart carrier for dump→batch round-trip.
+                // chartEx has no semantic add vocabulary — waterfall/funnel/
+                // sunburst charts are carried VERBATIM: the caller pins the
+                // source rIds so the graphicFrame slice raw-set into the
+                // drawing resolves without rewriting. Mirrors the pptx
+                // SmartArt add-part pattern (pinned rIds + raw payload).
+                // Props: rid (required), xml (base64 cx:chartSpace),
+                // colors-rid/colors-xml, style-rid/style-xml (optional
+                // sub-parts — Excel-authored chartEx always carries both;
+                // dropping them dangles the main part's rels).
+                var cxSheetName = parentPartPath.TrimStart('/');
+                var cxWorksheet = FindWorksheet(cxSheetName)
+                    ?? throw new ArgumentException(
+                        $"Sheet not found: {cxSheetName}. chartex must be added under a sheet: add-part <file> /<SheetName> --type chartex");
+                properties ??= new Dictionary<string, string>();
+                var cxRid = properties.GetValueOrDefault("rid")
+                    ?? throw new ArgumentException("'rid' property is required for chartex (pinned relationship id)");
+                var cxXmlB64 = properties.GetValueOrDefault("xml")
+                    ?? throw new ArgumentException("'xml' property is required for chartex (base64 cx:chartSpace XML)");
+
+                var cxDrawingsPart = cxWorksheet.DrawingsPart
+                    ?? cxWorksheet.AddNewPart<DrawingsPart>();
+                if (cxDrawingsPart.WorksheetDrawing == null)
+                {
+                    cxDrawingsPart.WorksheetDrawing =
+                        new DocumentFormat.OpenXml.Drawing.Spreadsheet.WorksheetDrawing();
+                    cxDrawingsPart.WorksheetDrawing.Save();
+                    if (GetSheet(cxWorksheet).GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Drawing>() == null)
+                    {
+                        var cxDrawRelId = cxWorksheet.GetIdOfPart(cxDrawingsPart);
+                        GetSheet(cxWorksheet).Append(
+                            new DocumentFormat.OpenXml.Spreadsheet.Drawing { Id = cxDrawRelId });
+                        SaveWorksheet(cxWorksheet);
+                    }
+                }
+
+                var extChartPart = cxDrawingsPart.AddNewPart<ExtendedChartPart>(cxRid);
+                using (var s = extChartPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write))
+                {
+                    var bytes = Convert.FromBase64String(cxXmlB64);
+                    s.Write(bytes, 0, bytes.Length);
+                }
+                foreach (var (ridKey, xmlKey, subType) in new[]
+                {
+                    ("colors-rid", "colors-xml", "colors"),
+                    ("style-rid", "style-xml", "style"),
+                })
+                {
+                    var subRid = properties.GetValueOrDefault(ridKey);
+                    var subXml = properties.GetValueOrDefault(xmlKey);
+                    if (string.IsNullOrEmpty(subRid) || string.IsNullOrEmpty(subXml)) continue;
+                    OpenXmlPart subPart = subType == "colors"
+                        ? extChartPart.AddNewPart<ChartColorStylePart>(subRid)
+                        : extChartPart.AddNewPart<ChartStylePart>(subRid);
+                    using var ss = subPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write);
+                    var subBytes = Convert.FromBase64String(subXml!);
+                    ss.Write(subBytes, 0, subBytes.Length);
+                }
+                return (cxRid, $"/{cxSheetName}/chartex");
+            }
+
+            case "ole":
+            {
+                // Verbatim OLE carrier for dump→batch round-trip. Mirrors the
+                // pptx add-part ole contract (pinned rIds + base64 payloads)
+                // but is all-in-one: Excel's OLE anatomy spans the worksheet
+                // (<oleObjects> child + embed/icon rels), the VML drawing
+                // (anchor shape) and <legacyDrawing>, all of which must stay
+                // consistent — so the handler wires everything here instead
+                // of leaving XML splicing to a companion raw-set.
+                // Props: rid + data (+content-type/extension) = payload part;
+                // icon-rid + icon-data (+icon-content-type) = objectPr image;
+                // vml-shape = the <v:shape> anchor XML verbatim;
+                // object-xml = the <oleObjects> CHILD element verbatim
+                // (mc:AlternateContent or bare oleObject, pinned rIds inside).
+                var oleSheetName = parentPartPath.TrimStart('/');
+                var oleWs = FindWorksheet(oleSheetName)
+                    ?? throw new ArgumentException(
+                        $"Sheet not found: {oleSheetName}. ole must be added under a sheet: add-part <file> /<SheetName> --type ole");
+                properties ??= new Dictionary<string, string>();
+                var oleRid = properties.GetValueOrDefault("rid")
+                    ?? throw new ArgumentException("'rid' property is required for ole (pinned payload relationship id)");
+                var oleDataB64 = properties.GetValueOrDefault("data")
+                    ?? throw new ArgumentException("'data' property is required for ole (base64 payload bytes)");
+                var oleObjectXml = properties.GetValueOrDefault("object-xml")
+                    ?? throw new ArgumentException("'object-xml' property is required for ole (verbatim oleObjects child element)");
+                byte[] oleBytes;
+                try { oleBytes = Convert.FromBase64String(oleDataB64); }
+                catch (FormatException) { throw new ArgumentException("add-part ole: 'data' is not valid base64"); }
+
+                var oleCt = properties.GetValueOrDefault("content-type")
+                    ?? "application/vnd.openxmlformats-officedocument.oleObject";
+                var oleExt = properties.GetValueOrDefault("extension") ?? ".bin";
+                if (!oleExt.StartsWith('.')) oleExt = "." + oleExt;
+
+                // Kind comes from the dump (source part type), because content
+                // type alone cannot classify legacy package formats (.xls
+                // carries application/vnd.ms-excel, not an OOXML CT). Fallback
+                // for hand-written batches that omit ole-kind: package iff the
+                // CT is a non-oleObject openxmlformats CT.
+                var oleKind = properties.GetValueOrDefault("ole-kind")
+                    ?? (oleCt.StartsWith(
+                            "application/vnd.openxmlformats-officedocument.", StringComparison.OrdinalIgnoreCase)
+                        && !oleCt.Equals(
+                            "application/vnd.openxmlformats-officedocument.oleObject", StringComparison.OrdinalIgnoreCase)
+                        ? "package" : "object");
+                // PartTypeInfo's target extension is dot-prefixed (".docx");
+                // a bare "docx" silently falls back to ".bin" part names.
+                OfficeCli.Core.OleHelper.AddEmbeddedPartFromBytes(
+                    oleWs, oleBytes, oleKind, oleCt, oleExt, oleRid);
+
+                // Icon image (objectPr r:id target).
+                var iconRid = properties.GetValueOrDefault("icon-rid");
+                var iconB64 = properties.GetValueOrDefault("icon-data");
+                if (!string.IsNullOrEmpty(iconRid) && !string.IsNullOrEmpty(iconB64))
+                {
+                    var iconCt = properties.GetValueOrDefault("icon-content-type") ?? "image/x-emf";
+                    var iconType = iconCt switch
+                    {
+                        "image/png" => ImagePartType.Png,
+                        "image/jpeg" => ImagePartType.Jpeg,
+                        "image/gif" => ImagePartType.Gif,
+                        "image/bmp" => ImagePartType.Bmp,
+                        "image/x-wmf" => ImagePartType.Wmf,
+                        _ => ImagePartType.Emf,
+                    };
+                    var iconPart = oleWs.AddImagePart(iconType, iconRid!);
+                    var iconBytes = Convert.FromBase64String(iconB64!);
+                    using var s = new MemoryStream(iconBytes);
+                    iconPart.FeedData(s);
+                }
+
+                // VML anchor shape + <legacyDrawing> reference.
+                var vmlShapeXml = properties.GetValueOrDefault("vml-shape");
+                if (!string.IsNullOrEmpty(vmlShapeXml))
+                {
+                    if (!oleWs.VmlDrawingParts.Any())
+                    {
+                        var vmlPart = oleWs.AddNewPart<VmlDrawingPart>();
+                        using var writer = new System.IO.StreamWriter(vmlPart.GetStream());
+                        writer.Write("<xml xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\"></xml>");
+                    }
+                    InsertVmlShapeXml(oleWs.VmlDrawingParts.First(), vmlShapeXml!);
+                    var wsEl = GetSheet(oleWs);
+                    if (wsEl.GetFirstChild<LegacyDrawing>() == null)
+                    {
+                        wsEl.AppendChild(new LegacyDrawing { Id = oleWs.GetIdOfPart(oleWs.VmlDrawingParts.First()) });
+                    }
+                }
+
+                // <oleObjects> child, verbatim, inserted in schema order.
+                var oleWsElement = GetSheet(oleWs);
+                var oleObjects = oleWsElement.GetFirstChild<OleObjects>();
+                if (oleObjects == null)
+                {
+                    oleObjects = new OleObjects();
+                    oleWsElement.AppendChild(oleObjects);
+                }
+                OpenXmlElement oleChild = oleObjectXml.Contains("AlternateContent", StringComparison.Ordinal)
+                    ? new DocumentFormat.OpenXml.AlternateContent(oleObjectXml)
+                    : new OleObject(oleObjectXml);
+                oleObjects.AppendChild(oleChild);
+                ReorderWorksheetChildren(oleWsElement);
+                SaveWorksheet(oleWs);
+
+                return (oleRid, $"/{oleSheetName}/ole");
+            }
+
             default:
                 throw new ArgumentException(
-                    $"Unknown part type: {partType}. Supported: chart");
+                    $"Unknown part type: {partType}. Supported: chart, chartex, drawing-group, ole");
         }
+    }
+
+    private static void RemapDrawingRelationshipId(
+        OpenXmlElement root, string sourceId, string destinationId)
+    {
+        const string relNs =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        foreach (var element in root.Descendants().Prepend(root))
+        {
+            foreach (var attr in element.GetAttributes()
+                .Where(a => a.NamespaceUri == relNs && a.Value == sourceId)
+                .ToList())
+            {
+                element.SetAttribute(new OpenXmlAttribute(
+                    attr.Prefix, attr.LocalName, attr.NamespaceUri, destinationId));
+            }
+        }
+    }
+
+    /// <summary>Append a verbatim &lt;v:shape&gt; slice before the VML part's
+    /// closing &lt;/xml&gt;. Shared by the OLE carrier (comment shapes go
+    /// through AppendCommentVmlShape which builds the shape itself).</summary>
+    private static void InsertVmlShapeXml(VmlDrawingPart vmlPart, string shapeXml)
+    {
+        string xml;
+        using (var reader = new System.IO.StreamReader(vmlPart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read)))
+            xml = reader.ReadToEnd();
+        var closeIdx = xml.LastIndexOf("</xml>", StringComparison.OrdinalIgnoreCase);
+        if (closeIdx < 0) return;
+        xml = xml[..closeIdx] + shapeXml + xml[closeIdx..];
+        using var writer = new System.IO.StreamWriter(vmlPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write));
+        writer.Write(xml);
     }
 }

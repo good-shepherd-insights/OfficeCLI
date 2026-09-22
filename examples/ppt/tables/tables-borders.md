@@ -187,7 +187,11 @@ officecli validate tables-borders.pptx
 
 ```bash
 # List all tables on slide 1
+<<<<<<< HEAD
 officecli query tables-borders.pptx '/slide[1]' table
+=======
+officecli query tables-borders.pptx '/slide[1]/table'
+>>>>>>> upstream/main
 
 # Get border properties on the first table
 officecli get tables-borders.pptx '/slide[1]/table[1]'

@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "xlsx",
   "element": "namedrange",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["definedname", "name"],
+>>>>>>> upstream/main
   "parent": "workbook|sheet",
   "operations": {
     "add": true,

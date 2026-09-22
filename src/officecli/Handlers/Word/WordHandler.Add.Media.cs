@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -19,6 +23,7 @@ public partial class WordHandler
         // AddHyperlink (round23 C). When the parent paragraph lives in a Header/Footer
         // part, the chart rel must live on that part — otherwise r:id in headerN.xml
         // points to a rel only present in document.xml.rels and Word reports broken.
+<<<<<<< HEAD
         OpenXmlPart chartMainPart = _doc.MainDocumentPart!;
         // parent may itself be a Header/Footer (e.g. /header[1]) when the chart is
         // appended directly, or a descendant paragraph (e.g. /header[1]/p[N]).
@@ -39,6 +44,13 @@ public partial class WordHandler
                 if (fp != null) chartMainPart = fp;
             }
         }
+=======
+        // Resolve the host part (MainDocument / Header / Footer / Footnotes /
+        // Endnotes / Comments) so the ChartPart rel registers where the chart
+        // actually lives. Mirrors AddPicture/AddHyperlink. Without this,
+        // footnote/endnote charts landed under document.xml.rels and Word 422'd.
+        OpenXmlPart chartMainPart = ResolveHostPart(parent);
+>>>>>>> upstream/main
 
         // Parse chart data. Use TryGetValue(case-insensitive) so reads
         // are recorded by TrackingPropertyDictionary.
@@ -100,24 +112,13 @@ public partial class WordHandler
             var cxRelId = chartMainPart.GetIdOfPart(extChartPart);
             var cxChartRef = new DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.RelId { Id = cxRelId };
 
-            var cxInline = new DW.Inline(
-                new DW.Extent { Cx = chartCx, Cy = chartCy },
-                new DW.EffectExtent { LeftEdge = 0, TopEdge = 0, RightEdge = 0, BottomEdge = 0 },
-                new DW.DocProperties { Id = docPropId, Name = chartName },
-                new DW.NonVisualGraphicFrameDrawingProperties(),
-                new A.Graphic(
-                    new A.GraphicData(cxChartRef)
-                    { Uri = "http://schemas.microsoft.com/office/drawing/2014/chartex" }
-                )
-            )
-            {
-                DistanceFromTop = 0U,
-                DistanceFromBottom = 0U,
-                DistanceFromLeft = 0U,
-                DistanceFromRight = 0U
-            };
+            var cxGraphic = new A.Graphic(
+                new A.GraphicData(cxChartRef)
+                { Uri = "http://schemas.microsoft.com/office/drawing/2014/chartex" }
+            );
+            var cxFrame = BuildChartFrame(cxGraphic, chartCx, chartCy, docPropId, chartName, properties);
 
-            var cxRun = new Run(new Drawing(cxInline));
+            var cxRun = new Run(new Drawing(cxFrame));
             Paragraph cxPara;
             if (parent is Paragraph existingCxPara)
             {
@@ -140,7 +141,11 @@ public partial class WordHandler
             // (GetAllWordCharts). CountWordCharts is insertion-order and
             // disagrees whenever --before/--after inserts mid-document.
             var cxAllCharts = GetAllWordCharts();
+<<<<<<< HEAD
             var cxDocOrderIdx = cxAllCharts.FindIndex(c => ReferenceEquals(c.Inline, cxInline));
+=======
+            var cxDocOrderIdx = cxAllCharts.FindIndex(c => ReferenceEquals(c.Container, cxFrame));
+>>>>>>> upstream/main
             return $"/chart[{(cxDocOrderIdx >= 0 ? cxDocOrderIdx + 1 : cxAllCharts.Count)}]";
         }
 
@@ -167,29 +172,28 @@ public partial class WordHandler
         else
             chartPart.ChartSpace.Save();
 
+        // BUG-DUMP-CHART-SIDECARS: re-attach the source chart's sidecar parts
+        // (chartStyle / chartColorStyle / themeOverride / embedded data
+        // workbook) captured by the dump, so the rebuilt native chart keeps its
+        // theme, custom colours and editable data instead of a bare default.
+        AttachChartSidecars(chartPart, properties);
+
+        // Re-attach a captured c:userShapes overlay (logo/photo/annotation drawn
+        // on top of the chart) so it round-trips through dump→batch.
+        AttachChartUserShapes(chartPart, properties);
+
         var chartRelId = chartMainPart.GetIdOfPart(chartPart);
 
-        // Build Drawing/Inline with ChartReference
-        var inline = new DW.Inline(
-            new DW.Extent { Cx = chartCx, Cy = chartCy },
-            new DW.EffectExtent { LeftEdge = 0, TopEdge = 0, RightEdge = 0, BottomEdge = 0 },
-            new DW.DocProperties { Id = docPropId, Name = chartName },
-            new DW.NonVisualGraphicFrameDrawingProperties(),
-            new A.Graphic(
-                new A.GraphicData(
-                    new DocumentFormat.OpenXml.Drawing.Charts.ChartReference { Id = chartRelId }
-                )
-                { Uri = "http://schemas.openxmlformats.org/drawingml/2006/chart" }
+        // Build Drawing frame (inline or floating anchor) with ChartReference.
+        var chartGraphic = new A.Graphic(
+            new A.GraphicData(
+                new DocumentFormat.OpenXml.Drawing.Charts.ChartReference { Id = chartRelId }
             )
-        )
-        {
-            DistanceFromTop = 0U,
-            DistanceFromBottom = 0U,
-            DistanceFromLeft = 0U,
-            DistanceFromRight = 0U
-        };
+            { Uri = "http://schemas.openxmlformats.org/drawingml/2006/chart" }
+        );
+        var frame = BuildChartFrame(chartGraphic, chartCx, chartCy, docPropId, chartName, properties);
 
-        var chartRun = new Run(new Drawing(inline));
+        var chartRun = new Run(new Drawing(frame));
         Paragraph chartPara;
         if (parent is Paragraph existingChartPara)
         {
@@ -210,14 +214,141 @@ public partial class WordHandler
 
         // Return document-order position (matches GetAllWordCharts resolver).
         var allCharts = GetAllWordCharts();
+<<<<<<< HEAD
         var docOrderIdx = allCharts.FindIndex(c => ReferenceEquals(c.Inline, inline));
         return $"/chart[{(docOrderIdx >= 0 ? docOrderIdx + 1 : allCharts.Count)}]";
+=======
+        var docOrderIdx = allCharts.FindIndex(c => ReferenceEquals(c.Container, frame));
+        return $"/chart[{(docOrderIdx >= 0 ? docOrderIdx + 1 : allCharts.Count)}]";
+    }
+
+    /// <summary>
+    /// Re-attach a native chart's sidecar parts captured by the dump under
+    /// <c>sidecar.{style|colors|themeOverride|package}.data</c> (base64 data
+    /// URIs). chartStyle/chartColorStyle/themeOverride are related to the chart
+    /// part by relationship type (no in-XML reference); the embedded data
+    /// workbook is wired via a fresh <c>&lt;c:externalData r:id&gt;</c>. No-op
+    /// when the chart carried no sidecars (e.g. a freshly authored chart).
+    /// </summary>
+    private void AttachChartSidecars(ChartPart chartPart, Dictionary<string, string> properties)
+    {
+        static (string Ct, byte[] Bytes)? ParseDataUri(string v)
+        {
+            if (string.IsNullOrEmpty(v) || !v.StartsWith("data:", StringComparison.Ordinal)) return null;
+            var comma = v.IndexOf(";base64,", StringComparison.Ordinal);
+            if (comma < 0) return null;
+            var ct = v.Substring(5, comma - 5);
+            try { return (ct, System.Convert.FromBase64String(v[(comma + 8)..])); }
+            catch { return null; }
+        }
+
+        void Feed(OpenXmlPart part, byte[] bytes)
+        {
+            using var ms = new MemoryStream(bytes);
+            part.FeedData(ms);
+        }
+
+        if (properties.TryGetValue("sidecar.style.data", out var styleV)
+            && ParseDataUri(styleV) is { } st)
+            Feed(chartPart.AddNewPart<ChartStylePart>(), st.Bytes);
+
+        if (properties.TryGetValue("sidecar.colors.data", out var colorsV)
+            && ParseDataUri(colorsV) is { } co)
+            Feed(chartPart.AddNewPart<ChartColorStylePart>(), co.Bytes);
+
+        if (properties.TryGetValue("sidecar.themeOverride.data", out var toV)
+            && ParseDataUri(toV) is { } to)
+            Feed(chartPart.AddNewPart<ThemeOverridePart>(), to.Bytes);
+
+        if (properties.TryGetValue("sidecar.package.data", out var pkgV)
+            && ParseDataUri(pkgV) is { } pk)
+        {
+            var pkgPart = chartPart.AddNewPart<EmbeddedPackagePart>(pk.Ct);
+            Feed(pkgPart, pk.Bytes);
+            var pkgRelId = chartPart.GetIdOfPart(pkgPart);
+            var chartSpace = chartPart.ChartSpace;
+            if (chartSpace != null
+                && chartSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ExternalData>() == null)
+            {
+                var extData = new DocumentFormat.OpenXml.Drawing.Charts.ExternalData
+                {
+                    Id = pkgRelId,
+                    AutoUpdate = new DocumentFormat.OpenXml.Drawing.Charts.AutoUpdate { Val = false },
+                };
+                // CT_ChartSpace order: …chart, spPr, txPr, externalData,
+                // printSettings, userShapes, extLst. Insert before the first of
+                // those trailing elements if present, else append.
+                var anchor = chartSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.PrintSettings>() as OpenXmlElement
+                    ?? chartSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.UserShapes>() as OpenXmlElement
+                    ?? chartSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ChartSpaceExtensionList>() as OpenXmlElement;
+                if (anchor != null) chartSpace.InsertBefore(extData, anchor);
+                else chartSpace.AppendChild(extData);
+                chartSpace.Save();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Re-create a chart's <c>c:userShapes</c> overlay (chartshapes part + its
+    /// embedded images) from the dump carrier props (<c>userShapesXml</c> +
+    /// <c>userShapes.partN.*</c>), and wire the <c>&lt;c:userShapes r:id&gt;</c>
+    /// reference into the chartSpace. No-op when the chart carries no overlay.
+    /// </summary>
+    private void AttachChartUserShapes(ChartPart chartPart, Dictionary<string, string> properties)
+    {
+        if (!properties.TryGetValue("userShapesXml", out var userShapesXml)
+            || string.IsNullOrEmpty(userShapesXml))
+            return;
+
+        // Strip the `userShapes.` prefix so MaterializeInlinedParts sees the
+        // canonical part{N}.relId / part{N}.data / ext{N}.* keys.
+        var carrierProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        const string prefix = "userShapes.";
+        foreach (var k in properties.Keys.ToList())
+        {
+            if (k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && properties.TryGetValue(k, out var v))
+                carrierProps[k.Substring(prefix.Length)] = v;
+        }
+
+        var cdp = chartPart.AddNewPart<ChartDrawingPart>();
+        var rewrite = MaterializeInlinedParts(cdp, carrierProps, "chartUserShapes");
+        var finalXml = rewrite(userShapesXml);
+        using (var s = cdp.GetStream(FileMode.Create, FileAccess.Write))
+        using (var w = new StreamWriter(s))
+            w.Write(finalXml);
+
+        var cdpRelId = chartPart.GetIdOfPart(cdp);
+        var chartSpace = chartPart.ChartSpace;
+        if (chartSpace == null) return;
+        // c:userShapes is CT_RelId — its sole attribute is r:id. Set it
+        // generically to stay independent of the SDK property name.
+        var userShapes = new DocumentFormat.OpenXml.Drawing.Charts.UserShapes();
+        userShapes.SetAttribute(new OpenXmlAttribute(
+            "r", "id", "http://schemas.openxmlformats.org/officeDocument/2006/relationships", cdpRelId));
+        // c:userShapes is the last CT_ChartSpace element before c:extLst.
+        var extLst = chartSpace.ChildElements
+            .FirstOrDefault(e => e.LocalName == "extLst");
+        if (extLst != null) chartSpace.InsertBefore(userShapes, extLst);
+        else chartSpace.AppendChild(userShapes);
+        chartSpace.Save();
+>>>>>>> upstream/main
     }
 
     private string AddPicture(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
         if (!properties.TryGetValue("path", out var imgPath) && !properties.TryGetValue("src", out imgPath))
             throw new ArgumentException("'src' property is required for picture type");
+<<<<<<< HEAD
+=======
+        // R49: `/chart[N]` resolves to the paragraph hosting the chart; AddPicture
+        // would silently re-route the image into body and return a bogus path
+        // (`/chart[1]/r[K]`) that 404s on Get. Mirrors the R47 AddTextbox guard.
+        if (parentPath.StartsWith("/chart[", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                $"Cannot add a picture to a chart path ('{parentPath}'). " +
+                "Charts don't host picture children — use /body or a table cell as parent.");
+>>>>>>> upstream/main
 
         // Buffer the image bytes so we can both feed the image part and sniff
         // the native pixel dimensions for auto aspect-ratio calculations.
@@ -313,6 +444,16 @@ public partial class WordHandler
             || properties.TryGetValue("h", out heightStr);
         long cxEmu = hasWidth ? ParseEmu(widthStr!) : 5486400;  // 6 inches fallback
         long cyEmu = hasHeight ? ParseEmu(heightStr!) : 3657600; // 4 inches fallback
+<<<<<<< HEAD
+=======
+        // OOXML CT_PositiveSize2D / ST_PositiveCoordinate require strictly
+        // positive width and height. Negative/zero EMUs would write a
+        // schema-invalid <wp:extent> that Word rejects (file repair / 422).
+        if (hasWidth && cxEmu <= 0)
+            throw new ArgumentException($"Invalid 'width' value: '{widthStr}'. Picture width must be > 0 (OOXML ST_PositiveCoordinate).");
+        if (hasHeight && cyEmu <= 0)
+            throw new ArgumentException($"Invalid 'height' value: '{heightStr}'. Picture height must be > 0 (OOXML ST_PositiveCoordinate).");
+>>>>>>> upstream/main
 
         if (!hasWidth || !hasHeight)
         {
@@ -353,20 +494,37 @@ public partial class WordHandler
         // emit the long alt text as the name. Take them separately; fall
         // back through name → alt → DefaultPictureName so callers passing
         // only one still get a sensible result.
+<<<<<<< HEAD
         var pictureName = properties.TryGetValue("name", out var nameOverride) && !string.IsNullOrEmpty(nameOverride)
             ? nameOverride
             : (properties.TryGetValue("alt", out var altOverride) && !string.IsNullOrEmpty(altOverride)
                 ? altOverride
                 : DefaultPictureName());
+=======
+        // CONSISTENCY(picture-alt): full alias set on input (alt canonical;
+        // altText/alttext/description aliases), matching Set and the shared
+        // picture schema contract. Set already accepted alttext/description —
+        // Add silently ignoring them was an Add/Set asymmetry.
+        var altFromProps = new[] { "alt", "altText", "alttext", "description" }
+            .Select(k => properties.GetValueOrDefault(k))
+            .FirstOrDefault(v => !string.IsNullOrEmpty(v));
+        var pictureName = properties.TryGetValue("name", out var nameOverride) && !string.IsNullOrEmpty(nameOverride)
+            ? nameOverride
+            : (altFromProps ?? DefaultPictureName());
+>>>>>>> upstream/main
         // altText: explicit `alt=` wins. When absent, leave the Description
         // attribute blank — auto-stamping `altText = pictureName` meant Get
         // surfaced a phantom `alt=<name>` key on dump round-trip for sources
         // whose docPr had no Description (07_example_online_convert.docx).
         // Empty string keeps the OOXML attr off entirely (DocProperties
         // serialises Description="" as no attr).
+<<<<<<< HEAD
         var altText = properties.TryGetValue("alt", out var altOverride2) && !string.IsNullOrEmpty(altOverride2)
             ? altOverride2
             : "";
+=======
+        var altText = altFromProps ?? "";
+>>>>>>> upstream/main
 
         var imgDocPropId = NextDocPropId();
         // BUG-DUMP-R29-1: parse the optional effectExtent prop ("l,t,r,b", 4
@@ -434,13 +592,71 @@ public partial class WordHandler
             // their distinct stacking order instead of collapsing to 1U.
             uint relHeight = properties.TryGetValue("relativeHeight", out var relHeightStr)
                 && uint.TryParse(relHeightStr, out var rh) ? rh : 1U;
+<<<<<<< HEAD
             imgRun = CreateAnchorImageRun(relId, cxEmu, cyEmu, altText, wrapType, hPos, vPos, hRel, vRel, behind, imgDocPropId, pictureName, hAlign, vAlign, relHeight, effectExtent);
+=======
+            // Wrap distances (gap between the float and the text wrapping around
+            // it): "T,B,L,R" EMU prop captured by the dump. Absent → null →
+            // CreateAnchorImageRun keeps the interactive defaults.
+            (uint T, uint B, uint L, uint R)? wrapDist = null;
+            if (properties.TryGetValue("wrapDist", out var wdStr) && !string.IsNullOrWhiteSpace(wdStr))
+            {
+                var wd = wdStr.Split(',');
+                if (wd.Length == 4
+                    && uint.TryParse(wd[0].Trim(), out var wdT)
+                    && uint.TryParse(wd[1].Trim(), out var wdB)
+                    && uint.TryParse(wd[2].Trim(), out var wdL)
+                    && uint.TryParse(wd[3].Trim(), out var wdR))
+                {
+                    wrapDist = (wdT, wdB, wdL, wdR);
+                }
+            }
+            // BUG-R24-WRAPPOLY: forward a captured custom wrapTight/wrapThrough
+            // polygon so the exact text-flow boundary round-trips (a source
+            // polygon hugging the image tighter than the default full square
+            // shifted wrapped/below text by several px).
+            var wrapPolygon = properties.GetValueOrDefault("wrap.polygon");
+            // BUG-DUMP-NAR-WP14: wp14 relative sizing (sizeRelH/sizeRelV =
+            // "relativeFrom;pct", e.g. "page;0"). The dump captures the anchor's
+            // <wp14:sizeRelH>/<wp14:sizeRelV> percentage-of-page sizing; without
+            // re-applying it the picture falls back to its absolute extent and
+            // reflows. Absent → null → no wp14 child emitted.
+            var sizeRelH = properties.GetValueOrDefault("sizeRelH");
+            var sizeRelV = properties.GetValueOrDefault("sizeRelV");
+            // BUG-DUMP-WRAPSIDE: forward the wrapSquare text side (left/right/
+            // largest) so a one-sided wrap round-trips instead of defaulting to
+            // bothSides and reflowing the text around the float.
+            var wrapSide = properties.GetValueOrDefault("wrap.side") ?? properties.GetValueOrDefault("wrapSide");
+            imgRun = CreateAnchorImageRun(relId, cxEmu, cyEmu, altText, wrapType, hPos, vPos, hRel, vRel, behind, imgDocPropId, pictureName, hAlign, vAlign, relHeight, effectExtent, wrapDist, wrapPolygon, sizeRelH, sizeRelV, wrapSide);
+>>>>>>> upstream/main
         }
         else
         {
             imgRun = CreateImageRun(relId, cxEmu, cyEmu, altText, imgDocPropId, pictureName, effectExtent);
         }
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-R28-PICHIDDEN: restore the drawing's hidden flag
+        // (<wp:docPr hidden="1">). CreateImageRun/CreateAnchorImageRun never set
+        // it, so a hidden monochrome print logo replayed visible and rendered
+        // (black) on top of the visible colour logo. Apply it to the wp:docPr.
+        if (properties.TryGetValue("hidden", out var hiddenVal) && IsTruthy(hiddenVal))
+        {
+            var hiddenDocPr = imgRun.Descendants<DW.DocProperties>().FirstOrDefault();
+            if (hiddenDocPr != null) hiddenDocPr.Hidden = true;
+        }
+
+        // Accessibility: mark the image decorative (screen readers skip it). Stored
+        // as an adec:decorative extension under <wp:docPr>. Word treats a decorative
+        // image's alt text as absent, which is expected.
+        if (properties.TryGetValue("decorative", out var decVal) && IsTruthy(decVal))
+        {
+            var decDocPr = imgRun.Descendants<DW.DocProperties>().FirstOrDefault();
+            if (decDocPr != null) SetPictureDecorative(decDocPr);
+        }
+
+>>>>>>> upstream/main
         // Wire the asvg:svgBlip extension after the run is built. Walking
         // the Drawing to find the Blip keeps CreateImageRun /
         // CreateAnchorImageRun signature-stable for non-SVG callers.
@@ -462,7 +678,19 @@ public partial class WordHandler
         {
             ApplyBlipEffects(imgRun, blipEffectsXml);
         }
+<<<<<<< HEAD
         if (properties.TryGetValue("spEffects", out var spEffectsXml)
+=======
+        // Whole-spPr verbatim (xfrm flip flags, a content <a:ext> that differs
+        // from the frame's wp:extent, bwMode, explicit noFill/ln, effectLst) —
+        // supersedes the narrower spEffects injection when present.
+        if (properties.TryGetValue("spPrXml", out var spPrXmlVal)
+            && !string.IsNullOrWhiteSpace(spPrXmlVal))
+        {
+            ApplySpPrVerbatim(imgRun, spPrXmlVal);
+        }
+        else if (properties.TryGetValue("spEffects", out var spEffectsXml)
+>>>>>>> upstream/main
             && !string.IsNullOrWhiteSpace(spEffectsXml))
         {
             ApplySpPrEffects(imgRun, spEffectsXml);
@@ -497,7 +725,22 @@ public partial class WordHandler
                 }
                 else if (Uri.TryCreate(linkVal, UriKind.Absolute, out linkUri))
                 {
+<<<<<<< HEAD
                     Core.HyperlinkUriValidator.RequireSafeScheme(linkVal, "link");
+=======
+                    // BUG-DUMP-PIC-UNSAFE-LINK: a clickable image whose click-link
+                    // carries an unsafe scheme (javascript:/data:/vbscript: — common
+                    // in web-exported docs that wrap thumbnails in javascript:popUp())
+                    // must NOT abort the whole picture. The link is a decoration on
+                    // the image; RequireSafeScheme used to throw here and the entire
+                    // `add picture` op failed, DROPPING the image — silently losing
+                    // content and reflowing the page (lost pages on dump→batch). Word
+                    // never executes a javascript: link anyway, so drop just the
+                    // unsafe link and keep the image (same security outcome as the
+                    // throw, without sacrificing the picture).
+                    if (!Core.HyperlinkUriValidator.IsSafeScheme(linkVal))
+                        linkUri = null;
+>>>>>>> upstream/main
                 }
                 else
                 {
@@ -550,7 +793,11 @@ public partial class WordHandler
             // CONSISTENCY(run-path-index): align the returned r[N] index with
             // navigation's r[N] resolution, which uses Descendants<Run>() and
             // skips comment-reference runs. GetAllRuns encapsulates both rules.
+<<<<<<< HEAD
             var imgRunIdx = GetAllRuns(existingPara).IndexOf(imgRun) + 1;
+=======
+            var imgRunIdx = PathIndex.FromArrayIndex(GetAllRuns(existingPara).IndexOf(imgRun));
+>>>>>>> upstream/main
             // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
             resultPath = $"{ReplaceTrailingParaSegment(parentPath, existingPara)}/r[{imgRunIdx}]";
         }
@@ -573,7 +820,11 @@ public partial class WordHandler
                     new SpacingBetweenLines { Line = "240", LineRule = LineSpacingRuleValues.Auto }));
                 imgCell.AppendChild(imgPara);
             }
+<<<<<<< HEAD
             var imgPIdx = imgCell.Elements<Paragraph>().ToList().IndexOf(imgPara) + 1;
+=======
+            var imgPIdx = PathIndex.FromArrayIndex(imgCell.Elements<Paragraph>().ToList().IndexOf(imgPara));
+>>>>>>> upstream/main
             resultPath = $"{parentPath}/{BuildParaPathSegment(imgPara, imgPIdx)}";
         }
         else
@@ -594,7 +845,11 @@ public partial class WordHandler
             {
                 var refElement = allChildren[index.Value];
                 parent.InsertBefore(imgPara, refElement);
+<<<<<<< HEAD
                 var imgPIdx = parent.Elements<Paragraph>().ToList().IndexOf(imgPara) + 1;
+=======
+                var imgPIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(imgPara));
+>>>>>>> upstream/main
                 resultPath = $"{parentPath}/{BuildParaPathSegment(imgPara, imgPIdx)}";
             }
             else
@@ -614,6 +869,20 @@ public partial class WordHandler
         // height, alt, name, wrap, anchor, …) are not in the helper's
         // vocabulary so they pass through untouched.
         OpenXmlCompositeElement? imgRunRPr = null;
+<<<<<<< HEAD
+=======
+        // ACCOUNTING(handler-as-truth): the foreach below dereferences the
+        // dict via IEnumerable.GetEnumerator on the Dictionary static type,
+        // which bypasses TrackingPropertyDictionary's overridden enumerator.
+        // The crop keys are consumed by the `lk is "crop"…` branch but never
+        // get marked as read → false-positive UNSUPPORTED warning. Explicitly
+        // probe each so the tracker records them.
+        properties.TryGetValue("crop", out _);
+        properties.TryGetValue("cropLeft", out _);
+        properties.TryGetValue("cropRight", out _);
+        properties.TryGetValue("cropTop", out _);
+        properties.TryGetValue("cropBottom", out _);
+>>>>>>> upstream/main
         foreach (var (key, value) in properties)
         {
             var lk = key.ToLowerInvariant();
@@ -690,6 +959,368 @@ public partial class WordHandler
     //
     // Caller can override: progId, width, height, icon (png/jpg/emf file path),
     // display (icon|content). display=content flips DrawAspect to "Content".
+<<<<<<< HEAD
+=======
+    // dump→batch round-trip for an ActiveX form-control run (<w:object> hosting
+    // <w:control r:id> + a VML preview <v:imagedata r:id> — no o:OLEObject).
+    // props carry the verbatim <w:r> XML plus one part{N}.relId/part{N}.data
+    // pair per package part the object references (preview image, activeX
+    // persistence XML) and part{N}.child{M}.* for parts nested under those
+    // (the activeX binary blob). Parts are recreated with FRESH relationship
+    // ids — the source ids would collide with the rebuilt main part's existing
+    // rels — and the run XML's r:id refs are rewritten to match. Child parts
+    // keep their SOURCE rel ids: they are scoped to the freshly created parent
+    // part, so the verbatim part bytes' internal refs resolve untouched.
+    // Unified verbatim part-owning carrier (`add inlinedparts`) — supersedes the
+    // former per-element carrier verbs (chartpart / diagram / vmlshape /
+    // drawingshape / activex), which differed ONLY in a runXml marker check and
+    // all delegated here. The runXml is the verbatim run whose drawing/pict/control
+    // references its parts via r:id / r:dm / r:embed / ...; part{N}.* payloads carry
+    // every part the element owns (and their children + external rels). The element
+    // kind is self-evident from runXml + the part content types — CreateInlinedPart
+    // routes by content type, never by verb — so a single verb covers all of them.
+    // Used only by dump→batch (machine-produced); the old verb names stay accepted
+    // as input aliases. The marker check is now the union of the former per-verb ones.
+    private string AddInlinedPartsRun(OpenXmlElement parent, string parentPath, Dictionary<string, string> properties, string opName)
+    {
+        properties ??= new Dictionary<string, string>();
+        if (!properties.TryGetValue("runXml", out var marker) || string.IsNullOrEmpty(marker)
+            || !(marker.Contains("c:chart", StringComparison.Ordinal)
+                 || marker.Contains("relIds", StringComparison.Ordinal)
+                 || marker.Contains("<w:pict", StringComparison.Ordinal)
+                 || marker.Contains("<w:drawing", StringComparison.Ordinal)
+                 || marker.Contains("<w:control", StringComparison.Ordinal)))
+            throw new ArgumentException(
+                "inlinedparts requires --prop runXml containing a part-owning element "
+                + "(<c:chart>, <dgm:relIds>, <w:pict>, <w:drawing> or <w:control>)");
+        var runXml = properties["runXml"];
+        var mainPart = _doc.MainDocumentPart!;
+        // CONSISTENCY(host-part-rel): same routing as AddOle — parts referenced
+        // from a header/footer-hosted run must attach to that part.
+        OpenXmlPart hostPart = mainPart;
+        {
+            var headerAncestor = parent as Header ?? parent.Ancestors<Header>().FirstOrDefault();
+            if (headerAncestor != null)
+            {
+                var hp = mainPart.HeaderParts.FirstOrDefault(p => ReferenceEquals(p.Header, headerAncestor));
+                if (hp != null) hostPart = hp;
+            }
+            else
+            {
+                var footerAncestor = parent as Footer ?? parent.Ancestors<Footer>().FirstOrDefault();
+                if (footerAncestor != null)
+                {
+                    var fp = mainPart.FooterParts.FirstOrDefault(p => ReferenceEquals(p.Footer, footerAncestor));
+                    if (fp != null) hostPart = fp;
+                }
+            }
+        }
+
+        var rewriteRelIds = MaterializeInlinedParts(hostPart, properties, opName);
+
+        var rewritten = rewriteRelIds(runXml);
+
+        var axRun = new Run(rewritten);
+
+        string resultPath;
+        if (parent is Paragraph axPara)
+        {
+            axPara.AppendChild(axRun);
+            var axRunIdx = PathIndex.FromArrayIndex(GetAllRuns(axPara).IndexOf(axRun));
+            // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
+            resultPath = $"{ReplaceTrailingParaSegment(parentPath, axPara)}/r[{axRunIdx}]";
+        }
+        else if (parent is TableCell axCell)
+        {
+            var firstCellPara = axCell.Elements<Paragraph>().FirstOrDefault();
+            Paragraph hostPara;
+            if (firstCellPara != null && !firstCellPara.Elements<Run>().Any())
+            {
+                firstCellPara.AppendChild(axRun);
+                hostPara = firstCellPara;
+            }
+            else
+            {
+                hostPara = new Paragraph(axRun);
+                AssignParaId(hostPara);
+                axCell.AppendChild(hostPara);
+            }
+            var axPIdx = PathIndex.FromArrayIndex(axCell.Elements<Paragraph>().ToList().IndexOf(hostPara));
+            var axCellRunIdx = PathIndex.FromArrayIndex(GetAllRuns(hostPara).IndexOf(axRun));
+            resultPath = $"{parentPath}/{BuildParaPathSegment(hostPara, axPIdx)}/r[{axCellRunIdx}]";
+        }
+        else
+        {
+            var hostPara = new Paragraph(axRun);
+            AssignParaId(hostPara);
+            AppendToParent(parent, hostPara);
+            var axPIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(hostPara));
+            resultPath = $"{parentPath}/{BuildParaPathSegment(hostPara, axPIdx)}/r[1]";
+        }
+        return resultPath;
+    }
+
+    // Shared by AddInlinedPartsRun and the sdtXml carrier in AddSdt: create
+    // every part{N} (with part{N}.child{M}) and ext{N} relationship on
+    // <paramref name="hostPart"/>, then return the two-phase rel-id rewriter
+    // mapping every source id to its freshly assigned one.
+    private Func<string, string> MaterializeInlinedParts(OpenXmlPart hostPart, Dictionary<string, string> properties, string opName)
+    {
+        // Pass 1: create every top-level part empty, so the complete old→new
+        // id map exists before any content is written. A collected XML part's
+        // bytes can reference a SIBLING part's host-part relationship (the
+        // SmartArt data part's <dsp:dataModelExt relId> points at the
+        // rendered-drawing part), so the rewrite below must cover all ids.
+        var idMap = new List<(string OldId, string NewId)>();
+        var pending = new List<(OpenXmlPart Part, byte[] Bytes, string Ct, int Pi)>();
+        for (int pi = 1; properties.TryGetValue($"part{pi}.relId", out var oldRelId); pi++)
+        {
+            var dataUri = properties.GetValueOrDefault($"part{pi}.data");
+            if (string.IsNullOrEmpty(oldRelId)
+                || !OfficeCli.Core.OleHelper.TryDecodeDataUri(dataUri, out var bytes, out var ct)
+                || bytes.Length == 0)
+                throw new ArgumentException($"{opName} part{pi} requires relId and a non-empty data: URI");
+
+            var created = CreateInlinedPart(hostPart, ct)
+                ?? throw new ArgumentException($"{opName} part{pi}: unsupported content type '{ct}'");
+            pending.Add((created, bytes, ct, pi));
+            idMap.Add((oldRelId!, hostPart.GetIdOfPart(created)));
+        }
+
+        // External relationships (hyperlinks inside a VML textbox, linked
+        // content): no part bytes — recreate the rel on the host part with a
+        // fresh id and route the source id through the same rewrite map.
+        const string HyperlinkRelType =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+        for (int ei = 1; properties.TryGetValue($"ext{ei}.relId", out var extOldId); ei++)
+        {
+            var extType = properties.GetValueOrDefault($"ext{ei}.type");
+            var extTarget = properties.GetValueOrDefault($"ext{ei}.target");
+            if (string.IsNullOrEmpty(extOldId) || string.IsNullOrEmpty(extType) || string.IsNullOrEmpty(extTarget))
+                throw new ArgumentException($"{opName} ext{ei} requires relId, type and target");
+            var extUri = new Uri(extTarget, UriKind.RelativeOrAbsolute);
+            var newExtId = extType == HyperlinkRelType
+                ? hostPart.AddHyperlinkRelationship(extUri, true).Id
+                : hostPart.AddExternalRelationship(extType, extUri).Id;
+            idMap.Add((extOldId!, newExtId));
+        }
+
+        // Two-phase rewrite (shared by the run XML and every inlined XML
+        // part's bytes): a freshly assigned id can equal a *different* source
+        // id still pending replacement, so route through unique placeholders.
+        string RewriteRelIds(string xml)
+        {
+            for (int i = 0; i < idMap.Count; i++)
+                xml = xml.Replace($"\"{idMap[i].OldId}\"", $"\"__OCLI_AXREL_{i}__\"", StringComparison.Ordinal);
+            for (int i = 0; i < idMap.Count; i++)
+                xml = xml.Replace($"\"__OCLI_AXREL_{i}__\"", $"\"{idMap[i].NewId}\"", StringComparison.Ordinal);
+            return xml;
+        }
+
+        // Pass 2: feed content (XML parts get their host-part rel refs
+        // rewritten; binary parts stay verbatim) and attach child parts.
+        foreach (var (created, bytes, ct, pi) in pending)
+        {
+            var feedBytes = bytes;
+            if (ct.EndsWith("+xml", StringComparison.OrdinalIgnoreCase))
+            {
+                var text = System.Text.Encoding.UTF8.GetString(bytes);
+                var rewrittenText = RewriteRelIds(text);
+                if (!ReferenceEquals(rewrittenText, text))
+                    feedBytes = System.Text.Encoding.UTF8.GetBytes(rewrittenText);
+            }
+            using (var ms = new MemoryStream(feedBytes))
+                created.FeedData(ms);
+
+            for (int ci = 1; properties.TryGetValue($"part{pi}.child{ci}.relId", out var childRelId); ci++)
+            {
+                var childUri = properties.GetValueOrDefault($"part{pi}.child{ci}.data");
+                if (string.IsNullOrEmpty(childRelId)
+                    || !OfficeCli.Core.OleHelper.TryDecodeDataUri(childUri, out var cbytes, out var cct)
+                    || cbytes.Length == 0)
+                    throw new ArgumentException($"{opName} part{pi}.child{ci} requires relId and a non-empty data: URI");
+                var childPart = CreateInlinedChildPart(created, cct, childRelId!)
+                    ?? throw new ArgumentException($"{opName} part{pi}.child{ci}: unsupported content type '{cct}'");
+                // BUG-DUMP-R71-USERSHAPES-IMG: recreate the child's OWN parts (a
+                // chart userShapes drawing -> its image) BEFORE feeding the child
+                // bytes, using the ORIGINAL rel id so the child's verbatim r:embed
+                // resolves without rewriting. Without this the rebuilt drawing's
+                // r:embed dangles ("relationship does not exist").
+                for (int gi = 1; properties.TryGetValue($"part{pi}.child{ci}.gc{gi}.relId", out var gcRelId); gi++)
+                {
+                    var gcUri = properties.GetValueOrDefault($"part{pi}.child{ci}.gc{gi}.data");
+                    if (string.IsNullOrEmpty(gcRelId)
+                        || !OfficeCli.Core.OleHelper.TryDecodeDataUri(gcUri, out var gcbytes, out var gcct)
+                        || gcbytes.Length == 0)
+                        throw new ArgumentException($"{opName} part{pi}.child{ci}.gc{gi} requires relId and a non-empty data: URI");
+                    var gcPart = CreateInlinedChildPart(childPart, gcct, gcRelId!)
+                        ?? throw new ArgumentException($"{opName} part{pi}.child{ci}.gc{gi}: unsupported content type '{gcct}'");
+                    using var gcms = new MemoryStream(gcbytes);
+                    gcPart.FeedData(gcms);
+                }
+                using var cms = new MemoryStream(cbytes);
+                childPart.FeedData(cms);
+            }
+
+            // Per-part external rels (e.g. a chart's <c:externalData r:id> ->
+            // external oleObject workbook). The part's bytes reference these
+            // ids verbatim (RewriteRelIds only touches host-part ids), so
+            // recreate each ON the created part with its ORIGINAL id.
+            for (int xi = 1; properties.TryGetValue($"part{pi}.ext{xi}.relId", out var pExtId); xi++)
+            {
+                var pExtType = properties.GetValueOrDefault($"part{pi}.ext{xi}.type");
+                var pExtTarget = properties.GetValueOrDefault($"part{pi}.ext{xi}.target");
+                if (string.IsNullOrEmpty(pExtId) || string.IsNullOrEmpty(pExtType) || string.IsNullOrEmpty(pExtTarget))
+                    throw new ArgumentException($"{opName} part{pi}.ext{xi} requires relId, type and target");
+                var pExtUri = new Uri(pExtTarget, UriKind.RelativeOrAbsolute);
+                if (pExtType == HyperlinkRelType)
+                    created.AddHyperlinkRelationship(pExtUri, true, pExtId!);
+                else
+                    created.AddExternalRelationship(pExtType, pExtUri, pExtId!);
+            }
+        }
+
+        return RewriteRelIds;
+    }
+
+    // Part factory for the inlined-parts carriers. Top-level parts hang off the
+    // run's host part (main document / header / footer); returns null for an
+    // unrecognized content type so the caller surfaces a clear error.
+    private static OpenXmlPart? CreateInlinedPart(OpenXmlPart hostPart, string ct) => ct switch
+    {
+        "application/vnd.ms-office.activeX+xml"
+            => hostPart.AddNewPart<EmbeddedControlPersistencePart>(ct, null),
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml"
+            => hostPart.AddNewPart<DiagramDataPart>(ct, null),
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramLayout+xml"
+            => hostPart.AddNewPart<DiagramLayoutDefinitionPart>(ct, null),
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramStyle+xml"
+            => hostPart.AddNewPart<DiagramStylePart>(ct, null),
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramColors+xml"
+            => hostPart.AddNewPart<DiagramColorsPart>(ct, null),
+        // The rendered-drawing part referenced from the data part's
+        // dataModelExt extension — its relationship lives on the MAIN part
+        // (ms diagramDrawing rel type), so it is a top-level part here.
+        "application/vnd.ms-office.drawingml.diagramDrawing+xml"
+            => hostPart.AddNewPart<DiagramPersistLayoutPart>(ct, null),
+        _ when ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            => hostPart.AddNewPart<ImagePart>(ct, null),
+        // BUG-DUMP-INKML: digital-ink (handwriting) parts (application/inkml+xml,
+        // referenced from <w14:contentPart r:id>) are attached via a customXml
+        // relationship — Word/the SDK reach them as a CustomXmlPart whose content
+        // type is overridden to inkml+xml. The carrier previously had no arm for
+        // this content type and aborted the whole inlined-parts step, dropping the
+        // ink drawing. Recreate it as a CustomXmlPart with the source content type
+        // so the customXml relationship + inkml payload round-trip.
+        "application/inkml+xml"
+            => hostPart.AddNewPart<CustomXmlPart>(ct, null),
+        // BUG-DUMP-R55-VMLCHART: a VML shape / AlternateContent drawing embeds a
+        // DrawingML chart (chart+xml, referenced by r:id). Without this the
+        // inlined-parts materializer aborted the whole `add vmlshape` step and
+        // dropped the chart. Its colour-style / style / embedded-package
+        // children (when present) ride part{N}.child{M} via CreateInlinedChildPart.
+        "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+            => hostPart.AddNewPart<ChartPart>(ct, null),
+        "application/vnd.ms-office.chartcolorstyle+xml"
+            => hostPart.AddNewPart<ChartColorStylePart>(ct, null),
+        "application/vnd.ms-office.chartstyle+xml"
+            => hostPart.AddNewPart<ChartStylePart>(ct, null),
+        // BUG-DUMP-R40-VMLOLE: a VML shape / <o:OLEObject> embeds an OLE object
+        // (legacy .xls/.doc/.ppt → application/vnd.ms-* via an `oleObject`
+        // relationship) or a modern OOXML package (.xlsx/.docx/.pptx via a
+        // `package` relationship). These reach the inlined-parts path as part{N}
+        // and were unsupported, aborting the whole `add vmlshape` (and dropping
+        // the embedded spreadsheet) on dump→batch. Route OLE-object content
+        // types to an EmbeddedObjectPart (preserving the source content type so
+        // .xls round-trips) and package content types to an EmbeddedPackagePart.
+        _ when IsEmbeddedPackageContentType(ct)
+            => hostPart.AddNewPart<EmbeddedPackagePart>(ct, null),
+        _ when IsEmbeddedOleObjectContentType(ct)
+            => hostPart.AddNewPart<EmbeddedObjectPart>(ct, null),
+        _ => null,
+    };
+
+    // Modern OOXML formats embedded as an OLE package (rel type `package`).
+    private static bool IsEmbeddedPackageContentType(string ct) =>
+        ct is "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+           or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.macroEnabled.main+xml"
+           or "application/vnd.ms-excel.sheet.macroEnabled.12"
+           or "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+           or "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+    // Legacy / generic OLE objects embedded via an `oleObject` relationship.
+    private static bool IsEmbeddedOleObjectContentType(string ct) =>
+        ct is "application/vnd.openxmlformats-officedocument.oleObject"
+           or "application/vnd.ms-excel"
+           or "application/msword"
+           or "application/vnd.ms-powerpoint"
+           or "application/vnd.ms-office"
+        || ct.StartsWith("application/vnd.ms-", StringComparison.OrdinalIgnoreCase);
+
+    // Child parts keep their SOURCE rel id (scoped to the freshly created
+    // parent part, so the verbatim parent bytes' internal refs resolve).
+    private static OpenXmlPart? CreateInlinedChildPart(OpenXmlPart parent, string ct, string relId) => ct switch
+    {
+        "application/vnd.ms-office.activeX" or "application/vnd.ms-office.activeX+xml"
+            => parent.AddNewPart<EmbeddedControlPersistenceBinaryDataPart>(ct, relId),
+        // The rendered-drawing child of a diagram data part — what Word
+        // actually rasterizes for modern SmartArt.
+        "application/vnd.ms-office.drawingml.diagramDrawing+xml"
+            => parent.AddNewPart<DiagramPersistLayoutPart>(ct, relId),
+        // BUG-DUMP-R55-VMLCHART: a chart part's own children (colour-style /
+        // style / its embedded data package) keep their source rel id.
+        "application/vnd.ms-office.chartcolorstyle+xml"
+            => parent.AddNewPart<ChartColorStylePart>(ct, relId),
+        "application/vnd.ms-office.chartstyle+xml"
+            => parent.AddNewPart<ChartStylePart>(ct, relId),
+        // BUG-DUMP-VMLCHART-THEMEOVERRIDE: a DrawingML chart child of a VML
+        // shape can carry a <c:themeOverride> part (the chart's own theme
+        // overrides — colours/fonts that differ from the document theme). It
+        // reaches here as part{N}.child{M} with themeOverride+xml. Without this
+        // arm CreateInlinedChildPart returned null, aborting the whole
+        // `add vmlshape` step and dropping the shape's enclosed text runs.
+        "application/vnd.openxmlformats-officedocument.themeOverride+xml"
+            => parent.AddNewPart<ThemeOverridePart>(ct, relId),
+        // BUG-DUMP-CHART-VERBATIM: a native chart's userShapes overlay drawing
+        // (chartshapes+xml, the chartUserShapes child of the ChartPart — a
+        // logo/annotation drawn on top of the chart). Carried as a chart child
+        // so the verbatim `add chartpart` carrier round-trips it; without this
+        // arm a chart with a userShapes overlay aborts the carrier and falls
+        // back to the lossy typed rebuild.
+        "application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml"
+            => parent.AddNewPart<ChartDrawingPart>(ct, relId),
+        // BUG-DUMP-VMLCHART-EMBEDPKG: a chart child of a VML shape can also be
+        // the chart's embedded data workbook (spreadsheetml.sheet, the live
+        // chart source) or a legacy OLE object. CreateInlinedPart already routes
+        // these at the top level; mirror it for the child slot so the embedded
+        // package round-trips instead of aborting the shape (and dropping its
+        // text). Same content-type predicates so the two factories stay in sync.
+        _ when IsEmbeddedPackageContentType(ct)
+            => parent.AddNewPart<EmbeddedPackagePart>(ct, relId),
+        // BUG-DUMP-CHART-OLEDATA: a native chart's <c:externalData r:id> can point
+        // at a LEGACY embedded OLE workbook (relationship type oleObject →
+        // oleObject1.bin) rather than a modern .xlsx package. The SDK's ChartPart
+        // does not list EmbeddedObjectPart among its allowed children, so
+        // AddNewPart<EmbeddedObjectPart> on a ChartPart throws "The part cannot be
+        // added here" — failing the whole chart inlined-parts op and leaving the
+        // chart with a dangling externalData ref (chart renders without its data).
+        // Attach it via AddExtendedPart with the source oleObject relationship type
+        // (which bypasses the typed-child constraint) keeping the source rel id so
+        // the chart's verbatim <c:externalData r:id> resolves. Non-chart parents
+        // keep the typed EmbeddedObjectPart (valid there, used by VML shapes).
+        _ when IsEmbeddedOleObjectContentType(ct) && parent is ChartPart
+            => parent.AddExtendedPart(
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject",
+                ct, ".bin", relId),
+        _ when IsEmbeddedOleObjectContentType(ct)
+            => parent.AddNewPart<EmbeddedObjectPart>(ct, relId),
+        _ when ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            => parent.AddNewPart<ImagePart>(ct, relId),
+        _ => null,
+    };
+
+
+>>>>>>> upstream/main
     private string AddOle(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
         properties ??= new Dictionary<string, string>();
@@ -726,7 +1357,11 @@ public partial class WordHandler
         // 1. Create the embedded binary payload part and rel id on the host part.
         // 2. Resolve ProgID.
         string embedRelId;
+<<<<<<< HEAD
         string progId;
+=======
+        string? progId;
+>>>>>>> upstream/main
         if (OfficeCli.Core.OleHelper.TryDecodeDataUri(srcPath, out var embedBytes, out var dataCt))
         {
             // dump→batch round-trip: src is a data: URI carrying the embedded
@@ -745,6 +1380,7 @@ public partial class WordHandler
                 ?? properties.GetValueOrDefault("embedext");
             (embedRelId, _) = OfficeCli.Core.OleHelper.AddEmbeddedPartFromBytes(
                 hostPart, embedBytes, oleKind, contentType, embedExt);
+<<<<<<< HEAD
             // No file extension to sniff ProgID from — the dump always forwards
             // it, so require it explicitly rather than guessing.
             progId = properties.GetValueOrDefault("progId")
@@ -752,6 +1388,18 @@ public partial class WordHandler
                 ?? throw new ArgumentException(
                     "inline ole payload (data: src) requires an explicit --prop progId");
             OfficeCli.Core.OleHelper.ValidateProgId(progId);
+=======
+            // BUG-DUMP-OLE-NOPROGID: ProgID is OPTIONAL in OOXML (an <o:OLEObject>
+            // may omit it), so the dump omits the progId prop when the source has
+            // none. Requiring it here threw on that valid input, failing the batch
+            // op and silently dropping the OLE object. Accept a missing progId and
+            // emit the <o:OLEObject> WITHOUT a ProgID attribute, mirroring the
+            // source. (An explicit progId is still validated.)
+            progId = properties.GetValueOrDefault("progId")
+                ?? properties.GetValueOrDefault("progid");
+            if (!string.IsNullOrEmpty(progId))
+                OfficeCli.Core.OleHelper.ValidateProgId(progId);
+>>>>>>> upstream/main
         }
         else
         {
@@ -775,9 +1423,20 @@ public partial class WordHandler
         // EMU → points (914400 EMU/inch, 72 points/inch).
         double cxPt = cxEmu / EmuConverter.EmuPerPointF;
         double cyPt = cyEmu / EmuConverter.EmuPerPointF;
+<<<<<<< HEAD
         // Twips for w:dxaOrig/w:dyaOrig (20 twips/point).
         long cxTwips = (long)(cxPt * 20);
         long cyTwips = (long)(cyPt * 20);
+=======
+        // Twips for w:dxaOrig/w:dyaOrig (20 twips/point). A round-tripped OLE
+        // carries the source's native object box verbatim (dxaOrig/dyaOrig props)
+        // so a floating OLE keeps Word's original size instead of being rescaled
+        // from the display frame.
+        string cxTwips = properties.TryGetValue("dxaOrig", out var dxaO) && !string.IsNullOrEmpty(dxaO)
+            ? dxaO : ((long)(cxPt * 20)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string cyTwips = properties.TryGetValue("dyaOrig", out var dyaO) && !string.IsNullOrEmpty(dyaO)
+            ? dyaO : ((long)(cyPt * 20)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+>>>>>>> upstream/main
 
         // 5. DrawAspect: "Icon" (default) or "Content" (live preview).
         // Strict validation: unknown values throw rather than silently
@@ -852,12 +1511,58 @@ public partial class WordHandler
 </v:shapetype>
 """;
 
+<<<<<<< HEAD
         var oleXml = $"""
 <w:object xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" w:dxaOrig="{cxTwips}" w:dyaOrig="{cyTwips}">
 {shapetypeXml}<v:shape id="{shapeId}" type="#_x0000_t75" style="width:{cxPt.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}pt;height:{cyPt.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}pt" o:ole=""{shapeAltAttr}>
 <v:imagedata r:id="{iconRelId}" o:title=""/>
 </v:shape>
 <o:OLEObject Type="Embed" ProgID="{System.Security.SecurityElement.Escape(progId)}" ShapeID="{shapeId}" DrawAspect="{drawAspect}" ObjectID="{objectId}" r:id="{embedRelId}"/>
+=======
+        // A round-tripped FLOATING OLE carries its source v:shape style verbatim
+        // (position:absolute + margin + z-index + wrap), keeping the object out of
+        // the text flow. An inline OLE (no shapeStyle) rebuilds the bare
+        // width/height frame and marks itself o:ole="" — the floating shape omits
+        // o:ole="" to match what Word writes for an absolutely-positioned OLE.
+        var hasFloatStyle = properties.TryGetValue("shapeStyle", out var floatStyle)
+            && !string.IsNullOrEmpty(floatStyle);
+        var shapeStyleAttr = hasFloatStyle
+            ? System.Security.SecurityElement.Escape(floatStyle)
+            : $"width:{cxPt.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}pt;height:{cyPt.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}pt";
+        var oleAttr = hasFloatStyle ? "" : " o:ole=\"\"";
+
+        // BUG-DUMP-OLECROP: re-apply the VML <v:imagedata> crop rectangle captured
+        // by the dump ("cropleft:Nf;cropright:Nf;…"), splicing each present side
+        // back as a verbatim VML attribute so the preview round-trips cropped (an
+        // uncropped EMF preview renders larger and pushes later pages down).
+        var imageCropAttrs = "";
+        if (properties.TryGetValue("crop", out var oleCrop) && !string.IsNullOrEmpty(oleCrop))
+        {
+            var cropSb = new System.Text.StringBuilder();
+            foreach (var seg in oleCrop.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var kv = seg.Split(':', 2);
+                if (kv.Length != 2) continue;
+                var ck = kv[0].Trim().ToLowerInvariant();
+                if (ck is not ("cropleft" or "croptop" or "cropright" or "cropbottom")) continue;
+                cropSb.Append(' ').Append(ck).Append("=\"")
+                      .Append(System.Security.SecurityElement.Escape(kv[1].Trim())).Append('"');
+            }
+            imageCropAttrs = cropSb.ToString();
+        }
+
+        // ProgID is optional (BUG-DUMP-OLE-NOPROGID): omit the attribute entirely
+        // when the source had none, rather than emitting ProgID="".
+        var progIdAttr = string.IsNullOrEmpty(progId)
+            ? ""
+            : $" ProgID=\"{System.Security.SecurityElement.Escape(progId)}\"";
+        var oleXml = $"""
+<w:object xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" w:dxaOrig="{cxTwips}" w:dyaOrig="{cyTwips}">
+{shapetypeXml}<v:shape id="{shapeId}" type="#_x0000_t75" style="{shapeStyleAttr}"{oleAttr}{shapeAltAttr}>
+<v:imagedata r:id="{iconRelId}" o:title=""{imageCropAttrs}/>
+</v:shape>
+<o:OLEObject Type="Embed"{progIdAttr} ShapeID="{shapeId}" DrawAspect="{drawAspect}" ObjectID="{objectId}" r:id="{embedRelId}"/>
+>>>>>>> upstream/main
 </w:object>
 """;
         var oleObject = new EmbeddedObject(oleXml);
@@ -865,6 +1570,21 @@ public partial class WordHandler
         // 8. Wrap in a Run and insert it, mirroring the AddPicture positional logic.
         var oleRun = new Run(oleObject);
 
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-OLERPR: re-apply the source OLE run's <w:rPr> (forwarded by
+        // TryEmitOleRun). The run wrapping <w:object> can carry run typography —
+        // most visibly a <w:bdr> border box, also rFonts/sz that set the host
+        // line height — and a bare rebuilt run dropped it, nudging following
+        // lines and reflowing the page. Mirrors the breakRunRpr re-apply.
+        if (properties.TryGetValue("runRpr", out var oleRpr)
+            && !string.IsNullOrWhiteSpace(oleRpr)
+            && oleRpr.Contains("rPr", StringComparison.Ordinal))
+        {
+            try { oleRun.PrependChild(new RunProperties(oleRpr)); } catch { /* malformed: skip */ }
+        }
+
+>>>>>>> upstream/main
         // If the parent is a block-level SDT, insert into its SdtContentBlock
         // (creating it if missing) instead of appending directly to the SdtBlock.
         // Direct SdtBlock child paragraphs violate the schema and get silently
@@ -894,7 +1614,11 @@ public partial class WordHandler
             if (parentParaInline != null)
             {
                 var runs = GetAllRuns(parentParaInline);
+<<<<<<< HEAD
                 var runIdxInline = runs.IndexOf(oleRun) + 1;
+=======
+                var runIdxInline = PathIndex.FromArrayIndex(runs.IndexOf(oleRun));
+>>>>>>> upstream/main
                 // CONSISTENCY(para-path-canonical): canonicalize when the
                 // SDT lives directly inside a paragraph (parentPath ends in
                 // /p[...]); otherwise (SDT in a cell) parentPath does not
@@ -934,7 +1658,11 @@ public partial class WordHandler
                 if (ReferenceEquals(para, existingPara)) break;
                 olePIdx++;
             }
+<<<<<<< HEAD
             var oleRunIdx = GetAllRuns(existingPara).IndexOf(oleRun) + 1;
+=======
+            var oleRunIdx = PathIndex.FromArrayIndex(GetAllRuns(existingPara).IndexOf(oleRun));
+>>>>>>> upstream/main
             // CONSISTENCY(para-path-canonical): canonicalize to paraId-form.
             resultPath = $"{ReplaceTrailingParaSegment(parentPath, existingPara)}/r[{oleRunIdx}]";
         }
@@ -953,10 +1681,17 @@ public partial class WordHandler
                 AssignParaId(olePara);
                 oleCell.AppendChild(olePara);
             }
+<<<<<<< HEAD
             var olePIdx = oleCell.Elements<Paragraph>().ToList().IndexOf(olePara) + 1;
             // CONSISTENCY(ole-run-path): same /r[1] suffix as the else branch
             // below — the OLE run is the addressable target, not the paragraph.
             var oleCellRunIdx = GetAllRuns(olePara).IndexOf(oleRun) + 1;
+=======
+            var olePIdx = PathIndex.FromArrayIndex(oleCell.Elements<Paragraph>().ToList().IndexOf(olePara));
+            // CONSISTENCY(ole-run-path): same /r[1] suffix as the else branch
+            // below — the OLE run is the addressable target, not the paragraph.
+            var oleCellRunIdx = PathIndex.FromArrayIndex(GetAllRuns(olePara).IndexOf(oleRun));
+>>>>>>> upstream/main
             resultPath = $"{parentPath}/{BuildParaPathSegment(olePara, olePIdx)}/r[{oleCellRunIdx}]";
         }
         else
@@ -973,13 +1708,26 @@ public partial class WordHandler
             {
                 AppendToParent(parent, olePara);
             }
+<<<<<<< HEAD
             var olePIdx = parent.Elements<Paragraph>().ToList().IndexOf(olePara) + 1;
+=======
+            var olePIdx = PathIndex.FromArrayIndex(parent.Elements<Paragraph>().ToList().IndexOf(olePara));
+>>>>>>> upstream/main
             // Return the /r[1] address so callers can Set/Get/Remove the
             // OLE run directly. Picture's Add returns a paragraph-level
             // path because the paragraph Set is meaningful (font, style);
             // for OLE, the only interesting target is the run itself.
             resultPath = $"{parentPath}/{BuildParaPathSegment(olePara, olePIdx)}/r[1]";
         }
+<<<<<<< HEAD
+=======
+        // BUG-DUMP-DELOLE: preserve a tracked-change wrapper on the rebuilt OLE run
+        // (revision.type=del/ins/moveFrom/moveTo). Mirrors AddBreak — wrap after the
+        // result path is computed; no-op when no revision.type is present. A deleted
+        // figure that loses its <w:del> resurrects as a live full-size object and
+        // pushes the following content onto new pages.
+        WrapRunsInRevision(new List<Run> { oleRun }, properties);
+>>>>>>> upstream/main
         return resultPath;
     }
 }

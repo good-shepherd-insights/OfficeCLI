@@ -2,6 +2,10 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "picture",
+<<<<<<< HEAD
+=======
+  "elementAliases": ["image", "img"],
+>>>>>>> upstream/main
   "parent": "slide",
   "operations": {
     "add": true,
@@ -106,6 +110,35 @@
       "readback": "decimal degrees (e.g. 45 or 22.5)",
       "enforcement": "report"
     },
+<<<<<<< HEAD
+=======
+    "flipH": {
+      "type": "boolean",
+      "description": "mirror the picture horizontally (left-right). Mirrors shape/connector flip — stored on the same a:xfrm @flipH attribute. Pass false to clear.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop flipH=true",
+        "--prop flipH=false"
+      ],
+      "readback": "true when @flipH is set (omitted otherwise)",
+      "enforcement": "report"
+    },
+    "flipV": {
+      "type": "boolean",
+      "description": "mirror the picture vertically (top-bottom). Mirrors shape/connector flip — stored on the same a:xfrm @flipV attribute. Pass false to clear.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop flipV=true",
+        "--prop flipV=false"
+      ],
+      "readback": "true when @flipV is set (omitted otherwise)",
+      "enforcement": "report"
+    },
+>>>>>>> upstream/main
     "link": {
       "type": "string",
       "description": "click-hyperlink target attached to the picture's cNvPr (so the whole image is clickable). Accepts absolute URI (https://, mailto:), slide[N] for in-deck jumps, or named actions (firstslide, lastslide, nextslide, previousslide). Pass 'none' or empty to clear.",
@@ -132,9 +165,28 @@
       "readback": "string",
       "enforcement": "report"
     },
+<<<<<<< HEAD
     "brightness": {
       "type": "number",
       "description": "luminance offset in [-100, 100]. Stored on the blip as a:lumOff (value * 1000). Combine with `contrast` to mirror PowerPoint's Picture Format → Corrections.",
+=======
+    "opacity": {
+      "type": "number",
+      "description": "picture opacity. Input as a decimal 0.0-1.0 or a percent 2-100. Stored on the blip as a:alphaModFix @amt (value * 100000); readback emits the decimal 0.0-1.0 form.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop opacity=0.5",
+        "--prop opacity=80"
+      ],
+      "readback": "decimal in [0.0, 1.0]",
+      "enforcement": "report"
+    },
+    "brightness": {
+      "type": "number",
+      "description": "luminance brightness in [-100, 100]. Stored on the blip as a:lum @bright (value * 1000). Combine with `contrast` to mirror PowerPoint's Picture Format → Corrections.",
+>>>>>>> upstream/main
       "add": false,
       "set": true,
       "get": true,
@@ -147,7 +199,11 @@
     },
     "contrast": {
       "type": "number",
+<<<<<<< HEAD
       "description": "luminance modulation in [-100, 100]. Stored on the blip as a:lumMod (100000 + value * 1000). Combine with `brightness`.",
+=======
+      "description": "luminance contrast in [-100, 100]. Stored on the blip as a:lum @contrast (value * 1000). Combine with `brightness`.",
+>>>>>>> upstream/main
       "add": false,
       "set": true,
       "get": true,
@@ -160,7 +216,11 @@
     },
     "shadow": {
       "type": "string",
+<<<<<<< HEAD
       "description": "outer shadow as `color-blur-angle-dist-opacity` (mirrors shape `shadow`). color is hex (no `#`) or scheme; blur/dist in points; angle in degrees; opacity 0-100.",
+=======
+      "description": "outer shadow as `color-blur-angle-dist-opacity` (mirrors shape `shadow`). Input color is hex (with or without `#`, 6- or 8-digit `RRGGBBAA`) or a scheme name; blur/dist in points; angle in degrees; opacity 0-100. Readback emits `#RRGGBB-blur-angle-dist-opacity` (always `#`-prefixed 6-digit color; the alpha is carried solely by the trailing opacity field, never double-encoded as an alpha byte).",
+>>>>>>> upstream/main
       "add": false,
       "set": true,
       "get": true,
@@ -168,7 +228,11 @@
         "--prop shadow=000000-10-45-6-50",
         "--prop shadow=accent1-8-90-4-60"
       ],
+<<<<<<< HEAD
       "readback": "`color-blur-angle-dist-opacity`",
+=======
+      "readback": "`#RRGGBB-blur-angle-dist-opacity`",
+>>>>>>> upstream/main
       "enforcement": "report"
     },
     "glow": {

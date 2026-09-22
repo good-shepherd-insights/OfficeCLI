@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.RegularExpressions;
@@ -53,6 +57,9 @@ public partial class ExcelHandler
                 if (depth > 0 && sheetData != null)
                 {
                     sheetNode.Children = GetSheetChildNodes(name, sheetData, depth, part);
+                    // Children omit value-less empty cells/rows (issue #149);
+                    // reflect the actual listed count, not the raw row count.
+                    sheetNode.ChildCount = sheetNode.Children.Count;
                 }
 
                 node.Children.Add(sheetNode);
@@ -182,7 +189,11 @@ public partial class ExcelHandler
                     d.Name?.Value?.Equals(selector, StringComparison.OrdinalIgnoreCase) == true);
                 if (dn == null)
                     return new DocumentNode { Path = path, Type = "error", Text = $"Named range '{selector}' not found" };
+<<<<<<< HEAD
                 dnIndex = allDefs.IndexOf(dn) + 1;
+=======
+                dnIndex = PathIndex.FromArrayIndex(allDefs.IndexOf(dn));
+>>>>>>> upstream/main
             }
 
             var nrNode = new DocumentNode
@@ -258,7 +269,16 @@ public partial class ExcelHandler
             var pane = ws.GetFirstChild<SheetViews>()?.GetFirstChild<SheetView>()?.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Pane>();
             if (pane != null && pane.State?.Value == PaneStateValues.Frozen)
             {
-                sheetNode.Format["freeze"] = pane.TopLeftCell?.Value ?? "";
+                // The freeze boundary is defined solely by xSplit/ySplit. topLeftCell is
+                // the scrolled pane's scroll position, which Excel rewrites every time the
+                // sheet is saved while scrolled away from the boundary — reading it back
+                // reports a freeze wherever the file happened to be scrolled. The two only
+                // coincide in a freshly written file, which is why an officecli-only
+                // round-trip looks correct. Mirrors the `freeze` writer in Set.Sheet.cs,
+                // which derives xSplit/ySplit from the same cell reference.
+                var colSplit = (int)(pane.HorizontalSplit?.Value ?? 0D);
+                var rowSplit = (int)(pane.VerticalSplit?.Value ?? 0D);
+                sheetNode.Format["freeze"] = IndexToColumnName(colSplit + 1) + (rowSplit + 1);
             }
 
             // Include zoom and view properties
@@ -287,7 +307,12 @@ public partial class ExcelHandler
             {
                 // CONSISTENCY(scheme-color): echo back the symbolic name
                 // (e.g. "accent1") instead of the numeric theme index.
+<<<<<<< HEAD
                 var schemeName = ParseHelpers.ExcelThemeIndexToName(tabColor.Theme.Value);
+=======
+                var schemeName = ParseHelpers.ExcelThemeNameWithTint(
+                    tabColor.Theme.Value, tabColor.Tint?.Value);
+>>>>>>> upstream/main
                 if (schemeName != null) sheetNode.Format["tabColor"] = schemeName;
             }
 
@@ -317,7 +342,23 @@ public partial class ExcelHandler
             // Sheet protection readback
             var sheetProtection = ws.GetFirstChild<SheetProtection>();
             if (sheetProtection?.Sheet?.Value == true)
+            {
                 sheetNode.Format["protect"] = true;
+                // Password hashes (legacy 16-bit `password` attr and the
+                // modern algorithmName/hashValue/saltValue/spinCount set)
+                // are surfaced verbatim so dump→batch preserves protection
+                // strength instead of silently degrading to passwordless.
+                if (sheetProtection.Password?.Value is { Length: > 0 } legacyPw)
+                    sheetNode.Format["passwordHash"] = legacyPw;
+                if (sheetProtection.AlgorithmName?.Value is { Length: > 0 } algo)
+                    sheetNode.Format["protection.algorithm"] = algo;
+                if (sheetProtection.HashValue?.Value is { Length: > 0 } hashV)
+                    sheetNode.Format["protection.hash"] = hashV;
+                if (sheetProtection.SaltValue?.Value is { Length: > 0 } saltV)
+                    sheetNode.Format["protection.salt"] = saltV;
+                if (sheetProtection.SpinCount?.HasValue == true)
+                    sheetNode.Format["protection.spinCount"] = (int)sheetProtection.SpinCount.Value;
+            }
 
             // Print settings readback
             var pageSetup = ws.GetFirstChild<PageSetup>();
@@ -347,6 +388,31 @@ public partial class ExcelHandler
                 sheetNode.Format["printArea"] = paText;
             }
 
+<<<<<<< HEAD
+=======
+            // Print title rows/cols readback (_xlnm.Print_Titles). Mirrors the
+            // Print_Area path so `set printTitleRows/printTitleCols` round-trips.
+            // The defined name combines both a row range ($1:$2) and a column
+            // range ($A:$A), comma-joined; split by which side is digit/letter.
+            var printTitlesDn = workbook.GetFirstChild<DefinedNames>()?.Elements<DefinedName>()
+                .FirstOrDefault(d => d.Name == "_xlnm.Print_Titles" && d.LocalSheetId?.Value == (uint)sheetIdx);
+            if (printTitlesDn != null)
+            {
+                foreach (var tok in (printTitlesDn.Text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var t = tok.Trim();
+                    var bang = t.IndexOf('!');
+                    var rangePart = (bang >= 0 ? t[(bang + 1)..] : t).Replace("$", "");
+                    var leftSide = rangePart.Split(':')[0];
+                    if (leftSide.Length == 0) continue;
+                    if (char.IsDigit(leftSide[0]))
+                        sheetNode.Format["printTitleRows"] = rangePart;
+                    else if (char.IsLetter(leftSide[0]))
+                        sheetNode.Format["printTitleCols"] = rangePart;
+                }
+            }
+
+>>>>>>> upstream/main
             // PageMargins readback
             var pm = ws.GetFirstChild<PageMargins>();
             if (pm != null)
@@ -399,6 +465,9 @@ public partial class ExcelHandler
             if (depth > 0)
             {
                 sheetNode.Children = GetSheetChildNodes(sheetNameFromPath, data, depth, worksheet);
+                // Children omit value-less empty cells/rows (issue #149);
+                // reflect the actual listed count, not the raw row count.
+                sheetNode.ChildCount = sheetNode.Children.Count;
             }
             return sheetNode;
         }
@@ -422,11 +491,17 @@ public partial class ExcelHandler
             if (rbIdx < 1 || rbIdx > breaks.Count)
                 throw new ArgumentException($"Row break index {rbIdx} out of range (1-{breaks.Count})");
             var brk = breaks[rbIdx - 1];
-            return new DocumentNode
+            var rbNode = new DocumentNode
             {
                 Path = path, Type = "rowbreak",
                 Format = { ["row"] = brk.Id?.Value ?? 0u, ["manual"] = brk.ManualPageBreak?.Value ?? false }
             };
+            // Restricted-span page break (<brk min max>): surface a non-default
+            // column span so dump→replay reproduces it. Full-width default
+            // (min 0 / max 16383) is omitted to keep the readback clean.
+            if (brk.Min?.Value is { } rbMin && rbMin > 0) rbNode.Format["min"] = (int)rbMin;
+            if (brk.Max?.Value is { } rbMax && rbMax != 16383u) rbNode.Format["max"] = (int)rbMax;
+            return rbNode;
         }
         var cbMatch = Regex.Match(cellRef, @"^colbreak\[(\d+)\]$", RegexOptions.IgnoreCase);
         if (cbMatch.Success)
@@ -437,11 +512,15 @@ public partial class ExcelHandler
             if (cbIdx < 1 || cbIdx > breaks.Count)
                 throw new ArgumentException($"Column break index {cbIdx} out of range (1-{breaks.Count})");
             var brk = breaks[cbIdx - 1];
-            return new DocumentNode
+            var cbNode = new DocumentNode
             {
                 Path = path, Type = "colbreak",
                 Format = { ["col"] = (int)(brk.Id?.Value ?? 0u), ["manual"] = brk.ManualPageBreak?.Value ?? false }
             };
+            // Restricted-span break: full-height default is min 0 / max 1048575.
+            if (brk.Min?.Value is { } cbMin && cbMin > 0) cbNode.Format["min"] = (int)cbMin;
+            if (brk.Max?.Value is { } cbMax && cbMax != 1048575u) cbNode.Format["max"] = (int)cbMax;
+            return cbNode;
         }
 
         // Validation path: /Sheet1/dataValidation[N] (canonical) or
@@ -482,6 +561,31 @@ public partial class ExcelHandler
                     if (col.OutlineLevel?.HasValue == true && col.OutlineLevel.Value > 0)
                         colNode.Format["outlineLevel"] = (int)col.OutlineLevel.Value;
                     if (col.Collapsed?.Value == true) colNode.Format["collapsed"] = true;
+<<<<<<< HEAD
+=======
+                    // Resolve a column-level number format (col @s -> cellXf ->
+                    // numFmt) so `set col[A] --prop numFmt=...` round-trips as the
+                    // canonical `numberformat` key, mirroring the cell reader.
+                    if (col.Style?.Value is uint colStyleIdx && colStyleIdx != 0)
+                    {
+                        var (colNumFmtId, colFmtCode) = ExcelDataFormatter.GetCellFormat(
+                            new Cell { StyleIndex = colStyleIdx }, _doc.WorkbookPart);
+                        // A built-in numFmtId (e.g. 4 = "#,##0.00") carries no
+                        // <numFmt> entry in the styles part, so GetCellFormat
+                        // returns a null code for it. Resolve the built-in code
+                        // so column Get surfaces `numberformat` the same way the
+                        // cell reader does (CellToNode's built-in id map).
+                        if (colNumFmtId > 0)
+                        {
+                            var colCode = !string.IsNullOrEmpty(colFmtCode)
+                                ? colFmtCode
+                                : ExcelDataFormatter.ResolveBuiltInFormatCode(colNumFmtId);
+                            if (!string.IsNullOrEmpty(colCode))
+                                colNode.Format["numberformat"] = colCode;
+                            colNode.Format["numFmtId"] = (int)colNumFmtId;
+                        }
+                    }
+>>>>>>> upstream/main
                     // Long-tail CT_Col attributes (style, bestFit, phonetic, ...).
                     // Symmetric with column Set's case-preserving SetAttribute fallback.
                     FillUnknownAttrProps(col, colNode, "", CuratedColAttrs);
@@ -536,7 +640,11 @@ public partial class ExcelHandler
             };
             // CONSISTENCY(unit-qualified-readback): row height is stored in
             // points in OOXML; emit as "{n}pt" so it matches pptx's
+<<<<<<< HEAD
             // unit-qualified readback (CLAUDE.md canonical value rule).
+=======
+            // unit-qualified readback (the project conventions canonical value rule).
+>>>>>>> upstream/main
             if (row.Height?.Value != null)
                 rowNode.Format["height"] = $"{row.Height.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}pt";
             if (row.Hidden?.Value == true) rowNode.Format["hidden"] = true;
@@ -570,6 +678,7 @@ public partial class ExcelHandler
 
             var rule = cf.Elements<ConditionalFormattingRule>().FirstOrDefault();
             if (rule != null)
+<<<<<<< HEAD
             {
                 // Canonical CF type key. Normalized variants overwrite this below
                 // (e.g. ConditionalFormatValues.Top10 -> "topN", Expression -> "formula").
@@ -724,6 +833,9 @@ public partial class ExcelHandler
                 if (rule.FormatId?.Value != null)
                     PopulateCfNodeFromDxf(cfNode, (int)rule.FormatId.Value);
             }
+=======
+                PopulateCfNodeFromRule(worksheet, rule, cfNode);
+>>>>>>> upstream/main
             return cfNode;
         }
 
@@ -733,6 +845,7 @@ public partial class ExcelHandler
             var af = GetSheet(worksheet).GetFirstChild<AutoFilter>();
             var afNode = new DocumentNode { Path = path, Type = "autofilter" };
             if (af?.Reference?.Value != null) afNode.Format["range"] = af.Reference.Value;
+            if (af != null) PopulateAutoFilterCriteria(af, afNode);
             return afNode;
         }
 
@@ -945,7 +1058,13 @@ public partial class ExcelHandler
             if (picMatch.Success)
             {
                 var picIndex = int.Parse(picMatch.Groups[1].Value);
-                return GetPictureNode(sheetNameFromPath, worksheet, picIndex, path)!;
+                // GetPictureNode returns null for out-of-range indices (incl.
+                // picture[0]); the bare `!` leaked a NullReferenceException as
+                // an opaque internal_error instead of the not-found message
+                // every sibling element type produces.
+                return GetPictureNode(sheetNameFromPath, worksheet, picIndex, path)
+                    ?? throw new ArgumentException(
+                        $"Picture[{picIndex}] not found in sheet '{sheetNameFromPath}' (indices are 1-based).");
             }
 
             // Handle shape[N] path segment
@@ -953,13 +1072,29 @@ public partial class ExcelHandler
             if (shpMatch.Success)
             {
                 var shpIndex = int.Parse(shpMatch.Groups[1].Value);
-                return GetShapeNode(sheetNameFromPath, worksheet, shpIndex, path)!;
+                // Same null-leak as picture[N] above.
+                return GetShapeNode(sheetNameFromPath, worksheet, shpIndex, path)
+                    ?? throw new ArgumentException(
+                        $"Shape[{shpIndex}] not found in sheet '{sheetNameFromPath}' (indices are 1-based).");
             }
 
 
             // If it looks like it could be a malformed cell reference (digits only, etc.), reject it
             if (Regex.IsMatch(cellRef, @"^\d+$"))
                 throw new ArgumentException($"Invalid cell reference: '{cellRef}'. Expected format like 'A1', 'B2'.");
+
+            // CONSISTENCY(axis-ref-compat): Excel-style whole-column/row
+            // references (B:B, 1:1) are input aliases for col[X]/row[N] —
+            // re-dispatch a single-axis span to the canonical path (readback
+            // Path stays canonical). Multi-axis spans (B:D) have no single
+            // node to return; point at the bracket syntax instead.
+            if (TryExpandAxisRef(cellRef) is { } axisSegments)
+            {
+                if (axisSegments.Count == 1)
+                    return Get($"/{sheetNameFromPath}/{axisSegments[0]}", depth);
+                throw new ArgumentException(
+                    $"{cellRef} spans multiple {(char.IsDigit(cellRef[0]) ? "rows" : "columns")} — get them one at a time ({axisSegments[0]} … {axisSegments[^1]}); set accepts the whole span.");
+            }
 
             // Generic XML fallback: navigate worksheet XML tree
             var xmlSegments = GenericXmlQuery.ParsePathSegments(cellRef);
@@ -988,7 +1123,7 @@ public partial class ExcelHandler
             var runs = ssi.Elements<Run>().ToList();
             if (runIdx < 1 || runIdx > runs.Count)
                 throw new ArgumentException($"Run index {runIdx} out of range (1-{runs.Count})");
-            return RunToNode(runs[runIdx - 1], $"/{sheetNameFromPath}/{runCellRef}/run[{runIdx}]");
+            return RunToNode(runs[PathIndex.ToArrayIndex(runIdx)], $"/{sheetNameFromPath}/{runCellRef}/run[{runIdx}]");
         }
 
         if (cellRef.Contains(':'))
@@ -1030,8 +1165,89 @@ public partial class ExcelHandler
         }
     }
 
+    // Element types this handler dispatches natively; anything else falls through
+    // to the generic XML query. CONSISTENCY(ole-alias): "oleobject" mirrors Add's
+    // case switch. Also gates the `:contains()` post-filter, which must not fire
+    // on a range endpoint (`A1:C2` is not the element `A1` filtered by "C2").
+    private static readonly HashSet<string> KnownElementTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cell", "row", "col", "column", "sheet", "validation", "comment", "note",
+        "table", "listobject", "chart", "pivottable", "pivot", "slicer", "shape",
+        "picture", "sparkline", "namedrange", "definedname", "media", "image",
+        "ole", "oleobject", "object", "embed", "hyperlink", "rowbreak", "colbreak",
+    };
+
     public List<DocumentNode> Query(string selector)
+<<<<<<< HEAD
         => FilterSelectorPositionalIndex(selector, QueryDispatch(selector));
+=======
+        => FilterSelectorPositionalIndex(selector,
+            FilterByContainsText(selector, QueryDispatch(selector)));
+
+    /// <summary>
+    /// Issue #351: `:contains(x)` — and its `x:text` shorthand — is parsed into
+    /// <c>CellSelector.ValueContains</c>, but only the cell branch ever consulted
+    /// it. Every other element type returned its FULL set, so a filtered query
+    /// silently answered with everything and exit 0: `row:contains(Anna)` gave
+    /// all rows, `comment:contains(nonsense)` gave all comments. Apply the filter
+    /// once here so every type behaves the same.
+    ///
+    /// A node matches on what it actually shows the user — its text, its display
+    /// label (Preview), its <c>name</c> — plus, for row/col whose node carries
+    /// none of those, the values of the cells it spans, which the branch supplies
+    /// as <c>searchText</c>.
+    /// </summary>
+    private List<DocumentNode> FilterByContainsText(string selector, List<DocumentNode> nodes)
+    {
+        if (nodes.Count == 0) return nodes;
+        // Only a pseudo-class on a known element type is a filter. Without this
+        // gate a bare range (`A1:C2`) would parse as element "A1" filtered by
+        // "C2" and start dropping cells.
+        int colon = Core.SelectorCommaSplit.TopLevelIndexOf(selector, ':');
+        if (colon < 0) return nodes;
+        var prefix = Regex.Match(StripTopLevelSheetPrefix(selector[..colon]).TrimStart('/'), @"(\w+)$");
+        if (prefix.Success && !KnownElementTypes.Contains(prefix.Groups[1].Value)) return nodes;
+
+        var needle = ParseCellSelector(selector).ValueContains;
+        if (string.IsNullOrEmpty(needle)) return nodes;
+        return nodes.Where(n => MatchesContainsText(n, needle)).ToList();
+    }
+
+    /// <summary>
+    /// Column letter → the display values of every cell in that column, joined.
+    /// One pass over the sheet; only called when a `:contains()` filter is
+    /// actually present (issue #351).
+    /// </summary>
+    private Dictionary<string, string> BuildColumnTextMap(WorksheetPart worksheetPart)
+    {
+        var byColumn = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var sheetData = GetSheet(worksheetPart).GetFirstChild<SheetData>();
+        if (sheetData != null)
+        {
+            foreach (var cell in sheetData.Descendants<Cell>())
+            {
+                if (cell.CellReference?.Value == null) continue;
+                string colName;
+                try { colName = ParseCellReference(cell.CellReference.Value).Column; }
+                catch { continue; }
+                if (!byColumn.TryGetValue(colName, out var values))
+                    byColumn[colName] = values = new List<string>();
+                values.Add(GetCellDisplayValue(cell));
+            }
+        }
+        return byColumn.ToDictionary(
+            kv => kv.Key, kv => string.Join(" ", kv.Value), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesContainsText(DocumentNode node, string needle)
+    {
+        bool Has(string? s) => s != null && s.Contains(needle, StringComparison.OrdinalIgnoreCase);
+        if (Has(node.Text) || Has(node.Preview)) return true;
+        if (node.Format.TryGetValue("name", out var name) && Has(name?.ToString())) return true;
+        return node.InternalFormat.TryGetValue("searchText", out var spanned)
+            && Has(spanned?.ToString());
+    }
+>>>>>>> upstream/main
 
     // Collection element types whose Query result Paths carry a positional
     // `/elem[N]` tail (row uses sparse RowIndex, col uses a letter, the rest are
@@ -1066,7 +1282,11 @@ public partial class ExcelHandler
 
         // Strip the sheet prefix (Sheet1! — but not a != operator) and any
         // leading /Sheet/ so we see the bare `elem[token]`.
+<<<<<<< HEAD
         var s = Regex.Replace(selector, @"^.+?!(?!=)", "");
+=======
+        var s = StripTopLevelSheetPrefix(selector);
+>>>>>>> upstream/main
         if (s.StartsWith('/'))
         {
             var t = s.TrimStart('/');
@@ -1107,9 +1327,67 @@ public partial class ExcelHandler
             n.Path.EndsWith($"[{wanted}]", StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
+<<<<<<< HEAD
+=======
+    // True when an `=` (equality predicate) sits outside every bracket and quote
+    // — i.e. a predicate was written without its brackets (`Dept=IT`,
+    // `col.部门=销售`). Only `=` is checked: `>` / `<` double as the descendant
+    // combinator (`row > cell`, `table > row`), so flagging them would break
+    // those selectors; the bare-`>` predicate case is instead steered by the
+    // ambiguity/collision errors, which now spell out the bracketed form. `=` is
+    // never a combinator, so a top-level `=` is unambiguously a missing-brackets
+    // predicate — fail loud instead of returning a silent empty set (exit 0).
+    private static bool HasTopLevelComparison(string selector)
+    {
+        int bracket = 0, paren = 0;
+        char? quote = null;
+        foreach (var c in selector)
+        {
+            if (quote.HasValue) { if (c == quote.Value) quote = null; continue; }
+            if (c == '"' || c == '\'') { quote = c; continue; }
+            else if (c == '[') bracket++;
+            else if (c == ']') bracket = System.Math.Max(0, bracket - 1);
+            else if (c == '(') paren++;
+            else if (c == ')') paren = System.Math.Max(0, paren - 1);
+            else if (bracket == 0 && paren == 0 && c == '=')
+                return true;
+        }
+        return false;
+    }
+
+    // Strip a `Sheet!` prefix, recognizing only a TOP-LEVEL '!' (outside
+    // brackets and quotes) as the sheet separator. The old regex ^.+?!(?!=)
+    // was quote-blind: a predicate value containing '!' — row[F="x!"],
+    // row[Msg~=hello!] — was truncated at the value's bang and the selector
+    // silently dispatched as an unknown element (0 matches, no warning). A
+    // top-level '!' followed by '=' (a bare != filter) is not a separator.
+    private static string StripTopLevelSheetPrefix(string selector)
+    {
+        var i = Core.SelectorCommaSplit.TopLevelIndexOf(selector, '!');
+        if (i < 0 || (i + 1 < selector.Length && selector[i + 1] == '=')) return selector;
+        return selector[(i + 1)..];
+    }
+
+    // True when a '/' sits outside every bracket and quote — the sheet/path
+    // separator of a slash path, as opposed to a '/' inside a predicate value.
+    // Shared scan with MutationSelectorGuard so query and set/remove agree on
+    // what counts as a scoped slash path.
+    private static bool HasTopLevelSlash(string selector)
+        => Core.SelectorCommaSplit.ContainsTopLevelChar(selector, '/');
+
+>>>>>>> upstream/main
     private List<DocumentNode> QueryDispatch(string selector)
     {
         var results = new List<DocumentNode>();
+
+        // A slash-path copied from Get output ("/Sheet1/row[2]") that lost its
+        // leading slash ("Sheet1/row[2]") would otherwise read as an unknown
+        // element type and return a silent empty set. A top-level '/' (outside
+        // brackets — a value's '/' like row[url~=a/b] does not count) with no
+        // leading slash is unambiguously that mistake; restore the slash so it
+        // resolves the same as the copied path.
+        if (!selector.StartsWith("/") && HasTopLevelSlash(selector))
+            selector = "/" + selector;
 
         // Handle Excel-native direct cell ref: Sheet1!A1 or Sheet1!A1:D10
         // For ranges (containing ':'), expand the "range" container node into its
@@ -1118,12 +1396,32 @@ public partial class ExcelHandler
         var nativeCellRef = Regex.Match(selector, @"^([^/!]+)!([A-Z]+\d+(:[A-Z]+\d+)?)$", RegexOptions.IgnoreCase);
         if (nativeCellRef.Success)
         {
+<<<<<<< HEAD
             var node = Get($"/{nativeCellRef.Groups[1].Value}/{nativeCellRef.Groups[2].Value}");
+=======
+            // 'My Data (2024)'!A1 — Excel requires quoting names with spaces;
+            // strip the quotes so the DOM path resolves the real sheet.
+            var node = Get($"/{UnquoteSheetName(nativeCellRef.Groups[1].Value)}/{nativeCellRef.Groups[2].Value}");
+>>>>>>> upstream/main
             if (node.Type == "range" && node.Children.Count > 0)
                 return node.Children;
             return [node];
         }
 
+<<<<<<< HEAD
+=======
+        // A comparison operator OUTSIDE any bracket means the predicate was
+        // written without its brackets (`col.2024>150`, `foo>1`, `Dept=IT`).
+        // Such a selector matches no element type and would otherwise return an
+        // empty list with exit 0 — a silent "no rows" that a data user reads as a
+        // real result. Fail loud with the bracketed form instead.
+        if (HasTopLevelComparison(selector))
+            throw new Core.CliException(
+                $"'{selector}' is not a valid selector: a predicate must be inside brackets, " +
+                $"e.g. row[col.2024>150] to filter table rows by a column, or cell[value>150] to filter cells.")
+                { Code = "invalid_selector" };
+
+>>>>>>> upstream/main
         // CONSISTENCY(excel-sheet-separator-warn): Detect the PPT-style `>`
         // separator form (e.g. `Sheet1>ole`) that users familiar with the
         // PowerPoint query grammar may try against Excel. Excel uses `!`
@@ -1166,7 +1464,11 @@ public partial class ExcelHandler
         // "/namedrange", and "/Sheet1/table[1]". Mirrors GET's bare-path
         // listers (see ecb36111) — without this normalization, the bare
         // path falls through to ParseCellSelector and returns cells.
+<<<<<<< HEAD
         var selectorForType = Regex.Replace(selector, @"^.+?!(?!=)", "");
+=======
+        var selectorForType = StripTopLevelSheetPrefix(selector);
+>>>>>>> upstream/main
         if (selectorForType.StartsWith('/'))
         {
             var trimmed = selectorForType.TrimStart('/');
@@ -1182,8 +1484,12 @@ public partial class ExcelHandler
         // WordHandler.Query normalizes selector.element to lowercase.
         var elementName = elementMatch.Success ? elementMatch.Groups[1].Value.ToLowerInvariant() : "";
         bool isKnownType = string.IsNullOrEmpty(elementName)
+<<<<<<< HEAD
             // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
             || elementName is "cell" or "row" or "col" or "column" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "slicer" or "shape" or "picture" or "sparkline" or "namedrange" or "definedname" or "media" or "image" or "ole" or "oleobject" or "object" or "embed" or "hyperlink" or "rowbreak" or "colbreak"
+=======
+            || KnownElementTypes.Contains(elementName)
+>>>>>>> upstream/main
             || (elementName.Length <= 3 && Regex.IsMatch(elementName, @"^[A-Z]+$", RegexOptions.IgnoreCase));
         if (!isKnownType)
         {
@@ -1553,10 +1859,7 @@ public partial class ExcelHandler
                 var drawingsPart = worksheetPart.DrawingsPart;
                 if (drawingsPart?.WorksheetDrawing == null) continue;
 
-                var picAnchors = drawingsPart.WorksheetDrawing
-                    .Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-                    .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-                    .ToList();
+                var picAnchors = EnumeratePictureAnchors(drawingsPart.WorksheetDrawing).ToList();
 
                 for (int i = 0; i < picAnchors.Count; i++)
                 {
@@ -1587,10 +1890,7 @@ public partial class ExcelHandler
                 var drawingsPart = worksheetPart.DrawingsPart;
                 if (drawingsPart?.WorksheetDrawing == null) continue;
 
-                var picAnchors = drawingsPart.WorksheetDrawing
-                    .Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-                    .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-                    .ToList();
+                var picAnchors = EnumeratePictureAnchors(drawingsPart.WorksheetDrawing).ToList();
 
                 for (int i = 0; i < picAnchors.Count; i++)
                 {
@@ -1647,9 +1947,33 @@ public partial class ExcelHandler
                 {
                     bool forcedCol = Regex.IsMatch(lc.Key, @"^col(?:umn)?\.", RegexOptions.IgnoreCase);
                     if (!forcedCol && int.TryParse(lc.Key, out _))
+<<<<<<< HEAD
                         throw new ArgumentException(
                             $"row[{lc.Key} …] is ambiguous: a bare number is the row index, not a column filter. " +
                             $"Use 'col.{lc.Key}' to filter a column named '{lc.Key}', or 'row[{lc.Key}]' (no operator) for that row.");
+=======
+                    {
+                        var full = $"row[col.{lc.Key}{AttributeFilter.OpToString(lc.Op)}{lc.Value}]";
+                        throw new Core.CliException(
+                            $"row[{lc.Key} …] is ambiguous: a bare number is the row index, not a column filter. " +
+                            $"Use '{full}' to filter by a column named '{lc.Key}', or 'row[{lc.Key}]' (no operator) for that row.")
+                            { Code = "invalid_selector" };
+                    }
+                    if (!forcedCol && atForced.Contains(lc.Key) && !RowAttributeKeys.Contains(lc.Key)
+                        && !IsRowSetAttributeKey(lc.Key))
+                        // '@' names a row PROPERTY; an unknown one must not fall
+                        // through to the generic post-filter, where the absent
+                        // key evaluates false and a not(@typo=…) flips to
+                        // matching EVERY row (deletion-scale hazard on remove).
+                        throw new Core.CliException(
+                            $"row[@{lc.Key} …]: '{lc.Key}' is not a row property. " +
+                            $"Row properties: {string.Join(", ", RowAttributeKeys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))}. " +
+                            $"For the table column, drop the '@' (row[{lc.Key} …]) or force it with row[col.{lc.Key} …].")
+                        {
+                            Code = "invalid_selector",
+                            ValidValues = RowAttributeKeys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToArray(),
+                        };
+>>>>>>> upstream/main
                     if (!forcedCol && (atForced.Contains(lc.Key) || RowAttributeKeys.Contains(lc.Key)))
                     {
                         attrCount++;
@@ -1661,12 +1985,27 @@ public partial class ExcelHandler
                 }
                 foreach (var ak in collisionCandidates)
                     if (RowKeyCollidesWithColumn(ak, parsed.Sheet))
+<<<<<<< HEAD
                         throw new ArgumentException(
                             $"row[{ak} …] is ambiguous: '{ak}' names both a row property and a table column. " +
                             $"Use 'col.{ak}' to match the column, or '@{ak}' to match the row property.");
                 if (colCount > 0 && attrCount > 0)
                     throw new ArgumentException(
                         "row[...] cannot mix table columns and row properties in one expression. Split into separate queries.");
+=======
+                        throw new Core.CliException(
+                            $"row[{ak} …] is ambiguous: '{ak}' names both a row property and a table column. " +
+                            $"Use 'row[col.{ak} …]' to match the column, or 'row[@{ak} …]' to match the row property.")
+                        {
+                            Code = "invalid_selector",
+                            Suggestion = $"row[col.{ak} …] (table column) or row[@{ak} …] (row property)",
+                            ValidValues = new[] { $"col.{ak}", $"@{ak}" },
+                        };
+                if (colCount > 0 && attrCount > 0)
+                    throw new Core.CliException(
+                        "row[...] cannot mix table columns and row properties in one expression. Split into separate queries.")
+                        { Code = "invalid_selector" };
+>>>>>>> upstream/main
                 if (colCount > 0)
                     return QueryRowsByColumnPredicate(parsed.Sheet, rowExpr);
                 // pure row properties → fall through to the generic post-filter.
@@ -1695,6 +2034,21 @@ public partial class ExcelHandler
                         ChildCount = row.Elements<Cell>().Count(),
                         Preview = rowIdx.ToString()
                     };
+<<<<<<< HEAD
+=======
+                    // Row properties are emitted only when set (height on 3 of
+                    // 1000 rows). Declare the full queryable-key set so the
+                    // post-filter treats an absent-but-known key (row[@height>…]
+                    // on a sheet where no row has a custom height — the exact
+                    // form the collision error recommends) as 0 matches, not
+                    // "unknown key".
+                    node.InternalFormat["declaredKeys"] = RowAttributeKeys;
+                    // A row node shows only its index, so `row:contains(Anna)`
+                    // has to match against the cells the row spans — the same
+                    // text a user sees in that row (issue #351).
+                    node.InternalFormat["searchText"] =
+                        string.Join(" ", row.Elements<Cell>().Select(c => GetCellDisplayValue(c)));
+>>>>>>> upstream/main
                     if (row.Height?.Value != null)
                         node.Format["height"] = $"{row.Height.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}pt";
                     if (row.Hidden?.Value == true) node.Format["hidden"] = true;
@@ -1726,6 +2080,17 @@ public partial class ExcelHandler
                 var columns = GetSheet(worksheetPart).GetFirstChild<Columns>();
                 if (columns == null) continue;
 
+<<<<<<< HEAD
+=======
+                // A column node shows only its letter, so `col:contains(Alpha)`
+                // has to match against the cells the column spans (issue #351).
+                // Built only when a filter is present — an unfiltered `query col`
+                // must not start scanning every cell of the sheet.
+                var columnText = parsed.ValueContains == null
+                    ? null
+                    : BuildColumnTextMap(worksheetPart);
+
+>>>>>>> upstream/main
                 foreach (var col in columns.Elements<Column>())
                 {
                     var min = col.Min?.Value ?? 0u;
@@ -1740,6 +2105,11 @@ public partial class ExcelHandler
                             Type = "column",
                             Preview = colName
                         };
+<<<<<<< HEAD
+=======
+                        if (columnText != null && columnText.TryGetValue(colName, out var spanned))
+                            node.InternalFormat["searchText"] = spanned;
+>>>>>>> upstream/main
                         if (col.Width?.Value != null) node.Format["width"] = col.Width.Value;
                         if (col.Hidden?.Value == true) node.Format["hidden"] = true;
                         if (col.CustomWidth?.Value == true) node.Format["customWidth"] = true;
@@ -1866,6 +2236,15 @@ public partial class ExcelHandler
                     if (MatchesCellSelector(cell, sheetName, parsed))
                     {
                         var node = CellToNode(sheetName, cell, worksheetPart, eval);
+<<<<<<< HEAD
+=======
+                        // Carry the stored value under `value` so the CLI
+                        // post-filter compares `value>0.3` / `value=0.5` on the
+                        // underlying number (0.5), not the display ("50%").
+                        // node.Text keeps the display for output; MatchOne also
+                        // falls back to it so `value=50%` still matches.
+                        node.Format["value"] = GetCellRawComparisonValue(cell, eval);
+>>>>>>> upstream/main
                         if (MatchesFormatAttributes(node, parsed))
                             results.Add(node);
                     }
@@ -1914,10 +2293,38 @@ public partial class ExcelHandler
             }
         }
 
+<<<<<<< HEAD
         // Resolve font color
         var font = dxf.GetFirstChild<Font>();
         if (font != null)
         {
+=======
+        // Resolve font props. The dxf font carries whatever BuildFormulaCfFont
+        // wrote (bold/italic/strike/underline/size/name/color); surface them all
+        // so `get`/`query` round-trips what `add`/`set` accepts — otherwise an
+        // applied `font.bold` reads back as nothing (it IS in the XML).
+        var font = dxf.GetFirstChild<Font>();
+        if (font != null)
+        {
+            var bold = font.GetFirstChild<Bold>();
+            if (bold != null && (bold.Val == null || bold.Val.Value))
+                cfNode.Format["font.bold"] = true;
+            var italic = font.GetFirstChild<Italic>();
+            if (italic != null && (italic.Val == null || italic.Val.Value))
+                cfNode.Format["font.italic"] = true;
+            var strike = font.GetFirstChild<Strike>();
+            if (strike != null && (strike.Val == null || strike.Val.Value))
+                cfNode.Format["font.strike"] = true;
+            var underline = font.GetFirstChild<Underline>();
+            if (underline != null)
+                cfNode.Format["font.underline"] = underline.Val?.InnerText ?? "single";
+            var fontSize = font.GetFirstChild<FontSize>();
+            if (fontSize?.Val?.Value != null)
+                cfNode.Format["font.size"] = $"{fontSize.Val.Value:0.##}pt";
+            var fontName = font.GetFirstChild<FontName>();
+            if (!string.IsNullOrEmpty(fontName?.Val?.Value))
+                cfNode.Format["font.name"] = fontName.Val.Value;
+>>>>>>> upstream/main
             var fontColor = font.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Color>();
             if (fontColor?.Rgb?.Value != null)
                 cfNode.Format["font.color"] = ParseHelpers.FormatHexColor(fontColor.Rgb.Value);
@@ -2009,9 +2416,21 @@ public partial class ExcelHandler
         {
             if (claimed.Contains((ac, ar))) continue;
 
+<<<<<<< HEAD
             // 3. Header span: contiguous non-empty TEXT cells rightward from anchor.
             int c = ac;
             while (occupied.TryGetValue((c, ar), out var hc) && hc.isText) c++;
+=======
+            // 3. Header span: contiguous non-empty cells rightward from a TEXT
+            //    anchor. The anchor (table's leading column header) must be text,
+            //    but interior/trailing header cells MAY be numeric so a common
+            //    year/number header ("Region | 2024 | 2025") is still recognised
+            //    — a single numeric header used to truncate the span to one
+            //    column and drop the whole table.
+            if (!occupied.TryGetValue((ac, ar), out var anchorCell) || !anchorCell.isText) continue;
+            int c = ac;
+            while (occupied.ContainsKey((c, ar))) c++;
+>>>>>>> upstream/main
             int headerEndCol = c - 1;
             if (headerEndCol - ac + 1 < 2) continue;  // strict: >= 2 columns
 
@@ -2055,6 +2474,16 @@ public partial class ExcelHandler
             node.Format["stable"] = false;
             node.Format["ref"] = rangeRef;
             node.Format["columns"] = string.Join(",", colNames);
+<<<<<<< HEAD
+=======
+            // Structured column list — the comma-joined Format["columns"] is
+            // lossy when a header itself contains a comma ("Amount, USD"), which
+            // silently corrupts header→column resolution downstream. Consumers
+            // that resolve a column by name (row-where, set-by-column, hints)
+            // read this list instead of re-splitting the string. See
+            // DetectedTableColumns().
+            node.InternalFormat["columnList"] = colNames;
+>>>>>>> upstream/main
             node.Format["dataRange"] = $"{IndexToColumnName(ac)}{ar + 1}:{endRef}";
             node.ChildCount = colNames.Count;
             results.Add(node);

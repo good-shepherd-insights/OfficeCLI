@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml.Packaging;
@@ -27,7 +31,13 @@ public partial class WordHandler
                     "default" or "none" => DocGridValues.Default,
                     "lines" => DocGridValues.Lines,
                     "linesandchars" or "linesandcharacters" => DocGridValues.LinesAndChars,
-                    "snaptocharacters" or "snapchars" => DocGridValues.SnapToChars,
+                    // BUG-DUMP-H88: the Get readback emits docGrid.type from
+                    // grid.Type.InnerText, whose OOXML literal for SnapToChars is
+                    // "snapToChars" → lowercases to "snaptochars". Without this alias
+                    // the dump produced a value its own batch rejected: a CJK
+                    // snap-to-character grid round-tripped to type="default" with
+                    // linePitch + charSpace silently lost (the failed op was skipped).
+                    "snaptocharacters" or "snapchars" or "snaptochars" => DocGridValues.SnapToChars,
                     _ => throw new ArgumentException($"Invalid docGrid.type: '{value}'. Valid: default, lines, linesAndChars, snapToCharacters")
                 };
                 return true;
@@ -172,10 +182,33 @@ public partial class WordHandler
                 SetOnOffSetting<EvenAndOddHeaders>(EnsureSettings(), IsTruthy(value));
                 EnsureSettings().Save();
                 return true;
+<<<<<<< HEAD
+=======
+            case "updatefields" or "updatefieldsonopen":
+                // <w:updateFields w:val="true"/> — tells Word to recompute every
+                // field (TOC / PAGE / SEQ / PAGEREF cached values) on open, so
+                // dynamic fields don't render their stale write-time cache.
+                SetOnOffSetting<UpdateFieldsOnOpen>(EnsureSettings(), IsTruthy(value));
+                EnsureSettings().Save();
+                return true;
+>>>>>>> upstream/main
             case "autohyphenation":
                 SetOnOffSetting<AutoHyphenation>(EnsureSettings(), IsTruthy(value));
                 EnsureSettings().Save();
                 return true;
+<<<<<<< HEAD
+=======
+            case "trackrevisions" or "trackchanges":
+                // <w:trackRevisions/> — the document-level track-changes MODE
+                // toggle (Word: Review → Track Changes). Distinct from the
+                // per-run/paragraph revision DATA authored via revision.type.
+                // `trackChanges` is the lenient Word-UI alias; Get emits the
+                // canonical `trackRevisions` (matches the OOXML element name,
+                // like every sibling flag on /settings).
+                SetOnOffSetting<TrackRevisions>(EnsureSettings(), IsTruthy(value));
+                EnsureSettings().Save();
+                return true;
+>>>>>>> upstream/main
             case "defaulttabstop":
             {
                 var settings = EnsureSettings();

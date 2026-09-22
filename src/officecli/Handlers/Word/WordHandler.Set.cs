@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // Copyright 2025 OfficeCLI (officecli.ai)
+=======
+// Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+>>>>>>> upstream/main
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
@@ -11,12 +15,89 @@ namespace OfficeCli.Handlers;
 
 public partial class WordHandler
 {
-    public List<string> Set(string path, Dictionary<string, string> properties)
+    // PERF(nav-child-cache): keys whose Set only writes run/paragraph/cell/row/
+    // table PROPERTIES (rPr / pPr / tcPr / trPr / tblPr) and therefore never
+    // adds or removes a <w:r> / <w:tr> / <w:tc> element — the only structure the
+    // run/row/cell nav caches index. A Set restricted to these keys leaves those
+    // caches valid, so a per-run/per-cell attribute-set batch keeps hitting them
+    // (arming the clear guard there would rebuild O(R) per set → O(R²)).
+    //
+    // JUDGMENT (why this is a safe-list, not a structural block-list): the
+    // criterion "does this key add/remove an r/tr/tc element?" is provable per
+    // key. `text` fails it (replaces all runs of a paragraph/cell). Anything not
+    // provably attribute-only — a new key, a field/hyperlink/equation rewrite,
+    // revision accept/reject (deletes inserted runs) — is absent here and thus
+    // clears by default. Missing a genuinely-safe key only over-clears (perf);
+    // wrongly listing an unsafe key would serve a detached element (silent
+    // wrong-content bug), so the list stays conservative.
+    private static readonly HashSet<string> NavCacheSafeSetKeys = new(StringComparer.OrdinalIgnoreCase)
     {
+<<<<<<< HEAD
         Modified = true;
         LastSetWarnings = new List<string>();
         var unsupported = new List<string>();
 
+=======
+        // run rPr
+        "bold", "italic", "underline", "strike", "doublestrike", "color", "size",
+        "fontsize", "font", "highlight", "caps", "smallcaps", "vanish", "hidden",
+        "subscript", "superscript", "vertalign", "position", "kerning", "emboss",
+        "outline", "shadow", "imprint", "rtl", "lang", "charscale", "spacing",
+        "letterspacing",
+        // paragraph pPr
+        "alignment", "align", "halign", "textalignment", "spacebefore", "spaceafter",
+        "linespacing", "linerule", "keepnext", "keeplines", "widowcontrol",
+        "outlinelevel", "contextualspacing", "numid", "numlevel", "bidi",
+        // cell tcPr
+        "valign", "verticalalignment", "width", "nowrap", "textdirection",
+        "gridspan", "vmerge", "hidemark", "fit",
+        // row trPr
+        "height", "rowheight", "cantsplit", "tblheader",
+    };
+
+    // A Set clears the nav child caches unless EVERY property key is provably
+    // attribute-only (in NavCacheSafeSetKeys, or a dotted member of a safe
+    // family like border.*/shading.*/margin.*/indent.*/padding.*). Empty props
+    // (e.g. a pure revision.action routed elsewhere) is treated as "may
+    // restructure" → clears.
+    private static bool ShouldClearNavCacheAfterSet(Dictionary<string, string> properties)
+    {
+        if (properties.Count == 0) return true;
+        foreach (var key in properties.Keys)
+        {
+            if (NavCacheSafeSetKeys.Contains(key)) continue;
+            var lower = key.ToLowerInvariant();
+            var dot = lower.IndexOf('.');
+            var family = dot >= 0 ? lower[..dot] : lower;
+            if (family is "border" or "shading" or "margin" or "indent"
+                or "padding" or "cellmargin" or "font")
+                continue;
+            return true; // a key we can't prove is attribute-only → clear
+        }
+        return false;
+    }
+
+    public List<string> Set(string path, Dictionary<string, string> properties)
+        => MarkModified(() => SetCore(path, properties));
+
+    private List<string> SetCore(string path, Dictionary<string, string> properties)
+    {
+        LastSetWarnings = new List<string>();
+        LastUnrecognizedLatex = new List<string>();
+        LastSetNewPath = null;
+        var unsupported = new List<string>();
+
+        // PERF(nav-child-cache): drop the run/row/cell nav caches on exit when
+        // this Set might rewrite a container's child set (`set text`, revision
+        // accept/reject, field/hyperlink rewrites, …). Property-only sets whose
+        // keys are all attribute-only leave it disarmed. Exit-timing so a set
+        // that repopulates the cache mid-op (navigating through the mutated
+        // segment) still ends clean. See NavCacheSafeSetKeys.
+        using var _navClearGuard = ShouldClearNavCacheAfterSet(properties)
+            ? new NavCacheClearGuard(this)
+            : default;
+
+>>>>>>> upstream/main
         // Bare `revision=` key was retired when the namespace split into
         // revision.type (creation) / revision.action (accept-reject). Reject
         // up-front with a pointed error so migrating scripts get an actionable
@@ -82,9 +163,55 @@ public partial class WordHandler
             return unsupported;
         }
 
+<<<<<<< HEAD
         // Unified find: if 'find' key is present (at any path level), route to ProcessFind
         if (properties.TryGetValue("find", out var findText))
         {
+=======
+        // find / range are two mutually exclusive addressing modes (text match vs
+        // explicit character offsets). Reject the contradiction rather than pick a
+        // silent winner — mirrors the revision-namespace ambiguity rule.
+        if (properties.ContainsKey("find") && properties.ContainsKey("range"))
+            throw new ArgumentException(
+                "'find' and 'range' are mutually exclusive addressing modes — provide one, not both.");
+
+        // Explicit character-range run formatting: same split-run engine as find,
+        // but the [start,end) offsets are supplied directly instead of derived from
+        // a text match — giving a caller with a live text selection unambiguous
+        // run-level formatting even when the selected text repeats. Run-level only;
+        // offsets are 0-based, half-open, relative to the concatenated run text of
+        // the resolved scope (a /body/p[N] path is that paragraph; /body spans all).
+        // Structured to be isomorphic with this handler's own find path
+        // (ProcessWordRange ≡ ProcessFind minus the match step); the cross-handler
+        // range surface itself is CONSISTENCY(char-range).
+        if (properties.TryGetValue("range", out var rangeSpec))
+        {
+            if (properties.ContainsKey("replace") || properties.ContainsKey("text"))
+                throw new ArgumentException(
+                    "range currently supports formatting only (bold, color, size, …); " +
+                    "text insertion/replacement via range is not yet supported.");
+            if (properties.Keys.Any(k => k.StartsWith("revision.", StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException(
+                    "range cannot be combined with revision.* — use find (which infers "
+                    + "ins/del) or an explicit /body/p[N]/r[M] path for tracked-change formatting.");
+            var rangeFormatProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            rangeFormatProps.Remove("range");
+            rangeFormatProps.Remove("scope");
+            rangeFormatProps.Remove("regex");
+            if (rangeFormatProps.Count == 0)
+                throw new ArgumentException(
+                    "'range' requires format properties (e.g. bold, color, size).");
+            var ranges = ParseHelpers.ParseCharRanges(rangeSpec);
+            var rangeEffectivePath = (path is "" or "/") ? "/body" : path;
+            foreach (var u in ProcessWordRange(rangeEffectivePath, ranges, rangeFormatProps))
+                if (!unsupported.Contains(u)) unsupported.Add(u);
+            return unsupported;
+        }
+
+        // Unified find: if 'find' key is present (at any path level), route to ProcessFind
+        if (properties.TryGetValue("find", out var findText))
+        {
+>>>>>>> upstream/main
             var replace = properties.TryGetValue("replace", out var r) ? r : null;
             // Separate run-level format properties from paragraph-level properties.
             // revision.* creation keys go to a third bucket so each scope (run /
@@ -262,6 +389,28 @@ public partial class WordHandler
         {
             SetDocumentProperties(properties, unsupported);
             SaveDoc();
+<<<<<<< HEAD
+=======
+            return unsupported;
+        }
+
+        // /docDefaults: same routing as /document, but bare keys (font,
+        // fontSize, color, bold, …) implicitly target docDefaults. Prepend
+        // "docdefaults." to any non-prefixed key so TrySetDocDefaults picks
+        // them up. Keys already prefixed pass through unchanged.
+        if (path.Equals("/docDefaults", StringComparison.OrdinalIgnoreCase))
+        {
+            var rewritten = new Dictionary<string, string>(properties.Comparer ?? StringComparer.OrdinalIgnoreCase);
+            foreach (var (k, v) in properties)
+            {
+                if (k.StartsWith("docdefaults.", StringComparison.OrdinalIgnoreCase))
+                    rewritten[k] = v;
+                else
+                    rewritten["docDefaults." + k] = v;
+            }
+            SetDocumentProperties(rewritten, unsupported);
+            SaveDoc();
+>>>>>>> upstream/main
             return unsupported;
         }
 
@@ -366,7 +515,18 @@ public partial class WordHandler
             var firstName = hfParts[0].Name.ToLowerInvariant();
             if ((firstName == "header" || firstName == "footer") && hfParts.Count == 1)
             {
+<<<<<<< HEAD
                 SetHeaderFooter(firstName, (hfParts[0].Index ?? 1) - 1, properties, unsupported);
+=======
+                // last() resolves to the LAST part by creation order (mirrors
+                // get); otherwise set /header[last()] silently wrote into the
+                // FIRST header (Index == null → 0), losing content.
+                int hfCount = (firstName == "header"
+                    ? _doc.MainDocumentPart?.HeaderParts.Count()
+                    : _doc.MainDocumentPart?.FooterParts.Count()) ?? 0;
+                int hfIdx = hfParts[0].StringIndex == "last()" ? hfCount - 1 : (hfParts[0].Index ?? 1) - 1;
+                SetHeaderFooter(firstName, hfIdx, properties, unsupported);
+>>>>>>> upstream/main
                 return unsupported;
             }
         }
@@ -410,7 +570,11 @@ public partial class WordHandler
         // element paths (/section[N], /body/sectPr[N], /chart[N], /toc[N], …) match
         // case-insensitively so /Section[1] is equivalent to /section[1]. styleSetMatch
         // below remains case-sensitive — style ids are user-defined identifiers.
+<<<<<<< HEAD
         var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+)\]|/body/sectPr(?:\[(\d+)\])?)$",
+=======
+        var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+|last\(\))\]|/body/sectPr(?:\[(\d+)\])?)$",
+>>>>>>> upstream/main
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (secSetMatch.Success) return SetSectionPath(secSetMatch, properties);
 
@@ -465,12 +629,53 @@ public partial class WordHandler
         if (element is Run run) return SetElementRun(run, properties);
         if (element is Hyperlink hl) return SetElementHyperlink(hl, properties);
         if (element is M.Paragraph mPara) return SetElementMPara(mPara, properties);
+<<<<<<< HEAD
+=======
+        if (element is M.OfficeMath oMathEl) return SetElementOMath(oMathEl, properties);
+>>>>>>> upstream/main
         if (element is Paragraph para) return SetElementParagraph(para, properties);
         if (element is TableCell cell) return SetElementTableCell(cell, properties);
         if (element is TableRow row) return SetElementTableRow(row, properties);
         if (element is Table tbl) return SetElementTable(tbl, properties);
         if (element is TabStop tabStop) return SetElementTabStop(tabStop, properties);
         if (element is TextBoxContent txbx) return SetElementTextBoxContent(txbx, properties);
+<<<<<<< HEAD
+=======
+        // /body/shape[N] resolves to the wps:wsp element. SetShapeProps models the
+        // curated spPr surface (fill/line/width/height/geometry) reusing the Add
+        // builders, and forwards out-of-scope keys as unsupported so Add and
+        // Set track the same prop surface.
+        if (string.Equals(element.LocalName, "wsp", StringComparison.Ordinal)
+            && string.Equals(element.NamespaceUri,
+                "http://schemas.microsoft.com/office/word/2010/wordprocessingShape", StringComparison.Ordinal))
+            return SetShapeProps(element, properties);
+        // /body/group[N] resolves to the wpg:wgp group. Resizing scales the whole
+        // group (grpSpPr ext + ancestor wp:extent, leaving chExt as the baseline
+        // so Word compresses the children) and re-bakes child font sizes.
+        if (string.Equals(element.LocalName, "wgp", StringComparison.Ordinal)
+            && string.Equals(element.NamespaceUri,
+                "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup", StringComparison.Ordinal))
+            return SetGroupProps(element, properties);
+        // Other shape carriers (Drawing host or v:shape descendant) have no
+        // curated Set handler. Without this guard the dispatcher returned an empty
+        // unsupported list → CLI reported "Updated" (exit 0) while writing
+        // nothing. Surface every key as unsupported + a warning so the call
+        // signals the gap clearly, mirroring how Add returns UNSUPPORTED for
+        // shape props it doesn't model.
+        bool isShape = element is Drawing
+            || string.Equals(element.LocalName, "wsp", StringComparison.Ordinal)
+            || string.Equals(element.LocalName, "shape", StringComparison.Ordinal);
+        if (isShape)
+        {
+            var dropped = new List<string>();
+            foreach (var k in properties.Keys)
+            {
+                dropped.Add(k);
+                LastSetWarnings.Add($"unsupported property on shape: '{k}' (Set does not currently model shape transforms; see Add path for the supported props).");
+            }
+            return dropped;
+        }
+>>>>>>> upstream/main
         return new List<string>();
     }
 
@@ -526,7 +731,11 @@ public partial class WordHandler
                     // reject XML 1.0 illegal control chars at input time so the resident
                     // process doesn't accept them into the in-memory DOM only to fail at
                     // close with "save failed — data may be lost" and lose user work.
+<<<<<<< HEAD
                     ParseHelpers.ValidateXmlText(value, "text");
+=======
+                    ParseHelpers.ValidateXmlText(value, "text", allowSoftBreakChar: true);
+>>>>>>> upstream/main
                     // Only replace non-field static text runs. Complex fields are
                     // a multi-run sequence: [Begin][Instr]([Separate][Result])[End].
                     // Runs carrying <w:fldChar>/<w:instrText> AND any run nested
@@ -863,7 +1072,11 @@ public partial class WordHandler
             // OOXML stores border size in eighth-of-a-point units. Accept bare
             // integer (already in eighths) plus unit-qualified lengths
             // ('1pt', '0.5cm', '0.05in') for parity with other Word length
+<<<<<<< HEAD
             // inputs (CONSISTENCY: spacing-units, root CLAUDE.md "Spacing
+=======
+            // inputs (CONSISTENCY: spacing-units, the project conventions "Spacing
+>>>>>>> upstream/main
             // input is lenient").
             var sz = parts[1].Trim();
             if (uint.TryParse(sz, out size))
@@ -915,7 +1128,26 @@ public partial class WordHandler
         // sizeProvided info route through MakeBorderTyped below; the legacy
         // overload stays size-always-stamped for non-nil borders that
         // genuinely default to size 4.
+<<<<<<< HEAD
         var b = new T { Val = style };
+=======
+        T b;
+        try { b = new T { Val = style }; }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            // ParseBorderStyle is lenient (passes unknown tokens via
+            // `new BorderValues(raw)` to support art borders). The SDK's
+            // EnumValue<BorderValues> setter validates on assignment and
+            // throws an enum-type exception with the opaque "specified
+            // value is not valid" message. Convert to a friendly
+            // ArgumentException carrying the bad token.
+            throw new ArgumentException(
+                $"Invalid border style '{style.ToString()}'. " +
+                "Valid styles include: single, double, dashed, dotted, thick, thin, " +
+                "wave, doubleWave, dashSmallGap, dotDash, dotDotDash, triple, outset, " +
+                "inset, dashDotStroked, threeDEmboss, threeDEngrave, none, nil.", ex);
+        }
+>>>>>>> upstream/main
         if (!(style == BorderValues.Nil && size == 0)) b.Size = size;
         if (space.HasValue) b.Space = space.Value;
         if (color != null) b.Color = color;
@@ -950,8 +1182,17 @@ public partial class WordHandler
                 // R7 deferred BT-4: warn (advisory, non-fatal) when the
                 // style id does not exist in the styles part — opening
                 // such a doc in Word shows a "style not found" badge.
+<<<<<<< HEAD
                 if (warnings != null && !StyleIdExists(value))
                     warnings.Add($"style '{value}' not found in styles part — will be referenced as-is");
+=======
+                // Built-in ids are materialized rather than left dangling
+                // (issue #407) — see Add's `style` handling.
+                if (TryMaterializeBuiltInStyle(value))
+                    warnings?.Add($"style '{value}' was not defined in the styles part; added Word's built-in definition ('{BuiltInStyleName(value)}')");
+                else if (warnings != null && !StyleIdExists(value))
+                    warnings.Add(StyleNotFoundWarning(value));
+>>>>>>> upstream/main
                 pProps.ParagraphStyleId = new ParagraphStyleId { Val = value };
                 return true;
             case "stylename":
@@ -964,7 +1205,11 @@ public partial class WordHandler
                 var resolved = ResolveStyleIdFromName(value);
                 pProps.ParagraphStyleId = new ParagraphStyleId { Val = resolved ?? value };
                 return true;
+<<<<<<< HEAD
             case "align" or "alignment":
+=======
+            case "align" or "alignment" or "jc":
+>>>>>>> upstream/main
                 pProps.Justification = new Justification { Val = ParseJustification(value) };
                 return true;
             case "firstlineindent":
@@ -979,11 +1224,28 @@ public partial class WordHandler
                 // CONSISTENCY(lenient-spacing): mirror Add — accept cm/in/pt/twips via SpacingConverter.
                 // BUG-DUMP-NEGIND: signed.
                 indentL.Left = SpacingConverter.ParseWordSpacingSigned(value).ToString();
+<<<<<<< HEAD
+=======
+                // BUG-IND-ALIAS (#367): w:start is the ISO/strict spelling of
+                // w:left. A source that uses it (Google Docs / Word-for-Mac
+                // exports) kept the OLD w:start alongside our new w:left, so the
+                // element carried two conflicting indents; whichever one a later
+                // normalizing save collapses decides the result, which looked
+                // like the indent randomly disappearing. Fold the aliases on
+                // BOTH sides so the element never mixes spellings (a lone
+                // w:end="0" left behind is not a conflict, but the next tool to
+                // touch it may make it one).
+                WordIndentAliases.Normalize(indentL);
+>>>>>>> upstream/main
                 return true;
             case "rightindent" or "indentright":
                 var indentR = pProps.Indentation ?? (pProps.Indentation = new Indentation());
                 // BUG-DUMP-NEGIND: signed.
                 indentR.Right = SpacingConverter.ParseWordSpacingSigned(value).ToString();
+<<<<<<< HEAD
+=======
+                WordIndentAliases.Normalize(indentR); // BUG-IND-ALIAS (#367)
+>>>>>>> upstream/main
                 return true;
             case "hangingindent" or "hanging":
                 var indentH = pProps.Indentation ?? (pProps.Indentation = new Indentation());
@@ -1042,6 +1304,147 @@ public partial class WordHandler
                     pProps.PageBreakBefore = new PageBreakBefore { Val = OnOffValue.FromBoolean(false) };
                 else pProps.PageBreakBefore = null;
                 return true;
+<<<<<<< HEAD
+=======
+            case "outlinelvl" or "outlinelevel":
+            {
+                // OOXML w:outlineLvl/@w:val is ST_DecimalNumber 0..9.
+                // TypedAttributeFallback accepts the full ByteValue range so
+                // val=10 silently produced schema-invalid XML. Mirror Add.
+                if (!int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out var olvlS)
+                    || olvlS < 0 || olvlS > 9)
+                    throw new ArgumentException($"Invalid 'outlineLvl' value: '{value}'. Must be 0-9 (OOXML MaxInclusive=9).");
+                pProps.OutlineLevel = new OutlineLevel { Val = olvlS };
+                return true;
+            }
+            case "textalignment":
+            {
+                // OOXML ST_TextAlignment enum (auto/top/center/baseline/bottom).
+                // TypedAttributeFallback wrote the raw string so "banana" 422'd
+                // the file. Validate canonically.
+                pProps.TextAlignment = new TextAlignment
+                {
+                    Val = value.ToLowerInvariant() switch
+                    {
+                        "auto"     => VerticalTextAlignmentValues.Auto,
+                        "top"      => VerticalTextAlignmentValues.Top,
+                        "center"   => VerticalTextAlignmentValues.Center,
+                        "baseline" => VerticalTextAlignmentValues.Baseline,
+                        "bottom"   => VerticalTextAlignmentValues.Bottom,
+                        _ => throw new ArgumentException($"Invalid 'textAlignment' value: '{value}'. Valid: auto, top, center, baseline, bottom."),
+                    },
+                };
+                return true;
+            }
+            case "wordwrap":
+            {
+                // OOXML CT_OnOff toggle (true = wrap, false = no wrap). The
+                // generic fallback treated unrecognized strings as truthy/falsy
+                // silently — reject anything that isn't a recognized boolean.
+                var wwLower = value.ToLowerInvariant();
+                if (wwLower is "true" or "1" or "yes" or "on")
+                    pProps.WordWrap = new WordWrap();
+                else if (wwLower is "false" or "0" or "no" or "off")
+                    pProps.WordWrap = new WordWrap { Val = OnOffValue.FromBoolean(false) };
+                else
+                    throw new ArgumentException($"Invalid 'wordWrap' value: '{value}'. Valid: true, false, 1, 0, yes, no, on, off.");
+                return true;
+            }
+            case "textboxtightwrap":
+            {
+                // OOXML ST_TextboxTightWrap. Curate so the SDK's lenient
+                // EnumValue (which stores invalid strings as extension attrs)
+                // can't slip past — invalid input must throw.
+                pProps.TextBoxTightWrap = new TextBoxTightWrap
+                {
+                    Val = value.ToLowerInvariant() switch
+                    {
+                        "none"             => TextBoxTightWrapValues.None,
+                        "alllines"         => TextBoxTightWrapValues.AllLines,
+                        "firstandlastline" => TextBoxTightWrapValues.FirstAndLastLine,
+                        "firstlineonly"    => TextBoxTightWrapValues.FirstLineOnly,
+                        "lastlineonly"     => TextBoxTightWrapValues.LastLineOnly,
+                        _ => throw new ArgumentException($"Invalid 'textboxTightWrap' value: '{value}'. Valid: none, allLines, firstAndLastLine, firstLineOnly, lastLineOnly."),
+                    },
+                };
+                return true;
+            }
+            // R15 sweep: CT_OnOff paragraph toggles that previously fell through
+            // to GenericXmlQuery.TryCreateTypedChild without strict boolean
+            // validation. Same family as wordWrap above — invalid input silently
+            // produced <w:kinsoku w:val="banana"/> (Get re-read as false).
+            case "kinsoku":
+            case "overflowpunct":
+            case "toplinepunct":
+            case "autospaceDE" or "autospacede":
+            case "autospaceDN" or "autospacedn":
+            case "adjustrightind":
+            case "snaptogrid":
+            case "mirrorindents":
+            case "suppressoverlap":
+            case "suppressautohyphens":
+            case "suppresslinenumbers":
+            {
+                var onOffLower = value.ToLowerInvariant();
+                bool? boolVal = onOffLower switch
+                {
+                    "true" or "1" or "yes" or "on"  => true,
+                    "false" or "0" or "no" or "off" => false,
+                    _ => null,
+                };
+                if (boolVal == null)
+                    throw new ArgumentException($"Invalid '{key}' value: '{value}'. Valid: true, false, 1, 0, yes, no, on, off.");
+                switch (key.ToLowerInvariant())
+                {
+                    case "kinsoku":
+                        pProps.Kinsoku = boolVal.Value
+                            ? new Kinsoku()
+                            : new Kinsoku { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "overflowpunct":
+                        pProps.OverflowPunctuation = boolVal.Value
+                            ? new OverflowPunctuation()
+                            : new OverflowPunctuation { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "toplinepunct":
+                        pProps.TopLinePunctuation = boolVal.Value
+                            ? new TopLinePunctuation()
+                            : new TopLinePunctuation { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "autospacede":
+                        pProps.AutoSpaceDE = boolVal.Value
+                            ? new AutoSpaceDE()
+                            : new AutoSpaceDE { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "autospacedn":
+                        pProps.AutoSpaceDN = boolVal.Value
+                            ? new AutoSpaceDN()
+                            : new AutoSpaceDN { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "adjustrightind":
+                        pProps.AdjustRightIndent = boolVal.Value
+                            ? new AdjustRightIndent()
+                            : new AdjustRightIndent { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "snaptogrid":
+                        pProps.SnapToGrid = boolVal.Value
+                            ? new SnapToGrid()
+                            : new SnapToGrid { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "mirrorindents":
+                        pProps.MirrorIndents = boolVal.Value
+                            ? new MirrorIndents()
+                            : new MirrorIndents { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "suppressoverlap":
+                        pProps.SuppressOverlap = boolVal.Value
+                            ? new SuppressOverlap()
+                            : new SuppressOverlap { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "suppressautohyphens":
+                        pProps.SuppressAutoHyphens = boolVal.Value
+                            ? new SuppressAutoHyphens()
+                            : new SuppressAutoHyphens { Val = OnOffValue.FromBoolean(false) }; break;
+                    case "suppresslinenumbers":
+                        pProps.SuppressLineNumbers = boolVal.Value
+                            ? new SuppressLineNumbers()
+                            : new SuppressLineNumbers { Val = OnOffValue.FromBoolean(false) }; break;
+                }
+                return true;
+            }
+>>>>>>> upstream/main
             // fuzz-2: 'break=newPage' is the natural paragraph-context spelling
             // (mirrors section-context CONSISTENCY(section-type-alias) in
             // WordHandler.Set.Dispatch.cs:387). For a paragraph this maps to
@@ -1074,6 +1477,7 @@ public partial class WordHandler
                 // CONSISTENCY(ind-chars): "Nlines" suffix routes through the
                 // hundredths-of-line attr (w:beforeLines), mirroring the
                 // dedicated `spaceBeforeLines=` key. P1-7.
+<<<<<<< HEAD
                 // Always clear the other unit's attr — `<w:spacing>` lets
                 // before/beforeLines coexist with `lines` winning at render
                 // time, so a user-issued `spaceBefore=12pt` would silently
@@ -1088,10 +1492,29 @@ public partial class WordHandler
                     spacingBefore.Before = SpacingConverter.ParseWordSpacing(value).ToString();
                     spacingBefore.BeforeLines = null;
                 }
+=======
+                // BUG-DUMP-SPACING-BOTHUNITS: a paragraph may legitimately carry
+                // BOTH w:before (twips) AND w:beforeLines (hundredths-of-line) —
+                // Word stores both and the dump emits both as spaceBefore +
+                // spaceBeforeLines. The old within-axis clear (spaceBefore wipes
+                // BeforeLines) dropped one of the pair on replay: a `set` with
+                // both keys applied in sequence kept only the last writer, so a
+                // table cell's `<w:spacing w:before="144" w:beforeLines="60"/>`
+                // round-tripped as beforeLines-only — the cell shrank, the row
+                // got shorter, and the form reflowed. AddParagraph already keeps
+                // both (no clear); match it here. The "Nlines" suffix still routes
+                // to the lines attr but no longer nulls the twips sibling — both
+                // coexist exactly as the source had them.
+                if (TryParseLinesSuffix(value, out var sblHundredths))
+                    spacingBefore.BeforeLines = int.Parse(sblHundredths, System.Globalization.CultureInfo.InvariantCulture);
+                else
+                    spacingBefore.Before = SpacingConverter.ParseWordSpacing(value).ToString();
+>>>>>>> upstream/main
                 return true;
             case "spaceafter":
                 var spacingAfter = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
                 if (TryParseLinesSuffix(value, out var salHundredths))
+<<<<<<< HEAD
                 {
                     spacingAfter.AfterLines = int.Parse(salHundredths, System.Globalization.CultureInfo.InvariantCulture);
                     spacingAfter.After = null;
@@ -1101,11 +1524,19 @@ public partial class WordHandler
                     spacingAfter.After = SpacingConverter.ParseWordSpacing(value).ToString();
                     spacingAfter.AfterLines = null;
                 }
+=======
+                    spacingAfter.AfterLines = int.Parse(salHundredths, System.Globalization.CultureInfo.InvariantCulture);
+                else
+                    spacingAfter.After = SpacingConverter.ParseWordSpacing(value).ToString();
+>>>>>>> upstream/main
                 return true;
             case "spacebeforelines":
                 var spacingBL = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
                 spacingBL.BeforeLines = ParseHelpers.SafeParseInt(value, "spaceBeforeLines");
+<<<<<<< HEAD
                 spacingBL.Before = null;
+=======
+>>>>>>> upstream/main
                 return true;
             // BUG-DUMP-R44-4: auto-spacing on/off toggles (w:beforeAutospacing /
             // w:afterAutospacing). Mirror AddParagraph; round-trips the bool the
@@ -1121,7 +1552,10 @@ public partial class WordHandler
             case "spaceafterlines":
                 var spacingAL = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
                 spacingAL.AfterLines = ParseHelpers.SafeParseInt(value, "spaceAfterLines");
+<<<<<<< HEAD
                 spacingAL.After = null;
+=======
+>>>>>>> upstream/main
                 return true;
             case "linespacing":
                 var spacingLine = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
@@ -1172,6 +1606,10 @@ public partial class WordHandler
                 return true;
             case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
             case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right" or "border.between" or "border.bar":
+<<<<<<< HEAD
+=======
+            case "border.color" or "border.sz" or "border.size" or "border.space" or "border.val" or "border.style":
+>>>>>>> upstream/main
                 ApplyParagraphBorders(pProps, key, value);
                 return true;
             // Reading direction: "rtl" enables right-to-left layout for Arabic
@@ -1261,6 +1699,32 @@ public partial class WordHandler
             "decimalenclosedcirclechinese" => NumberFormatValues.DecimalEnclosedCircleChinese,
             "decimalenclosedfullstop" => NumberFormatValues.DecimalEnclosedFullstop,
             "decimalenclosedparen" => NumberFormatValues.DecimalEnclosedParen,
+<<<<<<< HEAD
+=======
+            // Page-number and locale formats the Get readback emits verbatim
+            // (pgNumType/@w:fmt, lvl/@w:numFmt) but Add/Set previously rejected,
+            // so a dump→batch round-trip of any document using them aborted the
+            // section/numbering add. numberInDash is the common one — "-1-"
+            // page numbers in government/legal templates.
+            "numberindash" => NumberFormatValues.NumberInDash,
+            "hex" => NumberFormatValues.Hex,
+            "chicago" => NumberFormatValues.Chicago,
+            "decimalhalfwidth" => NumberFormatValues.DecimalHalfWidth,
+            "decimalfullwidth2" => NumberFormatValues.DecimalFullWidth2,
+            "aiueo" => NumberFormatValues.Aiueo,
+            "aiueofullwidth" => NumberFormatValues.AiueoFullWidth,
+            "chosung" => NumberFormatValues.Chosung,
+            "koreandigital2" => NumberFormatValues.KoreanDigital2,
+            "ideographzodiactraditional" => NumberFormatValues.IdeographZodiacTraditional,
+            "ideographlegaltraditional" => NumberFormatValues.IdeographLegalTraditional,
+            "taiwanesecounting" => NumberFormatValues.TaiwaneseCounting,
+            "taiwanesecountingthousand" => NumberFormatValues.TaiwaneseCountingThousand,
+            "taiwanesedigital" => NumberFormatValues.TaiwaneseDigital,
+            "vietnamesecounting" => NumberFormatValues.VietnameseCounting,
+            "russianlower" => NumberFormatValues.RussianLower,
+            "russianupper" => NumberFormatValues.RussianUpper,
+            "custom" => NumberFormatValues.Custom,
+>>>>>>> upstream/main
             "none" => NumberFormatValues.None,
             _ => throw new ArgumentException(
                 $"Unknown numbering format '{value}'. Common values: decimal, lowerRoman, upperRoman, "
@@ -1311,6 +1775,57 @@ public partial class WordHandler
                 break;
             case "pbdr.bar" or "border.bar":
                 borders.BarBorder = MakeBorder<BarBorder>(style, size, color, space, sf.shadow, sf.frame, theme: bTheme);
+<<<<<<< HEAD
+=======
+                break;
+            default:
+                // Companion form: border.color, border.sz, border.space, border.val
+                // — update the attribute on every already-stored edge so users can
+                // author `border=single border.color=FF border.sz=12` and have all
+                // three land. Lazily creates a `single` border on each missing
+                // edge so the companion props aren't a no-op when called first.
+                ApplyParagraphBorderCompanion(borders, key.ToLowerInvariant(), value);
+                break;
+        }
+    }
+
+    private static void ApplyParagraphBorderCompanion(ParagraphBorders borders, string key, string value)
+    {
+        // key shape: border.<attr> or pbdr.<attr> — must NOT be an edge name.
+        var parts = key.Split('.');
+        if (parts.Length != 2) return;
+        var attr = parts[1];
+        if (attr is "all" or "top" or "bottom" or "left" or "right" or "between" or "bar") return;
+        var sides = new BorderType[]
+        {
+            borders.TopBorder ??= new TopBorder { Val = BorderValues.Single },
+            borders.BottomBorder ??= new BottomBorder { Val = BorderValues.Single },
+            borders.LeftBorder ??= new LeftBorder { Val = BorderValues.Single },
+            borders.RightBorder ??= new RightBorder { Val = BorderValues.Single },
+        };
+        foreach (var b in sides)
+            SetBorderAttr(b, attr, value);
+    }
+
+    private static void SetBorderAttr(BorderType b, string attr, string value)
+    {
+        switch (attr)
+        {
+            case "sz":
+            case "size":
+                b.Size = (uint)ParseHelpers.SafeParseInt(value, attr);
+                break;
+            case "color":
+                var (cHex, _) = ParseHelpers.SanitizeColorForOoxml(value);
+                b.Color = cHex;
+                break;
+            case "space":
+                b.Space = (uint)ParseHelpers.SafeParseInt(value, attr);
+                break;
+            case "val":
+            case "style":
+                b.Val = new EnumValue<BorderValues>(new BorderValues(value));
+>>>>>>> upstream/main
                 break;
         }
     }
@@ -1360,6 +1875,12 @@ public partial class WordHandler
                 break;
             case "pbdr.bar" or "border.bar":
                 borders.BarBorder = MakeBorder<BarBorder>(style, size, color, space, sf.shadow, sf.frame, theme: bTheme);
+<<<<<<< HEAD
+=======
+                break;
+            default:
+                ApplyParagraphBorderCompanion(borders, key.ToLowerInvariant(), value);
+>>>>>>> upstream/main
                 break;
         }
     }
@@ -1400,10 +1921,21 @@ public partial class WordHandler
                 break;
             case "border.insidev" or "border.vertical":
                 borders.InsideVerticalBorder = MakeBorder<InsideVerticalBorder>(style, size, color, space, sf.shadow, sf.frame, theme: bTheme);
+<<<<<<< HEAD
+=======
+                break;
+            default:
+                // Sub-property form: border.<edge>.<attr> — set a single
+                // attribute on the existing edge border (caller must have
+                // set border.<edge> first; we lazily create a default
+                // `single` border if absent). Mirrors ApplyCellBorderSubProperty.
+                ApplyTableBorderSubProperty(borders, key.ToLowerInvariant(), value);
+>>>>>>> upstream/main
                 break;
         }
     }
 
+<<<<<<< HEAD
     /// <summary>
     /// CT_TcPr child schema order. Used by InsertTcPrChildInOrder to insert
     /// new tcPr children at their schema position rather than the tail.
@@ -1472,8 +2004,139 @@ public partial class WordHandler
         // BUG-DUMP-R41-2: harvest the theme key=val tail once; passed to every
         // MakeBorder below so w:themeColor/Shade/Tint round-trip.
         var (_, bTheme) = ExtractThemeTail(value);
+=======
+    private static void ApplyTableBorderSubProperty(TableBorders borders, string key, string value)
+    {
+        var parts = key.Split('.');
+        if (parts.Length != 3 || parts[0] != "border") return;
+        var edge = parts[1];
+        var attr = parts[2];
+        BorderType? b = edge switch
+        {
+            "top"    => borders.TopBorder    ??= new TopBorder    { Val = BorderValues.Single },
+            "bottom" => borders.BottomBorder ??= new BottomBorder { Val = BorderValues.Single },
+            "left" or "start" => borders.LeftBorder  ??= new LeftBorder  { Val = BorderValues.Single },
+            "right" or "end"  => borders.RightBorder ??= new RightBorder { Val = BorderValues.Single },
+            "insideh" or "horizontal" => borders.InsideHorizontalBorder ??= new InsideHorizontalBorder { Val = BorderValues.Single },
+            "insidev" or "vertical"   => borders.InsideVerticalBorder   ??= new InsideVerticalBorder   { Val = BorderValues.Single },
+            _ => null,
+        };
+        if (b == null) return;
+        switch (attr)
+        {
+            case "sz":
+            case "size":
+                b.Size = (uint)ParseHelpers.SafeParseInt(value, key);
+                break;
+            case "color":
+                var (cHex, _) = ParseHelpers.SanitizeColorForOoxml(value);
+                b.Color = cHex;
+                break;
+            case "space":
+                b.Space = (uint)ParseHelpers.SafeParseInt(value, key);
+                break;
+            case "val":
+            case "style":
+                b.Val = new EnumValue<BorderValues>(new BorderValues(value));
+                break;
+        }
+    }
+>>>>>>> upstream/main
 
-        switch (key.ToLowerInvariant())
+    /// <summary>
+    /// CT_TcPr child schema order. Used by InsertTcPrChildInOrder to insert
+    /// new tcPr children at their schema position rather than the tail.
+    /// Children whose type isn't on this list (mc:AlternateContent and
+    /// extensions, for instance) are tolerated — they sort to the end via
+    /// the IndexOf == -1 sentinel.
+    /// </summary>
+    private static readonly Type[] s_tcPrChildOrder =
+    [
+        typeof(ConditionalFormatStyle),
+        typeof(TableCellWidth),
+        typeof(GridSpan),
+        typeof(HorizontalMerge),
+        typeof(VerticalMerge),
+        typeof(TableCellBorders),
+        typeof(Shading),
+        typeof(NoWrap),
+        typeof(TableCellMargin),
+        typeof(TextDirection),
+        typeof(TableCellFitText),
+        typeof(TableCellVerticalAlignment),
+        typeof(HideMark),
+        // headers/cellIns/cellDel/cellMerge/tcPrChange follow but are rare
+        // enough that we let the SDK's own setters handle them; they get
+        // sentinel positions (-1) and end up at the tail, which is correct
+        // when nothing else past tcPr has been written.
+    ];
+
+    private static void InsertTcPrChildInOrder(TableCellProperties tcPr, OpenXmlElement child)
+    {
+        var targetIdx = Array.IndexOf(s_tcPrChildOrder, child.GetType());
+        if (targetIdx < 0)
+        {
+            tcPr.AppendChild(child);
+            return;
+        }
+        foreach (var sibling in tcPr.ChildElements)
+        {
+            var sibIdx = Array.IndexOf(s_tcPrChildOrder, sibling.GetType());
+            if (sibIdx > targetIdx)
+            {
+                tcPr.InsertBefore(child, sibling);
+                return;
+            }
+        }
+        tcPr.AppendChild(child);
+    }
+
+    private static bool ApplyCellBorders(TableCellProperties tcPr, string key, string value)
+    {
+        // Validate the key shape before mutating tcPr — an unknown border.*
+        // key (e.g. "borderStyle", or a length-2 split that ApplyCellBorderSubProperty
+        // would silently drop) must surface as unsupported rather than leaving
+        // an empty <w:tcBorders/> element behind.
+        var keyLower = key.ToLowerInvariant();
+        bool isWhole = keyLower is "border.all" or "border" or "border.top"
+            or "border.bottom" or "border.left" or "border.right"
+            or "border.tl2br" or "border.tr2bl";
+        bool isSubProp = false;
+        if (!isWhole)
+        {
+            var parts = keyLower.Split('.');
+            if (parts.Length == 3 && parts[0] == "border")
+            {
+                var edge = parts[1];
+                var attr = parts[2];
+                bool edgeOk = edge is "top" or "bottom" or "left" or "start"
+                    or "right" or "end" or "tl2br" or "tr2bl";
+                bool attrOk = attr is "sz" or "size" or "color" or "space" or "val" or "style";
+                isSubProp = edgeOk && attrOk;
+            }
+        }
+        if (!isWhole && !isSubProp) return false;
+
+        // CT_TcPr child sequence is strict: cnfStyle → tcW → gridSpan →
+        // hMerge → vMerge → tcBorders → shd → noWrap → tcMar →
+        // textDirection → tcFitText → vAlign → hideMark → ... → tcPrChange.
+        // Plain AppendChild lands tcBorders at the tail, after shd/vAlign/
+        // tcMar that earlier setter calls already wrote, producing
+        // Sch_UnexpectedElementContentExpectingComplex on tcBorders. Insert
+        // before the first existing sibling that should come after tcBorders.
+        var borders = tcPr.TableCellBorders;
+        if (borders == null)
+        {
+            borders = new TableCellBorders();
+            InsertTcPrChildInOrder(tcPr, borders);
+        }
+        var (style, size, color, space) = ParseBorderValue(value);
+        var sf = ParseBorderShadowFrame(value);
+        // BUG-DUMP-R41-2: harvest the theme key=val tail once; passed to every
+        // MakeBorder below so w:themeColor/Shade/Tint round-trip.
+        var (_, bTheme) = ExtractThemeTail(value);
+
+        switch (keyLower)
         {
             case "border.all" or "border":
                 borders.TopBorder = MakeBorder<TopBorder>(style, size, color, space, sf.shadow, sf.frame, theme: bTheme);
@@ -1498,6 +2161,54 @@ public partial class WordHandler
                 break;
             case "border.tr2bl":
                 borders.TopRightToBottomLeftCellBorder = MakeBorder<TopRightToBottomLeftCellBorder>(style, size, color, space, sf.shadow, sf.frame, theme: bTheme);
+<<<<<<< HEAD
+=======
+                break;
+            default:
+                // Sub-property form: border.<edge>.<attr> — set an attribute on
+                // the existing edge border (caller must have set border.<edge>
+                // first; we lazily create a default `single` border if absent).
+                ApplyCellBorderSubProperty(borders, keyLower, value);
+                break;
+        }
+        return true;
+    }
+
+    private static void ApplyCellBorderSubProperty(TableCellBorders borders, string key, string value)
+    {
+        // key shape: border.<edge>.<attr> — e.g. border.top.sz, border.left.color
+        var parts = key.Split('.');
+        if (parts.Length != 3) return;
+        var edge = parts[1];
+        var attr = parts[2];
+        BorderType? b = edge switch
+        {
+            "top" => borders.TopBorder ??= new TopBorder { Val = BorderValues.Single },
+            "bottom" => borders.BottomBorder ??= new BottomBorder { Val = BorderValues.Single },
+            "left" or "start" => borders.LeftBorder ??= new LeftBorder { Val = BorderValues.Single },
+            "right" or "end" => borders.RightBorder ??= new RightBorder { Val = BorderValues.Single },
+            "tl2br" => borders.TopLeftToBottomRightCellBorder ??= new TopLeftToBottomRightCellBorder { Val = BorderValues.Single },
+            "tr2bl" => borders.TopRightToBottomLeftCellBorder ??= new TopRightToBottomLeftCellBorder { Val = BorderValues.Single },
+            _ => null,
+        };
+        if (b == null) return;
+        switch (attr)
+        {
+            case "sz":
+            case "size":
+                b.Size = (uint)ParseHelpers.SafeParseInt(value, key);
+                break;
+            case "color":
+                var (cHex, _) = ParseHelpers.SanitizeColorForOoxml(value);
+                b.Color = cHex;
+                break;
+            case "space":
+                b.Space = (uint)ParseHelpers.SafeParseInt(value, key);
+                break;
+            case "val":
+            case "style":
+                b.Val = new EnumValue<BorderValues>(new BorderValues(value));
+>>>>>>> upstream/main
                 break;
         }
     }
@@ -1565,11 +2276,26 @@ public partial class WordHandler
         var tpp = tblPr.GetFirstChild<TablePositionProperties>();
         if (tpp == null)
         {
+<<<<<<< HEAD
             tpp = new TablePositionProperties
             {
                 VerticalAnchor = VerticalAnchorValues.Page,
                 HorizontalAnchor = HorizontalAnchorValues.Page
             };
+=======
+            // BUG-DUMP-TBLPPR-HORZANCHOR: do NOT bake in default
+            // vertAnchor/horzAnchor=page. Both attributes are OPTIONAL in
+            // ST_TblPPr (Word's default is text/column-relative). Hard-defaulting
+            // them meant a dump→batch of a floating table whose source set only
+            // some tblp.* attrs (e.g. vertAnchor=text + leftFromText, no
+            // horzAnchor) gained a spurious horzAnchor="page" — which re-anchored
+            // the table to the page's left edge, so the following paragraph (a
+            // table's "Notes" caption) wrapped BESIDE the half-width table instead
+            // of flowing below it (visible layout corruption). Create the element
+            // empty; each anchor is set only when the caller explicitly provides
+            // tblp.horzAnchor / tblp.vertAnchor, matching the source faithfully.
+            tpp = new TablePositionProperties();
+>>>>>>> upstream/main
             // CONSISTENCY(tblpr-schema-order): tblpPr is rank 1.
             InsertTblPrChildInOrder(tblPr, tpp);
         }
@@ -1607,8 +2333,36 @@ public partial class WordHandler
         // BUG-R2b: accept the "dxa" suffix that Get now emits for colWidths/width
         // so a dxa-qualified value round-trips back through Set. dxa is the OOXML
         // twip unit, so it strips to a bare integer (no scaling).
+<<<<<<< HEAD
         if (value.EndsWith("dxa", StringComparison.OrdinalIgnoreCase))
             return ParseHelpers.SafeParseUint(value[..^3], "twips");
         return ParseHelpers.SafeParseUint(value, "twips");
+=======
+        // BUG-DUMP-FRACTWIPS: a source <w:col w:w="4521.5"> (an authoring-tool
+        // artifact — twips are integer in the schema, but Word tolerates and
+        // rounds fractional widths) made `dump --format batch` emit "4521.5",
+        // which Set's integer-only parse then REJECTED — officecli could not
+        // round-trip a value it itself produced, dropping the multi-column
+        // layout. Accept fractional twips and round, matching the cm/in/pt
+        // branches above (Word rounds the same way).
+        if (value.EndsWith("dxa", StringComparison.OrdinalIgnoreCase))
+            return RoundNonNegativeTwips(value[..^3]);
+        return RoundNonNegativeTwips(value);
+    }
+
+    // Parse a bare twip value, tolerating a fractional component (rounded to the
+    // nearest integer twip) so a source's fractional length round-trips. A plain
+    // integer string still parses exactly; only a non-integer takes the rounding
+    // path. Negative values are rejected, matching the unit branches.
+    private static uint RoundNonNegativeTwips(string s)
+    {
+        s = s.Trim();
+        if (uint.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var exact))
+            return exact;
+        var num = ParseHelpers.SafeParseDouble(s, "twips");
+        if (num < 0)
+            throw new ArgumentException($"length must be non-negative, got {num}.");
+        return (uint)Math.Round(num);
+>>>>>>> upstream/main
     }
 }
